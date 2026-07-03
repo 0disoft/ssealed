@@ -1,0 +1,48 @@
+{
+  "name": "ssealed",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "LLM-friendly design scaffold CLI for repository documentation, agent instructions, contracts, validations, and hygiene files.",
+  "bin": {
+    "ssealed": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "keywords": [
+    "ai-agents",
+    "bun",
+    "cli",
+    "design-docs",
+    "nodejs",
+    "scaffold"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "bun@1.3.14",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "smoke:node-runtime": "node scripts/smoke-runtime.mjs node",
+    "smoke:bun-runtime": "node scripts/smoke-runtime.mjs bun",
+    "smoke": "bun run smoke:node-runtime && bun run smoke:bun-runtime",
+    "check": "bun run typecheck && bun run test && bun run build && bun run smoke",
+    "dev": "tsx src/cli.ts",
+    "mf": "mf",
+    "mustflow:check": "mf version --check",
+    "mustflow:update:dry-run": "bun update mustflow && mf update --dry-run",
+    "mustflow:update:apply": "bun update mustflow && mf update --apply"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "mustflow": "^2.108.3",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
