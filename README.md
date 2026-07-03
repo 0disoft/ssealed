@@ -33,6 +33,29 @@ bun run smoke:bun-runtime
 bun run check
 ```
 
+## Release Automation
+
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.2.1`, and GitHub Actions will run the release workflow.
+
+The release workflow:
+
+- installs dependencies with Bun;
+- runs `bun run check`;
+- verifies the npm package contents with `npm pack --dry-run --json`;
+- publishes the package to npm;
+- creates or updates the matching GitHub Release.
+
+npm publishing uses Trusted Publishing through GitHub Actions. Configure the npm package trusted publisher once with:
+
+- Package: `ssealed`
+- Publisher: GitHub Actions
+- Repository owner: `0disoft`
+- Repository name: `ssealed`
+- Workflow filename: `release.yml`
+- Environment: leave empty unless the workflow is changed to use one
+
+Do not store an npm token in the repository unless Trusted Publishing is unavailable.
+
 ## CLI
 
 ```sh

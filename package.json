@@ -3,6 +3,14 @@
   "version": "0.2.0",
   "type": "module",
   "description": "LLM-friendly design scaffold CLI for repository documentation, agent instructions, contracts, validations, and hygiene files.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0disoft/ssealed.git"
+  },
+  "bugs": {
+    "url": "https://github.com/0disoft/ssealed/issues"
+  },
+  "homepage": "https://github.com/0disoft/ssealed#readme",
   "bin": {
     "ssealed": "dist/cli.js"
   },
