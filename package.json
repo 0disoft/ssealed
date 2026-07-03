@@ -4,7 +4,7 @@
   "type": "module",
   "description": "LLM-friendly design scaffold CLI for repository documentation, agent instructions, contracts, validations, and hygiene files.",
   "bin": {
-    "ssealed": "./dist/cli.js"
+    "ssealed": "dist/cli.js"
   },
   "files": [
     "dist",
