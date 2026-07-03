@@ -29,7 +29,9 @@ export function validationScripts(runner: "npm" | "pnpm"): Record<string, string
 }
 
 function makefile(): string {
-  return `${validations
+  return `.PHONY: ${validations.join(" ")}
+
+${validations
     .map((name) => {
       const message = `${name} is not configured. Configure this validation before relying on it.`;
       return `${name}:\n\t@echo "${message}"\n\t@exit 1`;

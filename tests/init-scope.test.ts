@@ -115,4 +115,16 @@ describe("scope generation", () => {
     expect(codeowners).toContain("# * @REPLACE_WITH_OWNER");
     expect(codeowners).not.toContain("\n* @REPLACE_WITH_OWNER");
   });
+
+  it("keeps generated OpenAPI and JSON examples aligned for pagination and create requests", async () => {
+    const dir = await scaffold("backend");
+    const openapi = await readFile(path.join(dir, "api", "openapi.yaml"), "utf8");
+    const paginatedExample = await readFile(path.join(dir, "api", "examples", "paginated-response.json"), "utf8");
+    expect(paginatedExample).toContain('"limit"');
+    expect(openapi).toContain("required: [limit, nextCursor]");
+    expect(openapi).toContain("limit:");
+    expect(openapi).toContain("CreateResourceRequest:");
+    expect(openapi).toMatch(/Idempotency-Key[\s\S]*required: true/u);
+    expect(openapi).toMatch(/post:[\s\S]*requestBody:[\s\S]*CreateResourceRequest/u);
+  });
 });

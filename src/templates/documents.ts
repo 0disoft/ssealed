@@ -764,6 +764,7 @@ components:
     IdempotencyKey:
       name: Idempotency-Key
       in: header
+      required: true
       schema:
         type: string
   schemas:
@@ -773,6 +774,13 @@ components:
       properties:
         id:
           type: string
+        type:
+          type: string
+          const: Resource
+    CreateResourceRequest:
+      type: object
+      required: [type]
+      properties:
         type:
           type: string
           const: Resource
@@ -792,7 +800,12 @@ components:
             $ref: "#/components/schemas/Resource"
         page:
           type: object
+          required: [limit, nextCursor]
           properties:
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 100
             nextCursor:
               type:
                 - string
@@ -843,6 +856,12 @@ paths:
     post:
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateResourceRequest"
       responses:
         "201":
           description: Create resource

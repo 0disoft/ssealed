@@ -62,7 +62,16 @@ export interface ScaffoldResult {
   readonly force: boolean;
   readonly files: readonly PlannedFile[];
   readonly conflicts: readonly PlannedFile[];
+  readonly warnings: readonly ScaffoldWarning[];
   readonly written: readonly string[];
+}
+
+export type ScaffoldWarningCode = "INVALID_MANIFEST";
+
+export interface ScaffoldWarning {
+  readonly code: ScaffoldWarningCode;
+  readonly path: string;
+  readonly message: string;
 }
 
 export interface InitOptions {

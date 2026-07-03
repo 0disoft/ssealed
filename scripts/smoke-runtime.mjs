@@ -36,6 +36,7 @@ try {
   const generatedBunfig = files.some((file) => file?.path === "bunfig.toml") || written.includes("bunfig.toml");
   if (
     payload.target !== target ||
+    payload.ok !== true ||
     payload.scope !== "design" ||
     payload.runner !== "none" ||
     !written.includes("AGENTS.md") ||

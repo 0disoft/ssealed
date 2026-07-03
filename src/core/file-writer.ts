@@ -1,4 +1,5 @@
-import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
@@ -70,7 +71,7 @@ export async function writePlannedFiles(targetRoot: string, files: readonly Plan
     for (const file of writableFiles) {
       const targetPath = resolveInsideTarget(targetRoot, file.path);
       await mkdir(path.dirname(targetPath), { recursive: true });
-      await writeFile(targetPath, normalizeText(file.content), { encoding: "utf8", flag: "w" });
+      await writeTextFileAtomically(targetPath, normalizeText(file.content));
       written.push(file.path);
     }
   } catch (error) {
@@ -170,6 +171,21 @@ function planPackageJson(
 
   const currentScripts = isRecord(parsed.scripts) ? parsed.scripts : {};
   const nextScripts = { ...currentScripts };
+  const userOwnedScripts = force
+    ? Object.entries(scripts)
+        .filter(([name]) => name in nextScripts && !isGeneratedValidationScript(nextScripts[name]))
+        .map(([name]) => name)
+    : [];
+  if (userOwnedScripts.length > 0) {
+    return {
+      ...template,
+      action: "conflict",
+      content: template.content,
+      existingContent,
+      previouslyGenerated,
+      reason: `Existing package.json has user-owned validation scripts: ${userOwnedScripts.join(", ")}.`,
+    };
+  }
   for (const [name, value] of Object.entries(scripts)) {
     if (force || !(name in nextScripts)) {
       nextScripts[name] = value;
@@ -200,7 +216,7 @@ function planManifest(
   }
 
   if (sameManifestExceptGeneratedAt(existingContent, generatedContent)) {
-    return { ...template, action: "merge", content: generatedContent, existingContent, previouslyGenerated };
+    return { ...template, action: "unchanged", content: normalizeText(existingContent), existingContent, previouslyGenerated };
   }
 
   if (force) {
@@ -297,7 +313,26 @@ async function rollbackWrittenFiles(
     if (file.existingContent === undefined) {
       await rm(targetPath, { force: true }).catch(() => undefined);
     } else {
-      await writeFile(targetPath, file.existingContent, { encoding: "utf8", flag: "w" }).catch(() => undefined);
+      await writeTextFileAtomically(targetPath, file.existingContent).catch(() => undefined);
     }
+  }
+}
+
+function isGeneratedValidationScript(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const generatedScripts = new Set([...Object.values(validationScripts("npm")), ...Object.values(validationScripts("pnpm"))]);
+  return generatedScripts.has(value);
+}
+
+async function writeTextFileAtomically(targetPath: string, content: string): Promise<void> {
+  const temporaryPath = path.join(path.dirname(targetPath), `.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporaryPath, content, { encoding: "utf8", flag: "wx" });
+    await rename(temporaryPath, targetPath);
+  } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+    throw error;
   }
 }

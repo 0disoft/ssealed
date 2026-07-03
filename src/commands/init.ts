@@ -16,14 +16,13 @@ export interface InitCliOptions {
 
 export async function runInit(options: InitCliOptions): Promise<number> {
   const scope = await resolveScope(options);
-  if (scope === undefined) {
-    return 1;
+  if (isInitError(scope)) {
+    return writeInitError(options, scope);
   }
 
   const runner = resolveRunner(options.runner);
-  if (runner === undefined) {
-    printError(`Invalid runner: ${options.runner ?? ""}. Valid runners: ${runners.join(", ")}`);
-    return 1;
+  if (isInitError(runner)) {
+    return writeInitError(options, runner);
   }
 
   const target = path.resolve(options.target ?? process.cwd());
@@ -36,7 +35,7 @@ export async function runInit(options: InitCliOptions): Promise<number> {
   });
 
   if (options.json) {
-    output.write(`${JSON.stringify(result, null, 2)}\n`);
+    output.write(`${JSON.stringify(formatJsonResult(result), null, 2)}\n`);
   } else {
     output.write(formatHumanResult(result));
   }
@@ -44,25 +43,32 @@ export async function runInit(options: InitCliOptions): Promise<number> {
   return result.conflicts.length > 0 ? 1 : 0;
 }
 
-async function resolveScope(options: InitCliOptions): Promise<Scope | undefined> {
+type InitErrorCode = "INVALID_SCOPE" | "INVALID_RUNNER" | "MISSING_SCOPE";
+
+interface InitError {
+  readonly code: InitErrorCode;
+  readonly message: string;
+  readonly showExamples?: boolean;
+}
+
+async function resolveScope(options: InitCliOptions): Promise<Scope | InitError> {
   if (options.scope !== undefined) {
     if (isScope(options.scope)) {
       return options.scope;
     }
-    printError(`Invalid scope: ${options.scope}. Valid scopes: ${scopes.join(", ")}`);
-    return undefined;
+    return { code: "INVALID_SCOPE", message: `Invalid scope: ${options.scope}. Valid scopes: ${scopes.join(", ")}` };
   }
 
   if (options.yes) {
-    printError("Missing --scope. --yes disables prompts, so pass one of: backend, frontend, fullstack, design.");
-    printExamples();
-    return undefined;
+    return {
+      code: "MISSING_SCOPE",
+      message: "Missing --scope. --yes disables prompts, so pass one of: backend, frontend, fullstack, design.",
+      showExamples: true,
+    };
   }
 
   if (!input.isTTY || !output.isTTY) {
-    printError("Missing --scope in non-interactive mode.");
-    printExamples();
-    return undefined;
+    return { code: "MISSING_SCOPE", message: "Missing --scope in non-interactive mode.", showExamples: true };
   }
 
   const rl = readline.createInterface({ input, output });
@@ -71,18 +77,19 @@ async function resolveScope(options: InitCliOptions): Promise<Scope | undefined>
     if (isScope(answer)) {
       return answer;
     }
-    printError(`Invalid scope: ${answer}`);
-    return undefined;
+    return { code: "INVALID_SCOPE", message: `Invalid scope: ${answer}` };
   } finally {
     rl.close();
   }
 }
 
-function resolveRunner(value: string | undefined): Runner | undefined {
+function resolveRunner(value: string | undefined): Runner | InitError {
   if (value === undefined) {
     return "none";
   }
-  return isRunner(value) ? value : undefined;
+  return isRunner(value)
+    ? value
+    : { code: "INVALID_RUNNER", message: `Invalid runner: ${value}. Valid runners: ${runners.join(", ")}` };
 }
 
 function isScope(value: string): value is Scope {
@@ -110,6 +117,47 @@ function printExamples(): void {
   );
 }
 
+function isInitError(value: Scope | Runner | InitError): value is InitError {
+  return typeof value === "object" && value !== null && "code" in value;
+}
+
+function writeInitError(options: InitCliOptions, error: InitError): number {
+  if (options.json) {
+    output.write(`${JSON.stringify({ ok: false, error: { code: error.code, message: error.message } }, null, 2)}\n`);
+    return 1;
+  }
+  printError(error.message);
+  if (error.showExamples) {
+    printExamples();
+  }
+  return 1;
+}
+
+function formatJsonResult(result: Awaited<ReturnType<typeof executeScaffold>>): object {
+  return {
+    ok: result.conflicts.length === 0,
+    target: result.target,
+    scope: result.scope,
+    runner: result.runner,
+    dryRun: result.dryRun,
+    force: result.force,
+    files: result.files.map(publicFile),
+    conflicts: result.conflicts.map(publicFile),
+    warnings: result.warnings,
+    written: result.written,
+  };
+}
+
+function publicFile(file: Awaited<ReturnType<typeof executeScaffold>>["files"][number]): object {
+  return {
+    path: file.path,
+    kind: file.kind,
+    action: file.action,
+    ...(file.previouslyGenerated === undefined ? {} : { previouslyGenerated: file.previouslyGenerated }),
+    ...(file.reason === undefined ? {} : { reason: file.reason }),
+  };
+}
+
 function formatHumanResult(result: Awaited<ReturnType<typeof executeScaffold>>): string {
   const lines = [
     `ssealed init ${result.dryRun ? "plan" : "result"}`,
@@ -120,6 +168,10 @@ function formatHumanResult(result: Awaited<ReturnType<typeof executeScaffold>>):
 
   for (const file of result.files) {
     lines.push(`- ${file.action}: ${file.path}${file.reason ? ` (${file.reason})` : ""}`);
+  }
+
+  for (const warning of result.warnings) {
+    lines.push(`Warning ${warning.code} ${warning.path}: ${warning.message}`);
   }
 
   if (result.conflicts.length > 0) {

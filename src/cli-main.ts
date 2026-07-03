@@ -42,6 +42,19 @@ Examples:
   ssealed init --scope design --dry-run
 `;
 
+interface ParsedInitArgs {
+  readonly values: {
+    readonly scope?: string;
+    readonly runner?: string;
+    readonly yes?: boolean;
+    readonly "dry-run"?: boolean;
+    readonly force?: boolean;
+    readonly json?: boolean;
+    readonly help?: boolean;
+  };
+  readonly positionals: readonly string[];
+}
+
 export async function main(argv: readonly string[]): Promise<number> {
   const command = argv[0];
   if (command === undefined || command === "--help" || command === "-h") {
@@ -53,24 +66,27 @@ export async function main(argv: readonly string[]): Promise<number> {
     return 0;
   }
   if (command !== "init") {
+    if (wantsJson(argv)) {
+      process.stdout.write(
+        `${JSON.stringify({ ok: false, error: { code: "UNKNOWN_COMMAND", message: `Unknown command: ${command}` } }, null, 2)}\n`,
+      );
+      return 1;
+    }
     process.stderr.write(`ssealed: unknown command ${command}\n`);
     process.stdout.write(helpText);
     return 1;
   }
 
-  const parsed = parseArgs({
-    args: argv.slice(1),
-    allowPositionals: true,
-    options: {
-      scope: { type: "string" },
-      runner: { type: "string" },
-      yes: { type: "boolean", default: false },
-      "dry-run": { type: "boolean", default: false },
-      force: { type: "boolean", default: false },
-      json: { type: "boolean", default: false },
-      help: { type: "boolean", short: "h", default: false },
-    },
-  });
+  const parsed = parseInitArgs(argv.slice(1));
+  if (parsed instanceof Error) {
+    if (wantsJson(argv)) {
+      process.stdout.write(
+        `${JSON.stringify({ ok: false, error: { code: "INVALID_ARGUMENT", message: parsed.message } }, null, 2)}\n`,
+      );
+      return 1;
+    }
+    throw parsed;
+  }
 
   if (parsed.values.help) {
     process.stdout.write(initHelpText);
@@ -78,6 +94,16 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 
   if (parsed.positionals.length > 1) {
+    if (parsed.values.json) {
+      process.stdout.write(
+        `${JSON.stringify(
+          { ok: false, error: { code: "TOO_MANY_TARGETS", message: `init accepts at most one target, got ${parsed.positionals.length}` } },
+          null,
+          2,
+        )}\n`,
+      );
+      return 1;
+    }
     process.stderr.write(`ssealed: init accepts at most one target, got ${parsed.positionals.length}\n`);
     return 1;
   }
@@ -91,4 +117,28 @@ export async function main(argv: readonly string[]): Promise<number> {
     force: parsed.values.force ?? false,
     json: parsed.values.json ?? false,
   });
+}
+
+function parseInitArgs(args: readonly string[]): ParsedInitArgs | Error {
+  try {
+    return parseArgs({
+      args,
+      allowPositionals: true,
+      options: {
+        scope: { type: "string" },
+        runner: { type: "string" },
+        yes: { type: "boolean", default: false },
+        "dry-run": { type: "boolean", default: false },
+        force: { type: "boolean", default: false },
+        json: { type: "boolean", default: false },
+        help: { type: "boolean", short: "h", default: false },
+      },
+    }) as ParsedInitArgs;
+  } catch (error: unknown) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+}
+
+function wantsJson(argv: readonly string[]): boolean {
+  return argv.includes("--json");
 }

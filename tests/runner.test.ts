@@ -1,10 +1,11 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { executeScaffold } from "../src/core/scaffold.js";
 import type { Runner } from "../src/core/types.js";
 import { runInit } from "../src/commands/init.js";
+import { validationScripts } from "../src/templates/runners.js";
 
 interface PackageJsonForTest {
   scripts: Record<string, string>;
@@ -55,7 +56,9 @@ describe("runner generation", () => {
   it("runner make generates failing unconfigured targets", async () => {
     const dir = await scaffold("make");
     const content = await readFile(path.join(dir, "Makefile"), "utf8");
+    expect(content).toContain(".PHONY: format lint typecheck test contract migration-check smoke docs check");
     expect(content).toContain("format:");
+    expect(content).toContain("docs:");
     expect(content).toContain("@exit 1");
   });
 
@@ -90,13 +93,23 @@ describe("runner generation", () => {
     expect(pkg.scripts.typecheck).toContain("typecheck is not configured");
   });
 
-  it("force updates managed validation scripts in package.json", async () => {
+  it("force conflicts instead of overwriting user-owned package scripts", async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, "package.json"), '{\n  "scripts": {\n    "test": "custom-test"\n  }\n}\n');
     const result = await executeScaffold({ target: dir, scope: "design", runner: "npm", dryRun: false, force: true });
+    expect(result.conflicts.map((file) => file.path)).toContain("package.json");
+    const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
+    expect(pkg.scripts.test).toBe("custom-test");
+    await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
+  });
+
+  it("force updates generated validation scripts in package.json", async () => {
+    const dir = await tempDir();
+    await writeFile(path.join(dir, "package.json"), JSON.stringify({ scripts: { test: validationScripts("npm").test } }, null, 2));
+    const result = await executeScaffold({ target: dir, scope: "design", runner: "pnpm", dryRun: false, force: true });
     expect(result.conflicts).toHaveLength(0);
     const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
-    expect(pkg.scripts.test).toContain("test is not configured");
+    expect(pkg.scripts.test).toBe(validationScripts("pnpm").test);
   });
 
   it("invalid package.json conflicts for npm runner", async () => {
@@ -109,7 +122,14 @@ describe("runner generation", () => {
 
   it("rejects bun as a runner value", async () => {
     const dir = await tempDir();
-    await expect(runInit({ target: dir, scope: "design", runner: "bun", yes: true, dryRun: true, force: false, json: true })).resolves.toBe(1);
-    await expect(readFile(path.join(dir, "bunfig.toml"), "utf8")).rejects.toThrow();
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(runInit({ target: dir, scope: "design", runner: "bun", yes: true, dryRun: true, force: false, json: true })).resolves.toBe(1);
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload.error.code).toBe("INVALID_RUNNER");
+      await expect(readFile(path.join(dir, "bunfig.toml"), "utf8")).rejects.toThrow();
+    } finally {
+      stdout.mockRestore();
+    }
   });
 });

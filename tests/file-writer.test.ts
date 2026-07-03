@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -44,6 +44,7 @@ describe("file writer behavior", () => {
     expect(result.conflicts.map((file) => file.path)).toContain("README.md");
     await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).rejects.toThrow();
     await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
+    await expect(lstat(path.join(dir, ".ssealed"))).rejects.toThrow();
   });
 
   it("force overwrites conflicts", async () => {
@@ -143,7 +144,32 @@ describe("file writer behavior", () => {
     await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
     const rerun = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: true, force: false });
     expect(rerun.conflicts.map((file) => file.path)).not.toContain(".ssealed/manifest.json");
-    expect(rerun.files.find((file) => file.path === ".ssealed/manifest.json")?.action).toBe("merge");
+    expect(rerun.files.find((file) => file.path === ".ssealed/manifest.json")?.action).toBe("unchanged");
+  });
+
+  it("does not rewrite the manifest when only generatedAt would change", async () => {
+    const dir = await tempDir();
+    const first = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    expect(first.written).toContain(".ssealed/manifest.json");
+    const before = await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8");
+    const rerun = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    const after = await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8");
+    expect(rerun.written).not.toContain(".ssealed/manifest.json");
+    expect(after).toBe(before);
+  });
+
+  it("warns when an existing manifest is invalid and ignored", async () => {
+    const dir = await tempDir();
+    await mkdir(path.join(dir, ".ssealed"), { recursive: true });
+    await writeFile(path.join(dir, ".ssealed", "manifest.json"), "{bad json\n");
+    const result = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: true, force: false });
+    expect(result.warnings).toEqual([
+      {
+        code: "INVALID_MANIFEST",
+        path: ".ssealed/manifest.json",
+        message: "Existing .ssealed/manifest.json could not be parsed as a valid ssealed manifest and was ignored for ownership checks.",
+      },
+    ]);
   });
 
   it("refuses to write through a symlinked generated directory when the platform permits the setup", async () => {
@@ -172,5 +198,23 @@ describe("file writer behavior", () => {
     );
     await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).rejects.toThrow();
     await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
+  });
+
+  it("refuses to run when another scaffold lock exists and preserves that lock", async () => {
+    const dir = await tempDir();
+    const lockPath = path.join(dir, ".ssealed-init.lock");
+    await writeFile(lockPath, "existing lock\n");
+
+    await expect(executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false })).rejects.toThrow(
+      /already running/u,
+    );
+    await expect(readFile(lockPath, "utf8")).resolves.toBe("existing lock\n");
+    await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).rejects.toThrow();
+  });
+
+  it("removes the scaffold lock after a successful write", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    await expect(readFile(path.join(dir, ".ssealed-init.lock"), "utf8")).rejects.toThrow();
   });
 });

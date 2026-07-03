@@ -151,6 +151,8 @@ ssealed init --scope fullstack --runner pnpm
 ssealed init --scope design --dry-run
 ```
 
+`--json` prints a public result shape with file paths, kinds, actions, reasons, conflicts, and written paths. It does not include generated file contents or existing file contents.
+
 ## Why `.agents/skills`
 
 Generated repositories use `.agents/skills/.../SKILL.md` because repo-scoped agent skills are expected to live under `.agents/skills`. Each generated skill includes `name` and `description` frontmatter.
