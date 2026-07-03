@@ -131,7 +131,7 @@ Every scope generates:
 
 If `.gitignore` does not exist, `ssealed` creates it with a managed block.
 
-If `.gitignore` exists and has no managed block, `ssealed` appends only missing default ignore patterns inside:
+If `.gitignore` exists and has no managed block, `ssealed` appends its full managed block. Existing user-authored ignore patterns are preserved outside the block, even when they duplicate managed defaults:
 
 ```text
 # >>> ssealed ignore patterns >>>

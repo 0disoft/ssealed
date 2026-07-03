@@ -22,7 +22,8 @@ export interface TemplateFile {
   readonly path: string;
   readonly kind: FileKind;
   readonly content: string;
-  readonly merge?: "gitignore" | "package-json";
+  readonly merge?: "gitignore" | "package-json" | "manifest";
+  readonly runner?: Runner;
 }
 
 export type PlannedAction = "create" | "unchanged" | "conflict" | "overwrite" | "merge";

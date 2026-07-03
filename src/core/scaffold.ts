@@ -35,6 +35,7 @@ export async function planScaffold(options: InitOptions): Promise<readonly Plann
       path: ".ssealed/manifest.json",
       kind: "manifest",
       content: manifestContent,
+      merge: "manifest",
     },
     previousChecksum: previousManifest.get(".ssealed/manifest.json"),
   });

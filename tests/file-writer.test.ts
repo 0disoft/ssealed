@@ -66,6 +66,24 @@ describe("file writer behavior", () => {
     expect(content).toContain("!.env.example");
   });
 
+  it("appends a complete .gitignore managed block even when default patterns already exist", async () => {
+    const dir = await tempDir();
+    await writeFile(path.join(dir, ".gitignore"), "node_modules/\n.env\n");
+    const result = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    expect(result.conflicts).toHaveLength(0);
+
+    const content = await readFile(path.join(dir, ".gitignore"), "utf8");
+    const managedBlock = content.slice(
+      content.indexOf("# >>> ssealed ignore patterns >>>"),
+      content.indexOf("# <<< ssealed ignore patterns <<<") + "# <<< ssealed ignore patterns <<<".length,
+    );
+    expect(managedBlock).toContain("node_modules/");
+    expect(managedBlock).toContain(".env");
+
+    const rerun = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: true, force: false });
+    expect(rerun.conflicts.map((file) => file.path)).not.toContain(".gitignore");
+  });
+
   it("conflicts when existing .gitignore managed block differs", async () => {
     const dir = await tempDir();
     await writeFile(
@@ -120,6 +138,14 @@ describe("file writer behavior", () => {
     expect(agents?.previouslyGenerated).toBe(true);
   });
 
+  it("does not conflict on the generated manifest only because generatedAt changes", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    const rerun = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: true, force: false });
+    expect(rerun.conflicts.map((file) => file.path)).not.toContain(".ssealed/manifest.json");
+    expect(rerun.files.find((file) => file.path === ".ssealed/manifest.json")?.action).toBe("merge");
+  });
+
   it("refuses to write through a symlinked generated directory when the platform permits the setup", async () => {
     const dir = await tempDir();
     const outside = await tempDir();
@@ -131,5 +157,20 @@ describe("file writer behavior", () => {
     await expect(executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false })).rejects.toThrow(
       /symlinked directory/u,
     );
+  });
+
+  it("preflights symlinked generated directories before writing earlier scaffold files", async () => {
+    const dir = await tempDir();
+    const outside = await tempDir();
+    try {
+      await symlink(outside, path.join(dir, "docs"), "dir");
+    } catch {
+      return;
+    }
+    await expect(executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false })).rejects.toThrow(
+      /symlinked directory/u,
+    );
+    await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).rejects.toThrow();
+    await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
   });
 });

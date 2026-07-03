@@ -107,4 +107,12 @@ describe("scope generation", () => {
     const skill = await readFile(path.join(dir, ".agents", "skills", "backend-api", "SKILL.md"), "utf8");
     expect(skill).toMatch(/^---\nname: backend-api\ndescription:/u);
   });
+
+  it("generates CODEOWNERS as an explicit commented placeholder", async () => {
+    const dir = await scaffold("design");
+    const codeowners = await readFile(path.join(dir, ".github", "CODEOWNERS"), "utf8");
+    expect(codeowners).toContain("Replace @REPLACE_WITH_OWNER");
+    expect(codeowners).toContain("# * @REPLACE_WITH_OWNER");
+    expect(codeowners).not.toContain("\n* @REPLACE_WITH_OWNER");
+  });
 });

@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
@@ -30,6 +30,10 @@ export async function planTemplateFile(params: {
     return planPackageJson(params.template, existingContent, params.force, previouslyGenerated);
   }
 
+  if (params.template.merge === "manifest") {
+    return planManifest(params.template, existingContent, generatedContent, params.force, previouslyGenerated);
+  }
+
   if (existingContent === undefined) {
     return { ...params.template, action: "create", content: generatedContent };
   }
@@ -55,16 +59,23 @@ export async function planTemplateFile(params: {
 export async function writePlannedFiles(targetRoot: string, files: readonly PlannedFile[]): Promise<readonly string[]> {
   const written: string[] = [];
   await ensureDirectoryInsideTarget(targetRoot, targetRoot);
+  const writableFiles = files.filter((file) => file.action !== "unchanged" && file.action !== "conflict");
 
-  for (const file of files) {
-    if (file.action === "unchanged" || file.action === "conflict") {
-      continue;
-    }
+  for (const file of writableFiles) {
     const targetPath = resolveInsideTarget(targetRoot, file.path);
     await assertNoSymlinkInPath(targetRoot, targetPath);
-    await mkdir(path.dirname(targetPath), { recursive: true });
-    await writeFile(targetPath, normalizeText(file.content), { encoding: "utf8", flag: "w" });
-    written.push(file.path);
+  }
+
+  try {
+    for (const file of writableFiles) {
+      const targetPath = resolveInsideTarget(targetRoot, file.path);
+      await mkdir(path.dirname(targetPath), { recursive: true });
+      await writeFile(targetPath, normalizeText(file.content), { encoding: "utf8", flag: "w" });
+      written.push(file.path);
+    }
+  } catch (error) {
+    await rollbackWrittenFiles(targetRoot, writableFiles, written);
+    throw error;
   }
 
   return written;
@@ -121,12 +132,11 @@ function planGitignore(
     return { ...template, action: "merge", content: normalizeText(next), existingContent, previouslyGenerated };
   }
 
-  const missingBlock = missingGitignoreBlock(existingContent, generatedBlock);
-  if (missingBlock.trim() === `${gitignoreStart}\n${gitignoreEnd}`) {
+  if (!hasMissingGitignorePattern(existingContent, generatedBlock)) {
     return { ...template, action: "unchanged", content: normalizeText(existingContent), existingContent, previouslyGenerated };
   }
   const separator = existingContent.endsWith("\n") ? "\n" : "\n\n";
-  return { ...template, action: "merge", content: normalizeText(`${existingContent}${separator}${missingBlock}`), existingContent, previouslyGenerated };
+  return { ...template, action: "merge", content: normalizeText(`${existingContent}${separator}${generatedBlock}`), existingContent, previouslyGenerated };
 }
 
 function planPackageJson(
@@ -135,7 +145,7 @@ function planPackageJson(
   force: boolean,
   previouslyGenerated: boolean | undefined,
 ): PlannedFile {
-  const runner = template.content.includes("pnpm run") ? "pnpm" : "npm";
+  const runner = template.runner === "pnpm" ? "pnpm" : "npm";
   const scripts = validationScripts(runner);
 
   if (existingContent === undefined) {
@@ -146,7 +156,7 @@ function planPackageJson(
     };
   }
 
-  const parsed = parsePackageJson(existingContent);
+  const parsed = parseJsonObject(existingContent);
   if (parsed === undefined) {
     return {
       ...template,
@@ -174,6 +184,39 @@ function planPackageJson(
   return { ...template, action: "merge", content: nextContent, existingContent, previouslyGenerated };
 }
 
+function planManifest(
+  template: TemplateFile,
+  existingContent: string | undefined,
+  generatedContent: string,
+  force: boolean,
+  previouslyGenerated: boolean | undefined,
+): PlannedFile {
+  if (existingContent === undefined) {
+    return { ...template, action: "create", content: generatedContent };
+  }
+
+  if (normalizeText(existingContent) === generatedContent) {
+    return { ...template, action: "unchanged", content: generatedContent, existingContent, previouslyGenerated };
+  }
+
+  if (sameManifestExceptGeneratedAt(existingContent, generatedContent)) {
+    return { ...template, action: "merge", content: generatedContent, existingContent, previouslyGenerated };
+  }
+
+  if (force) {
+    return { ...template, action: "overwrite", content: generatedContent, existingContent, previouslyGenerated };
+  }
+
+  return {
+    ...template,
+    action: "conflict",
+    content: generatedContent,
+    existingContent,
+    previouslyGenerated,
+    reason: "Existing manifest does not match the current scaffold plan.",
+  };
+}
+
 function checksumExisting(content: string): string {
   return sha256(content);
 }
@@ -190,7 +233,7 @@ function findManagedBlock(content: string): { readonly start: number; readonly e
   return { start, end: endMarker + gitignoreEnd.length };
 }
 
-function missingGitignoreBlock(existingContent: string, generatedBlock: string): string {
+function hasMissingGitignorePattern(existingContent: string, generatedBlock: string): boolean {
   const existingLines = new Set(
     existingContent
       .split(/\r?\n/u)
@@ -204,10 +247,10 @@ function missingGitignoreBlock(existingContent: string, generatedBlock: string):
       return trimmed === gitignoreStart || trimmed === gitignoreEnd || trimmed.length === 0 || !existingLines.has(trimmed);
     })
     .join("\n");
-  return normalizeText(missing);
+  return normalizeText(missing).trim() !== `${gitignoreStart}\n${gitignoreEnd}`;
 }
 
-function parsePackageJson(content: string): Record<string, unknown> | undefined {
+function parseJsonObject(content: string): Record<string, unknown> | undefined {
   try {
     const parsed: unknown = JSON.parse(content);
     return isRecord(parsed) ? parsed : undefined;
@@ -227,4 +270,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
+}
+
+function sameManifestExceptGeneratedAt(existingContent: string, generatedContent: string): boolean {
+  const existing = parseJsonObject(existingContent);
+  const generated = parseJsonObject(generatedContent);
+  if (existing === undefined || generated === undefined) {
+    return false;
+  }
+
+  const existingComparable = { ...existing, generatedAt: generated.generatedAt };
+  return JSON.stringify(existingComparable) === JSON.stringify(generated);
+}
+
+async function rollbackWrittenFiles(
+  targetRoot: string,
+  files: readonly PlannedFile[],
+  writtenPaths: readonly string[],
+): Promise<void> {
+  for (const relativePath of [...writtenPaths].reverse()) {
+    const file = files.find((candidate) => candidate.path === relativePath);
+    if (file === undefined) {
+      continue;
+    }
+    const targetPath = resolveInsideTarget(targetRoot, relativePath);
+    if (file.existingContent === undefined) {
+      await rm(targetPath, { force: true }).catch(() => undefined);
+    } else {
+      await writeFile(targetPath, file.existingContent, { encoding: "utf8", flag: "w" }).catch(() => undefined);
+    }
+  }
 }

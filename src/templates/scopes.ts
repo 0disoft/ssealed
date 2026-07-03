@@ -246,7 +246,7 @@ function renderFile(file: FileSpec, scope: Scope): TemplateFile {
     return { ...file, content: pullRequestTemplate() };
   }
   if (file.path === ".github/CODEOWNERS") {
-    return { ...file, content: "* @REPLACE_WITH_OWNER\n" };
+    return { ...file, content: "# Replace @REPLACE_WITH_OWNER with your GitHub user or team before enabling CODEOWNERS.\n# * @REPLACE_WITH_OWNER\n" };
   }
   if (file.path.startsWith(".github/ISSUE_TEMPLATE/")) {
     return { ...file, content: githubIssueTemplate(file.title ?? "Issue") };

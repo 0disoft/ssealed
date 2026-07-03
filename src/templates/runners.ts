@@ -15,7 +15,7 @@ export function runnerFiles(runner: Runner): readonly TemplateFile[] {
   if (runner === "task") {
     return [{ path: "Taskfile.yml", kind: "runner", content: taskfile() }];
   }
-  return [{ path: "package.json", kind: "runner", content: packageJson(runner), merge: "package-json" }];
+  return [{ path: "package.json", kind: "runner", content: packageJson(runner), merge: "package-json", runner }];
 }
 
 export function validationScripts(runner: "npm" | "pnpm"): Record<string, string> {
