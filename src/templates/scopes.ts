@@ -151,17 +151,33 @@ export function templateFilesFor(scope: Scope, runner: Runner): readonly Templat
     ...(scope === "frontend" || scope === "fullstack" ? frontendFilesFor(scope) : []),
   ];
 
-  return [
+  const files = [
     ...scopedFiles.map((file) => renderFile(file, scope)),
     ...runnerFiles(runner),
   ];
+  assertUniqueTemplatePaths(files);
+  return files;
 }
 
 function frontendFilesFor(scope: Scope): readonly FileSpec[] {
   if (scope !== "fullstack") {
     return frontendFiles;
   }
-  return frontendFiles.filter((file) => !file.path.startsWith("contracts/backend-api/"));
+  return frontendFiles.filter((file) => !file.path.startsWith("contracts/backend-api/") && file.path !== "diagrams/request-lifecycle.mmd");
+}
+
+function assertUniqueTemplatePaths(files: readonly TemplateFile[]): void {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const file of files) {
+    if (seen.has(file.path)) {
+      duplicates.add(file.path);
+    }
+    seen.add(file.path);
+  }
+  if (duplicates.size > 0) {
+    throw new Error(`Duplicate template paths: ${[...duplicates].sort().join(", ")}`);
+  }
 }
 
 function renderFile(file: FileSpec, scope: Scope): TemplateFile {

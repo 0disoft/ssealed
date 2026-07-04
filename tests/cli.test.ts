@@ -80,16 +80,37 @@ describe("CLI argument parsing", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await expect(main(["init", dir, "--scope", "design", "--dry-run", "--json"])).resolves.toBe(1);
+      await expect(main(["init", dir, "--scope", "design", "--dry-run", "--json"])).resolves.toBe(0);
       expect(stderr).not.toHaveBeenCalled();
       const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
-      expect(payload.ok).toBe(false);
+      expect(payload.ok).toBe(true);
       expect(payload.warnings).toEqual([
         expect.objectContaining({
           code: "INVALID_MANIFEST",
           path: ".ssealed/manifest.json",
         }),
       ]);
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("returns JSON errors for runtime failures in JSON mode", async () => {
+    const dir = await tempDir();
+    await writeFile(path.join(dir, ".ssealed-init.lock"), "existing lock\n");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["init", dir, "--scope", "design", "--json"])).resolves.toBe(1);
+      expect(stderr).not.toHaveBeenCalled();
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload).toEqual({
+        ok: false,
+        error: expect.objectContaining({
+          code: "LOCK_EXISTS",
+        }),
+      });
     } finally {
       stderr.mockRestore();
       stdout.mockRestore();

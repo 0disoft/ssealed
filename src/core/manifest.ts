@@ -1,7 +1,7 @@
 import { sha256 } from "./checksum.js";
 import type { Manifest, ManifestFile, PlannedFile, Runner, Scope } from "./types.js";
 
-export const toolVersion = "0.2.2";
+export const toolVersion = "0.2.3";
 
 export function createManifest(params: {
   readonly scope: Scope;

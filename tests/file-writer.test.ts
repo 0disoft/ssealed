@@ -47,13 +47,21 @@ describe("file writer behavior", () => {
     await expect(lstat(path.join(dir, ".ssealed"))).rejects.toThrow();
   });
 
-  it("force overwrites conflicts", async () => {
+  it("force does not overwrite files that are not verified as scaffold-managed", async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, "README.md"), "user readme\n");
     const result = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: true });
-    expect(result.conflicts).toHaveLength(0);
+    expect(result.conflicts.map((file) => file.path)).toContain("README.md");
     const readme = await readFile(path.join(dir, "README.md"), "utf8");
-    expect(readme).toContain("Repository Design Scaffold");
+    expect(readme).toBe("user readme\n");
+    await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
+  });
+
+  it("force permits reruns when existing scaffold-managed files are unchanged", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    const result = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: true });
+    expect(result.conflicts).toHaveLength(0);
   });
 
   it("preserves existing .gitignore and appends managed block", async () => {
@@ -158,6 +166,24 @@ describe("file writer behavior", () => {
     expect(after).toBe(before);
   });
 
+  it("updates the manifest instead of conflicting after user edits outside a managed .gitignore block", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    await writeFile(path.join(dir, ".gitignore"), `custom.local\n${await readFile(path.join(dir, ".gitignore"), "utf8")}`);
+    const result = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    expect(result.conflicts.map((file) => file.path)).not.toContain(".ssealed/manifest.json");
+    expect(result.written).toContain(".ssealed/manifest.json");
+  });
+
+  it("conflicts clearly when an existing path is not a regular file even with force", async () => {
+    const dir = await tempDir();
+    await mkdir(path.join(dir, "README.md"));
+    const result = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: true });
+    const conflict = result.conflicts.find((file) => file.path === "README.md");
+    expect(conflict?.reason).toBe("Existing path is a directory, not a regular file.");
+    await expect(lstat(path.join(dir, "AGENTS.md"))).rejects.toThrow();
+  });
+
   it("warns when an existing manifest is invalid and ignored", async () => {
     const dir = await tempDir();
     await mkdir(path.join(dir, ".ssealed"), { recursive: true });
@@ -198,6 +224,21 @@ describe("file writer behavior", () => {
     );
     await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).rejects.toThrow();
     await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
+  });
+
+  it("refuses to create a missing target under a symlinked parent without creating the real directory", async () => {
+    const parent = await tempDir();
+    const real = await tempDir();
+    const link = path.join(parent, "link");
+    try {
+      await symlink(real, link, "dir");
+    } catch {
+      return;
+    }
+    await expect(executeScaffold({ target: path.join(link, "new-target"), scope: "design", runner: "none", dryRun: false, force: false })).rejects.toThrow(
+      /symlinked path/u,
+    );
+    await expect(lstat(path.join(real, "new-target"))).rejects.toThrow();
   });
 
   it("refuses to run when another scaffold lock exists and preserves that lock", async () => {

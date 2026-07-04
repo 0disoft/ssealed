@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
@@ -16,8 +16,18 @@ export async function planTemplateFile(params: {
   readonly previousChecksum: string | undefined;
 }): Promise<PlannedFile> {
   const targetPath = resolveInsideTarget(params.targetRoot, params.template.path);
-  const existingContent = await readExistingText(targetPath);
+  const existing = await readExistingPath(targetPath);
   const generatedContent = normalizeText(params.template.content);
+  if (existing.kind !== "missing" && existing.kind !== "file") {
+    return {
+      ...params.template,
+      action: "conflict",
+      content: generatedContent,
+      reason: existingPathConflictReason(existing.kind),
+    };
+  }
+
+  const existingContent = existing.kind === "file" ? existing.content : undefined;
   const previouslyGenerated =
     existingContent !== undefined && params.previousChecksum !== undefined
       ? params.previousChecksum === checksumExisting(existingContent)
@@ -43,7 +53,7 @@ export async function planTemplateFile(params: {
     return { ...params.template, action: "unchanged", content: generatedContent, existingContent, previouslyGenerated };
   }
 
-  if (params.force) {
+  if (params.force && previouslyGenerated === true) {
     return { ...params.template, action: "overwrite", content: generatedContent, existingContent, previouslyGenerated };
   }
 
@@ -53,12 +63,16 @@ export async function planTemplateFile(params: {
     content: generatedContent,
     existingContent,
     previouslyGenerated,
-    reason: "Existing file differs from generated scaffold content.",
+    reason:
+      params.force && previouslyGenerated !== true
+        ? "Existing file differs and was not verified as scaffold-managed by .ssealed/manifest.json."
+        : "Existing file differs from generated scaffold content.",
   };
 }
 
 export async function writePlannedFiles(targetRoot: string, files: readonly PlannedFile[]): Promise<readonly string[]> {
   const written: string[] = [];
+  const createdDirectories: string[] = [];
   await ensureDirectoryInsideTarget(targetRoot, targetRoot);
   const writableFiles = files.filter((file) => file.action !== "unchanged" && file.action !== "conflict");
 
@@ -70,19 +84,28 @@ export async function writePlannedFiles(targetRoot: string, files: readonly Plan
   try {
     for (const file of writableFiles) {
       const targetPath = resolveInsideTarget(targetRoot, file.path);
-      await mkdir(path.dirname(targetPath), { recursive: true });
+      const targetDir = path.dirname(targetPath);
+      createdDirectories.push(...(await missingDirectoryChain(targetRoot, targetDir)));
+      await mkdir(targetDir, { recursive: true });
+      await assertNoSymlinkInPath(targetRoot, targetPath);
       await writeTextFileAtomically(targetPath, normalizeText(file.content));
       written.push(file.path);
     }
   } catch (error) {
     await rollbackWrittenFiles(targetRoot, writableFiles, written);
+    await cleanupCreatedDirectories(createdDirectories);
     throw error;
   }
 
   return written;
 }
 
-async function readExistingText(filePath: string): Promise<string | undefined> {
+type ExistingPath =
+  | { readonly kind: "missing" }
+  | { readonly kind: "file"; readonly content: string }
+  | { readonly kind: "symlink" | "directory" | "other" };
+
+async function readExistingPath(filePath: string): Promise<ExistingPath> {
   const stat = await lstat(filePath).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
       return undefined;
@@ -91,15 +114,28 @@ async function readExistingText(filePath: string): Promise<string | undefined> {
   });
 
   if (stat === undefined) {
-    return undefined;
+    return { kind: "missing" };
   }
   if (stat.isSymbolicLink()) {
-    return "";
+    return { kind: "symlink" };
+  }
+  if (stat.isDirectory()) {
+    return { kind: "directory" };
   }
   if (!stat.isFile()) {
-    return "";
+    return { kind: "other" };
   }
-  return readFile(filePath, "utf8");
+  return { kind: "file", content: await readFile(filePath, "utf8") };
+}
+
+function existingPathConflictReason(kind: Exclude<ExistingPath["kind"], "missing" | "file">): string {
+  if (kind === "symlink") {
+    return "Existing path is a symlink and will not be followed or overwritten.";
+  }
+  if (kind === "directory") {
+    return "Existing path is a directory, not a regular file.";
+  }
+  return "Existing path is not a regular file.";
 }
 
 function planGitignore(
@@ -219,18 +255,7 @@ function planManifest(
     return { ...template, action: "unchanged", content: normalizeText(existingContent), existingContent, previouslyGenerated };
   }
 
-  if (force) {
-    return { ...template, action: "overwrite", content: generatedContent, existingContent, previouslyGenerated };
-  }
-
-  return {
-    ...template,
-    action: "conflict",
-    content: generatedContent,
-    existingContent,
-    previouslyGenerated,
-    reason: "Existing manifest does not match the current scaffold plan.",
-  };
+  return { ...template, action: force ? "overwrite" : "merge", content: generatedContent, existingContent, previouslyGenerated };
 }
 
 function checksumExisting(content: string): string {
@@ -315,6 +340,37 @@ async function rollbackWrittenFiles(
     } else {
       await writeTextFileAtomically(targetPath, file.existingContent).catch(() => undefined);
     }
+  }
+}
+
+async function missingDirectoryChain(targetRoot: string, targetDir: string): Promise<string[]> {
+  const root = path.resolve(targetRoot);
+  const resolvedDir = path.resolve(targetDir);
+  const relative = path.relative(root, resolvedDir);
+  const parts = relative === "" ? [] : relative.split(path.sep).filter(Boolean);
+  const missing: string[] = [];
+  let current = root;
+
+  for (const part of parts) {
+    current = path.join(current, part);
+    const stat = await lstat(current).catch((error: unknown) => {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    });
+    if (stat === undefined) {
+      missing.push(current);
+    }
+  }
+
+  return missing;
+}
+
+async function cleanupCreatedDirectories(directories: readonly string[]): Promise<void> {
+  const unique = [...new Set(directories)];
+  for (const directory of unique.reverse()) {
+    await rmdir(directory).catch(() => undefined);
   }
 }
 

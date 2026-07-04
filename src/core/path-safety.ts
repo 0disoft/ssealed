@@ -44,6 +44,7 @@ export function resolveInsideTarget(targetRoot: string, templatePath: string): s
 }
 
 export async function ensureDirectoryInsideTarget(targetRoot: string, directoryPath: string): Promise<void> {
+  await assertNoSymlinkInExistingPath(targetRoot);
   const rootReal = await realpath(targetRoot).catch(async () => {
     await mkdir(targetRoot, { recursive: true });
     return realpath(targetRoot);
@@ -56,6 +57,30 @@ export async function ensureDirectoryInsideTarget(targetRoot: string, directoryP
   }
 
   await mkdir(resolvedDirectory, { recursive: true });
+}
+
+async function assertNoSymlinkInExistingPath(directoryPath: string): Promise<void> {
+  const resolved = path.resolve(directoryPath);
+  const parsed = path.parse(resolved);
+  const relative = path.relative(parsed.root, resolved);
+  const parts = relative === "" ? [] : relative.split(path.sep).filter(Boolean);
+  let current = parsed.root;
+
+  for (const part of parts) {
+    current = path.join(current, part);
+    const stat = await lstat(current).catch((error: unknown) => {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    });
+    if (stat === undefined) {
+      return;
+    }
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Refusing to create target under symlinked path: ${toDisplayPath(current)}`);
+    }
+  }
 }
 
 export async function assertNoSymlinkInPath(targetRoot: string, filePath: string): Promise<void> {

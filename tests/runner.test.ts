@@ -112,6 +112,18 @@ describe("runner generation", () => {
     expect(pkg.scripts.test).toBe(validationScripts("pnpm").test);
   });
 
+  it("updates the manifest instead of conflicting after user adds package metadata", async () => {
+    const dir = await scaffold("npm");
+    const packagePath = path.join(dir, "package.json");
+    const pkg = JSON.parse(await readFile(packagePath, "utf8")) as PackageJsonForTest;
+    await writeFile(packagePath, JSON.stringify({ ...pkg, name: "example" }, null, 2));
+    const result = await executeScaffold({ target: dir, scope: "design", runner: "npm", dryRun: false, force: false });
+    expect(result.conflicts.map((file) => file.path)).not.toContain(".ssealed/manifest.json");
+    expect(result.written).toContain(".ssealed/manifest.json");
+    const updated = JSON.parse(await readFile(packagePath, "utf8")) as PackageJsonForTest;
+    expect(updated.name).toBe("example");
+  });
+
   it("invalid package.json conflicts for npm runner", async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, "package.json"), "{nope");

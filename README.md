@@ -35,7 +35,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.2.1`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.2.3`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -103,11 +103,11 @@ Runner files are optional because many repositories already have their own task 
 
 Existing files are not overwritten by default. Identical files are marked `unchanged`. Different files are marked `conflict`. If any conflict exists and `--force` is not provided, no files are written.
 
-`--force` overwrites conflicting scaffold-managed files. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced.
+`--force` overwrites conflicting files only when the current `.ssealed/manifest.json` verifies that the existing content is scaffold-managed. It does not overwrite unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced.
 
 ## Manifest Behavior
 
-Every run writes `.ssealed/manifest.json` with tool version, generation timestamp, scope, runner, generated file paths, kinds, and SHA-256 checksums of normalized LF content.
+Every write run refreshes `.ssealed/manifest.json` with tool version, generation timestamp, scope, runner, generated file paths, kinds, and SHA-256 checksums of normalized LF content.
 
 The manifest helps identify previously generated files, but it never authorizes silent overwrite of user-modified files.
 
@@ -151,7 +151,7 @@ ssealed init --scope fullstack --runner pnpm
 ssealed init --scope design --dry-run
 ```
 
-`--json` prints a public result shape with file paths, kinds, actions, reasons, conflicts, and written paths. It does not include generated file contents or existing file contents.
+`--json` prints a public result shape with file paths, kinds, actions, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.
 
 ## Why `.agents/skills`
 

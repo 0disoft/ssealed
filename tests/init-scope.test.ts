@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { executeScaffold } from "../src/core/scaffold.js";
-import type { Runner, Scope } from "../src/core/types.js";
+import { runners, scopes, type Runner, type Scope } from "../src/core/types.js";
+import { templateFilesFor } from "../src/templates/index.js";
 
 interface ManifestForTest {
   files: Array<{
@@ -126,5 +127,15 @@ describe("scope generation", () => {
     expect(openapi).toContain("CreateResourceRequest:");
     expect(openapi).toMatch(/Idempotency-Key[\s\S]*required: true/u);
     expect(openapi).toMatch(/post:[\s\S]*requestBody:[\s\S]*CreateResourceRequest/u);
+  });
+
+  it("does not generate duplicate template paths for any scope and runner", () => {
+    for (const scope of scopes) {
+      for (const runner of runners) {
+        const files = templateFilesFor(scope, runner);
+        const paths = files.map((file) => file.path);
+        expect(new Set(paths).size, `${scope}/${runner}`).toBe(paths.length);
+      }
+    }
   });
 });
