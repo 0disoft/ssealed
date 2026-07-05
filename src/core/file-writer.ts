@@ -65,7 +65,7 @@ export async function planTemplateFile(params: {
     previouslyGenerated,
     reason:
       params.force && previouslyGenerated !== true
-        ? "Existing file differs and was not verified as scaffold-managed by .ssealed/manifest.json."
+        ? "Existing file differs from the checksum recorded for this path in .ssealed/manifest.json."
         : "Existing file differs from generated scaffold content.",
   };
 }
@@ -169,9 +169,6 @@ function planGitignore(
     return { ...template, action: "merge", content: normalizeText(next), existingContent, previouslyGenerated };
   }
 
-  if (!hasMissingGitignorePattern(existingContent, generatedBlock)) {
-    return { ...template, action: "unchanged", content: normalizeText(existingContent), existingContent, previouslyGenerated };
-  }
   const separator = existingContent.endsWith("\n") ? "\n" : "\n\n";
   return { ...template, action: "merge", content: normalizeText(`${existingContent}${separator}${generatedBlock}`), existingContent, previouslyGenerated };
 }
@@ -207,23 +204,23 @@ function planPackageJson(
 
   const currentScripts = isRecord(parsed.scripts) ? parsed.scripts : {};
   const nextScripts = { ...currentScripts };
-  const userOwnedScripts = force
-    ? Object.entries(scripts)
-        .filter(([name]) => name in nextScripts && !isGeneratedValidationScript(nextScripts[name]))
-        .map(([name]) => name)
-    : [];
+  const userOwnedScripts = Object.entries(scripts)
+    .filter(([name]) => name in nextScripts && !isGeneratedValidationScript(nextScripts[name]))
+    .map(([name]) => name);
   if (userOwnedScripts.length > 0) {
-    return {
-      ...template,
-      action: "conflict",
-      content: template.content,
-      existingContent,
-      previouslyGenerated,
-      reason: `Existing package.json has user-owned validation scripts: ${userOwnedScripts.join(", ")}.`,
-    };
+    if (force) {
+      return {
+        ...template,
+        action: "conflict",
+        content: template.content,
+        existingContent,
+        previouslyGenerated,
+        reason: `Existing package.json has user-owned validation scripts: ${userOwnedScripts.join(", ")}.`,
+      };
+    }
   }
   for (const [name, value] of Object.entries(scripts)) {
-    if (force || !(name in nextScripts)) {
+    if (force || !(name in nextScripts) || isGeneratedValidationScript(nextScripts[name])) {
       nextScripts[name] = value;
     }
   }
@@ -272,23 +269,6 @@ function findManagedBlock(content: string): { readonly start: number; readonly e
     return undefined;
   }
   return { start, end: endMarker + gitignoreEnd.length };
-}
-
-function hasMissingGitignorePattern(existingContent: string, generatedBlock: string): boolean {
-  const existingLines = new Set(
-    existingContent
-      .split(/\r?\n/u)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0),
-  );
-  const missing = generatedBlock
-    .split("\n")
-    .filter((line) => {
-      const trimmed = line.trim();
-      return trimmed === gitignoreStart || trimmed === gitignoreEnd || trimmed.length === 0 || !existingLines.has(trimmed);
-    })
-    .join("\n");
-  return normalizeText(missing).trim() !== `${gitignoreStart}\n${gitignoreEnd}`;
 }
 
 function parseJsonObject(content: string): Record<string, unknown> | undefined {

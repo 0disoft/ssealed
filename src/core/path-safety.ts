@@ -16,7 +16,11 @@ export function assertSafeTemplatePath(templatePath: string): void {
     throw new Error(`Template path must be relative: ${templatePath}`);
   }
 
-  const parts = templatePath.replace(/\\/g, "/").split("/");
+  if (templatePath.includes("\\")) {
+    throw new Error(`Template path must use forward slashes: ${templatePath}`);
+  }
+
+  const parts = templatePath.split("/");
   if (parts.some((part) => part === "" || part === "." || part === "..")) {
     throw new Error(`Template path contains an unsafe segment: ${templatePath}`);
   }

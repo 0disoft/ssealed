@@ -1,30 +1,55 @@
 import { parseArgs } from "node:util";
-import { runInit } from "./commands/init.js";
+import { runScaffoldCommand, type CliCommand } from "./commands/init.js";
 import { toolVersion } from "./core/manifest.js";
+
+const commandNames = ["init", "update", "upgrade", "doctor"] as const satisfies readonly CliCommand[];
 
 const helpText = `ssealed
 
 Usage:
-  ssealed init [target] [--scope backend|frontend|fullstack|design] [--runner none|make|just|task|npm|pnpm]
+  ssealed init [target] --scope backend|frontend|fullstack|design [--profile generic|cli-tool|api-service|desktop-app|library] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
+  ssealed update [target]
+  ssealed upgrade [target] [--scope backend|frontend|fullstack|design] [--profile generic|cli-tool|api-service|desktop-app|library] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
+  ssealed doctor [target]
   ssealed --help
   ssealed --version
 
 Options:
   --scope    Scaffold ownership scope.
-  --runner   Optional validation runner entrypoint. Defaults to none.
+  --profile  Repository shape profile. Defaults to generic for init.
+  --density  Scaffold density. Defaults to standard for init.
+  --runner   Optional validation runner entrypoint. Defaults to none for init.
   --yes      Never prompt.
   --dry-run  Print planned operations without writing files.
-  --force    Overwrite conflicting files verified by the manifest as scaffold-managed.
+  --force    Overwrite conflicts only when current content matches previous manifest checksums.
   --json     Print machine-readable JSON.
 `;
 
-const initHelpText = `ssealed init [target]
+const commandHelpText = `ssealed init|update|upgrade|doctor [target]
+
+Commands:
+  init     Create a new scaffold. Refuses targets with an existing valid manifest.
+  update   Reapply the existing manifest settings without changing scope, profile, density, or runner.
+  upgrade  Explicitly change scaffold settings and replan generated files.
+  doctor   Check manifest-tracked files for missing or modified content.
 
 Scopes:
   backend
   frontend
   fullstack
   design
+
+Profiles:
+  generic
+  cli-tool
+  api-service
+  desktop-app
+  library
+
+Densities:
+  minimal
+  standard
+  strict
 
 Runners:
   none
@@ -36,15 +61,17 @@ Runners:
 
 Examples:
   ssealed init --scope backend --runner none
-  ssealed init --scope frontend --runner just
-  ssealed init ./my-service --scope backend --runner make --yes
-  ssealed init --scope fullstack --runner pnpm
-  ssealed init --scope design --dry-run
+  ssealed init --scope frontend --profile generic --density minimal --runner just
+  ssealed update ./my-service --yes
+  ssealed upgrade ./my-service --profile api-service --density strict --runner make --yes --force
+  ssealed doctor ./my-service --json
 `;
 
-interface ParsedInitArgs {
+interface ParsedScaffoldArgs {
   readonly values: {
     readonly scope?: string;
+    readonly profile?: string;
+    readonly density?: string;
     readonly runner?: string;
     readonly yes?: boolean;
     readonly "dry-run"?: boolean;
@@ -65,7 +92,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     process.stdout.write(`${toolVersion}\n`);
     return 0;
   }
-  if (command !== "init") {
+  if (!isCliCommand(command)) {
     if (wantsJson(argv)) {
       process.stdout.write(
         `${JSON.stringify({ ok: false, error: { code: "UNKNOWN_COMMAND", message: `Unknown command: ${command}` } }, null, 2)}\n`,
@@ -77,7 +104,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     return 1;
   }
 
-  const parsed = parseInitArgs(argv.slice(1));
+  const parsed = parseScaffoldArgs(argv.slice(1));
   if (parsed instanceof Error) {
     if (wantsJson(argv)) {
       process.stdout.write(
@@ -89,7 +116,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 
   if (parsed.values.help) {
-    process.stdout.write(initHelpText);
+    process.stdout.write(commandHelpText);
     return 0;
   }
 
@@ -97,19 +124,20 @@ export async function main(argv: readonly string[]): Promise<number> {
     if (parsed.values.json) {
       process.stdout.write(
         `${JSON.stringify(
-          { ok: false, error: { code: "TOO_MANY_TARGETS", message: `init accepts at most one target, got ${parsed.positionals.length}` } },
+          { ok: false, error: { code: "TOO_MANY_TARGETS", message: `${command} accepts at most one target, got ${parsed.positionals.length}` } },
           null,
           2,
         )}\n`,
       );
       return 1;
     }
-    process.stderr.write(`ssealed: init accepts at most one target, got ${parsed.positionals.length}\n`);
+    process.stderr.write(`ssealed: ${command} accepts at most one target, got ${parsed.positionals.length}\n`);
     return 1;
   }
 
   try {
-    return await runInit({
+    return await runScaffoldCommand({
+      command,
       target: parsed.positionals[0],
       scope: parsed.values.scope,
       runner: parsed.values.runner,
@@ -117,6 +145,8 @@ export async function main(argv: readonly string[]): Promise<number> {
       dryRun: parsed.values["dry-run"] ?? false,
       force: parsed.values.force ?? false,
       json: parsed.values.json ?? false,
+      ...(parsed.values.profile === undefined ? {} : { profile: parsed.values.profile }),
+      ...(parsed.values.density === undefined ? {} : { density: parsed.values.density }),
     });
   } catch (error: unknown) {
     if (parsed.values.json) {
@@ -127,13 +157,15 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 }
 
-function parseInitArgs(args: readonly string[]): ParsedInitArgs | Error {
+function parseScaffoldArgs(args: readonly string[]): ParsedScaffoldArgs | Error {
   try {
     return parseArgs({
       args,
       allowPositionals: true,
       options: {
         scope: { type: "string" },
+        profile: { type: "string" },
+        density: { type: "string" },
         runner: { type: "string" },
         yes: { type: "boolean", default: false },
         "dry-run": { type: "boolean", default: false },
@@ -141,10 +173,14 @@ function parseInitArgs(args: readonly string[]): ParsedInitArgs | Error {
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },
-    }) as ParsedInitArgs;
+    }) as ParsedScaffoldArgs;
   } catch (error: unknown) {
     return error instanceof Error ? error : new Error(String(error));
   }
+}
+
+function isCliCommand(value: string): value is CliCommand {
+  return commandNames.includes(value as CliCommand);
 }
 
 function wantsJson(argv: readonly string[]): boolean {

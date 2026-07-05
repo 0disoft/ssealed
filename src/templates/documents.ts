@@ -1,4 +1,4 @@
-import type { Scope } from "../core/types.js";
+import type { Profile, Scope } from "../core/types.js";
 
 export function markdownDoc(title: string): string {
   return `# ${title}
@@ -207,7 +207,7 @@ function opsBody(lowerTitle: string): string {
   return "Define severity, roles, first 10 minutes, communication, timeline, postmortem, follow-up policy, and evidence preservation.";
 }
 
-export function rootAgents(scope: Scope): string {
+export function rootAgents(scope: Scope, profile: Profile): string {
   const scopeText = {
     backend: `Scope: backend
 
@@ -250,6 +250,10 @@ It does not own implementation source code.`,
 
 ${scopeText[scope]}
 
+${profile === "generic" ? "" : `## Repository Profile
+
+${profileContract(profile)}
+`}
 ## Source of Truth
 
 - Product scope: docs/product/02-spec.md
@@ -293,11 +297,11 @@ ${scopeText[scope]}
 `;
 }
 
-export function rootReadme(scope: Scope): string {
+export function rootReadme(scope: Scope, profile: Profile): string {
   return `# Repository Design Scaffold
 
 Status: Draft
-Scope: ${scope}
+Scope: ${scope}${profile === "generic" ? "" : `\nProfile: ${profile}`}
 
 This repository contains an LLM-friendly design scaffold. It is not application source code.
 
@@ -309,6 +313,10 @@ This repository contains an LLM-friendly design scaffold. It is not application 
 - .agents/context-map.md: agent route map
 - docs/: design, operations, architecture, and engineering standards
 
+${profile === "generic" ? "" : `## Profile Notes
+
+${profileContract(profile)}
+`}
 ## Repository Hygiene
 
 .editorconfig, .gitattributes, and .gitignore are generated to keep line endings,
@@ -320,7 +328,7 @@ Project-specific implementation choices remain UNDECIDED until the repository ow
 `;
 }
 
-export function docsReadme(scope: Scope): string {
+export function docsReadme(scope: Scope, profile: Profile): string {
   const sourceLines = [
     "- Product scope source: docs/product/02-spec.md",
     ...(scope === "backend" || scope === "fullstack" ? ["- API source for backend/fullstack: api/openapi.yaml"] : []),
@@ -334,6 +342,7 @@ export function docsReadme(scope: Scope): string {
     "- Validation source: VALIDATION.md",
     "- Agent routing source: .agents/context-map.md",
     "- Repository hygiene source: .editorconfig, .gitattributes, .gitignore",
+    ...profileSourceLines(profile, scope),
   ];
 
   return `# Documentation
@@ -346,7 +355,7 @@ ${sourceLines.join("\n")}
 `;
 }
 
-export function contextMap(scope: Scope): string {
+export function contextMap(scope: Scope, profile: Profile): string {
   const routes = [
     ...(scope === "backend" || scope === "fullstack"
       ? ["- Backend API route: .agents/skills/backend-api/SKILL.md", "- DB migration route: .agents/skills/db-migration/SKILL.md"]
@@ -361,6 +370,7 @@ export function contextMap(scope: Scope): string {
           "- Documentation update route: docs/README.md",
         ]
       : []),
+    ...profileRoutes(profile),
     "- Ops route: .agents/skills/ops-change/SKILL.md",
     "- Dependency route: .agents/skills/dependency-upgrade/SKILL.md",
     "- Bugfix route: .agents/skills/bugfix/SKILL.md",
@@ -371,7 +381,7 @@ export function contextMap(scope: Scope): string {
   return `# Agent Context Map
 
 Status: Draft
-Scope: ${scope}
+Scope: ${scope}${profile === "generic" ? "" : `\nProfile: ${profile}`}
 
 ## Routes
 
@@ -379,7 +389,7 @@ ${routes.join("\n")}
 `;
 }
 
-export function validationDoc(title: string, scope: Scope): string {
+export function validationDoc(title: string, scope: Scope, profile: Profile): string {
   return `# ${title}
 
 Status: Draft
@@ -418,7 +428,190 @@ tracked secret files, ignored build/cache artifacts, and generated-output drift.
 ## Scope
 
 ${scope} validation routes must stay stack-neutral unless a runner file explicitly defines a command.
+${profile === "generic" ? "" : `
+## Profile
+
+${profile} profile validation must stay repository-shape focused and must not imply generated application source code.
+`}
 `;
+}
+
+export function profileDoc(title: string, profile: Profile): string {
+  return `# ${title}
+
+Status: Draft
+Profile: ${profile}
+
+## Profile Contract
+
+${profileContract(profile)}
+
+## Source of Truth
+
+- Product decision: UNDECIDED
+- Technical owner: UNASSIGNED
+- Related ADR: UNDECIDED
+
+## Required Decisions
+
+${profileRequiredDecisions(profile).map((decision) => `- ${decision}`).join("\n")}
+
+## Review Blockers
+
+${profileReviewBlockers(profile).map((blocker) => `- ${blocker}`).join("\n")}
+`;
+}
+
+function profileContract(profile: Profile): string {
+  if (profile === "cli-tool") {
+    return [
+      "This repository profile owns command behavior, arguments, flags, config loading,",
+      "exit codes, terminal output, JSON output, runtime compatibility, and shell integration contracts.",
+    ].join(" ");
+  }
+  if (profile === "api-service") {
+    return [
+      "This repository profile owns service API lifecycle, request and response contracts,",
+      "idempotency, rate limits, service SLOs, operational readiness, and client-facing error behavior.",
+    ].join(" ");
+  }
+  if (profile === "desktop-app") {
+    return [
+      "This repository profile owns installed app behavior, OS support, local data, installer,",
+      "auto-update, crash reporting, permissions, and desktop-specific security contracts.",
+    ].join(" ");
+  }
+  if (profile === "library") {
+    return [
+      "This repository profile owns public API surface, package compatibility, semantic versioning,",
+      "migration guidance, distribution artifacts, and consumer-facing deprecation policy.",
+    ].join(" ");
+  }
+  return "The generic profile adds no repository-shape-specific documents beyond the selected scope.";
+}
+
+function profileSourceLines(profile: Profile, scope: Scope): readonly string[] {
+  if (profile === "cli-tool") {
+    return [
+      "- CLI command contract source: docs/cli/command-contract.md",
+      "- CLI output and exit-code source: docs/cli/output-and-exit-codes.md",
+      "- CLI config source: docs/cli/configuration.md",
+    ];
+  }
+  if (profile === "api-service") {
+    return [
+      ...(scope === "backend" || scope === "fullstack" ? [] : ["- API source for api-service profile: api/openapi.yaml"]),
+      "- API lifecycle source: docs/api-service/api-lifecycle.md",
+      "- API idempotency source: docs/api-service/idempotency.md",
+      "- API rate-limit source: docs/api-service/rate-limits.md",
+      "- API service SLO source: docs/api-service/slo.md",
+    ];
+  }
+  if (profile === "desktop-app") {
+    return [
+      "- Desktop installer source: docs/desktop/installers.md",
+      "- Desktop auto-update source: docs/desktop/auto-update.md",
+      "- Desktop local data source: docs/desktop/local-data.md",
+      "- Desktop OS support source: docs/desktop/os-support.md",
+    ];
+  }
+  if (profile === "library") {
+    return [
+      "- Library public API source: docs/library/public-api.md",
+      "- Library semver source: docs/library/semver.md",
+      "- Library compatibility source: docs/library/compatibility.md",
+      "- Library migration source: docs/library/migration-guide.md",
+    ];
+  }
+  return [];
+}
+
+function profileRoutes(profile: Profile): readonly string[] {
+  if (profile === "cli-tool") {
+    return ["- CLI tool route: .agents/skills/cli-tool/SKILL.md"];
+  }
+  if (profile === "api-service") {
+    return ["- API service route: .agents/skills/api-service/SKILL.md"];
+  }
+  if (profile === "desktop-app") {
+    return ["- Desktop app route: .agents/skills/desktop-app/SKILL.md"];
+  }
+  if (profile === "library") {
+    return ["- Library package route: .agents/skills/library-package/SKILL.md"];
+  }
+  return [];
+}
+
+function profileRequiredDecisions(profile: Profile): readonly string[] {
+  if (profile === "cli-tool") {
+    return [
+      "Command list and flag ownership: UNDECIDED",
+      "Exit-code taxonomy: UNDECIDED",
+      "Machine-readable output contract: UNDECIDED",
+      "Config precedence and default behavior: UNDECIDED",
+      "Runtime compatibility floor: UNDECIDED",
+    ];
+  }
+  if (profile === "api-service") {
+    return [
+      "OpenAPI ownership and publish path: UNDECIDED",
+      "Authentication and authorization surface: UNDECIDED",
+      "Idempotency and retry behavior: UNDECIDED",
+      "Rate-limit and quota policy: UNDECIDED",
+      "SLO, health, and operational readiness: UNDECIDED",
+    ];
+  }
+  if (profile === "desktop-app") {
+    return [
+      "Supported operating systems and architectures: UNDECIDED",
+      "Installer and update channel ownership: UNDECIDED",
+      "Local data and cache ownership: UNDECIDED",
+      "Crash report and diagnostic data policy: UNDECIDED",
+      "Desktop permission and security boundaries: UNDECIDED",
+    ];
+  }
+  if (profile === "library") {
+    return [
+      "Public API ownership: UNDECIDED",
+      "Semantic versioning policy: UNDECIDED",
+      "Runtime and platform compatibility: UNDECIDED",
+      "Package artifact and export surface: UNDECIDED",
+      "Deprecation and migration policy: UNDECIDED",
+    ];
+  }
+  return ["Repository-shape-specific decisions: UNDECIDED"];
+}
+
+function profileReviewBlockers(profile: Profile): readonly string[] {
+  if (profile === "cli-tool") {
+    return [
+      "A command changes without updating help, examples, output, and exit-code expectations.",
+      "JSON output exposes generated or existing file contents.",
+      "Runtime compatibility changes without smoke validation.",
+    ];
+  }
+  if (profile === "api-service") {
+    return [
+      "Request or response behavior changes without source contract updates.",
+      "Retry-prone writes lack idempotency behavior.",
+      "Operational readiness is implied without health, SLO, rollback, or observability evidence.",
+    ];
+  }
+  if (profile === "desktop-app") {
+    return [
+      "Installer, update, or OS support behavior changes without platform-specific validation.",
+      "Local data behavior changes without migration, privacy, and recovery notes.",
+      "Crash diagnostics or logs can expose private data.",
+    ];
+  }
+  if (profile === "library") {
+    return [
+      "Public exports change without semver and migration notes.",
+      "Compatibility claims lack runtime or consumer evidence.",
+      "Package artifacts drift from documented public API.",
+    ];
+  }
+  return ["A profile-specific claim is made without a matching profile document."];
 }
 
 export function checklistDoc(title: string): string {

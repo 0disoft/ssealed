@@ -3,10 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { executeScaffold } from "../src/core/scaffold.js";
-import { runners, scopes, type Runner, type Scope } from "../src/core/types.js";
+import { densities, profiles, runners, scopes, type Density, type Profile, type Runner, type Scope } from "../src/core/types.js";
 import { templateFilesFor } from "../src/templates/index.js";
 
 interface ManifestForTest {
+  profile: string;
+  density: string;
   files: Array<{
     path: string;
     kind: string;
@@ -30,9 +32,17 @@ async function tempDir(): Promise<string> {
   return dir;
 }
 
-async function scaffold(scope: Scope, runner: Runner = "none"): Promise<string> {
+async function scaffold(scope: Scope, runner: Runner = "none", profile?: Profile, density?: Density): Promise<string> {
   const dir = await tempDir();
-  const result = await executeScaffold({ target: dir, scope, runner, dryRun: false, force: false });
+  const result = await executeScaffold({
+    target: dir,
+    scope,
+    runner,
+    dryRun: false,
+    force: false,
+    ...(profile === undefined ? {} : { profile }),
+    ...(density === undefined ? {} : { density }),
+  });
   expect(result.conflicts).toHaveLength(0);
   return dir;
 }
@@ -92,15 +102,72 @@ describe("scope generation", () => {
     await expect(exists(dir, ".gitattributes")).resolves.toBe(true);
     await expect(exists(dir, ".gitignore")).resolves.toBe(true);
     const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")) as ManifestForTest;
+    expect(manifest.profile).toBe("generic");
+    expect(manifest.density).toBe("standard");
     expect(manifest.files).toContainEqual(expect.objectContaining({ path: ".editorconfig", kind: "hygiene" }));
     expect(manifest.files.every((file) => file.checksum.startsWith("sha256:"))).toBe(true);
   });
 
-  it("does not generate bunfig.toml for any scope", async () => {
-    for (const scope of ["backend", "frontend", "fullstack", "design"] as const) {
-      const dir = await scaffold(scope);
-      await expect(exists(dir, "bunfig.toml")).resolves.toBe(false);
+  it("does not generate bunfig.toml for any scope and profile", () => {
+    for (const scope of scopes) {
+      for (const profile of profiles) {
+        for (const runner of runners) {
+          for (const density of densities) {
+            const files = templateFilesFor(scope, runner, profile, density);
+            expect(files.map((file) => file.path), `${scope}/${profile}/${runner}/${density}`).not.toContain("bunfig.toml");
+          }
+        }
+      }
     }
+  });
+
+  it("density minimal keeps the core scaffold small", async () => {
+    const dir = await scaffold("design", "none", "generic", "minimal");
+    await expect(exists(dir, "AGENTS.md")).resolves.toBe(true);
+    await expect(exists(dir, "docs/ops/00-operational-contract.md")).resolves.toBe(true);
+    await expect(exists(dir, "docs/ops/release.md")).resolves.toBe(false);
+    await expect(exists(dir, ".agents/validations/default.md")).resolves.toBe(false);
+  });
+
+  it("density strict includes expanded risk and release surfaces", async () => {
+    const dir = await scaffold("backend", "none", "generic", "strict");
+    await expect(exists(dir, "docs/engineering/08-threat-model.md")).resolves.toBe(true);
+    await expect(exists(dir, "docs/backend/10-data-integrity.md")).resolves.toBe(true);
+    await expect(exists(dir, ".agents/validations/release-readiness.md")).resolves.toBe(true);
+  });
+
+  it("generates CLI tool profile contracts without changing the selected scope", async () => {
+    const dir = await scaffold("design", "none", "cli-tool");
+    await expect(exists(dir, "docs/cli/command-contract.md")).resolves.toBe(true);
+    await expect(exists(dir, "docs/cli/output-and-exit-codes.md")).resolves.toBe(true);
+    await expect(exists(dir, ".agents/skills/cli-tool/SKILL.md")).resolves.toBe(true);
+    await expect(exists(dir, "docs/backend/README.md")).resolves.toBe(false);
+  });
+
+  it("generates API service profile contracts and avoids duplicate backend OpenAPI ownership", async () => {
+    const designDir = await scaffold("design", "none", "api-service");
+    await expect(exists(designDir, "docs/api-service/api-lifecycle.md")).resolves.toBe(true);
+    await expect(exists(designDir, "api/openapi.yaml")).resolves.toBe(true);
+
+    const backendDir = await scaffold("backend", "none", "api-service");
+    await expect(exists(backendDir, "docs/api-service/api-lifecycle.md")).resolves.toBe(true);
+    await expect(exists(backendDir, "api/openapi.yaml")).resolves.toBe(true);
+    const files = templateFilesFor("backend", "none", "api-service");
+    expect(files.filter((file) => file.path === "api/openapi.yaml")).toHaveLength(1);
+  });
+
+  it("generates desktop app profile contracts", async () => {
+    const dir = await scaffold("design", "none", "desktop-app");
+    await expect(exists(dir, "docs/desktop/installers.md")).resolves.toBe(true);
+    await expect(exists(dir, "docs/desktop/auto-update.md")).resolves.toBe(true);
+    await expect(exists(dir, ".agents/skills/desktop-app/SKILL.md")).resolves.toBe(true);
+  });
+
+  it("generates library profile contracts", async () => {
+    const dir = await scaffold("design", "none", "library");
+    await expect(exists(dir, "docs/library/public-api.md")).resolves.toBe(true);
+    await expect(exists(dir, "docs/library/semver.md")).resolves.toBe(true);
+    await expect(exists(dir, ".agents/skills/library-package/SKILL.md")).resolves.toBe(true);
   });
 
   it("skill files include name and description frontmatter", async () => {
@@ -131,10 +198,14 @@ describe("scope generation", () => {
 
   it("does not generate duplicate template paths for any scope and runner", () => {
     for (const scope of scopes) {
-      for (const runner of runners) {
-        const files = templateFilesFor(scope, runner);
-        const paths = files.map((file) => file.path);
-        expect(new Set(paths).size, `${scope}/${runner}`).toBe(paths.length);
+      for (const profile of profiles) {
+        for (const runner of runners) {
+          for (const density of densities) {
+            const files = templateFilesFor(scope, runner, profile, density);
+            const paths = files.map((file) => file.path);
+            expect(new Set(paths).size, `${scope}/${profile}/${runner}/${density}`).toBe(paths.length);
+          }
+        }
       }
     }
   });

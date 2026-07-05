@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { executeScaffold, planScaffold } from "../src/core/scaffold.js";
 import { assertSafeTemplatePath } from "../src/core/path-safety.js";
+import { gitignoreBlock } from "../src/templates/index.js";
 
 let workdirs: string[] = [];
 
@@ -60,7 +61,7 @@ describe("file writer behavior", () => {
   it("force permits reruns when existing scaffold-managed files are unchanged", async () => {
     const dir = await tempDir();
     await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
-    const result = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: true });
+    const result = await executeScaffold({ command: "update", target: dir, scope: "design", runner: "none", dryRun: false, force: true });
     expect(result.conflicts).toHaveLength(0);
   });
 
@@ -89,8 +90,23 @@ describe("file writer behavior", () => {
     expect(managedBlock).toContain("node_modules/");
     expect(managedBlock).toContain(".env");
 
-    const rerun = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: true, force: false });
+    const rerun = await executeScaffold({ command: "update", target: dir, scope: "design", runner: "none", dryRun: true, force: false });
     expect(rerun.conflicts.map((file) => file.path)).not.toContain(".gitignore");
+  });
+
+  it("appends a .gitignore managed block even when every generated pattern already exists outside the block", async () => {
+    const dir = await tempDir();
+    const existingPatterns = gitignoreBlock()
+      .split("\n")
+      .filter((line) => line.length > 0 && !line.includes("ssealed ignore patterns"))
+      .join("\n");
+    await writeFile(path.join(dir, ".gitignore"), `${existingPatterns}\n`);
+    const result = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    expect(result.conflicts).toHaveLength(0);
+
+    const content = await readFile(path.join(dir, ".gitignore"), "utf8");
+    expect(content.match(/# >>> ssealed ignore patterns >>>/gu)).toHaveLength(1);
+    expect(content).toContain(existingPatterns);
   });
 
   it("conflicts when existing .gitignore managed block differs", async () => {
@@ -129,6 +145,7 @@ describe("file writer behavior", () => {
     expect(() => assertSafeTemplatePath("../escape")).toThrow();
     expect(() => assertSafeTemplatePath("/absolute")).toThrow();
     expect(() => assertSafeTemplatePath("C:relative")).toThrow();
+    expect(() => assertSafeTemplatePath("docs\\escape.md")).toThrow();
     expect(() => assertSafeTemplatePath("docs/CON.md")).toThrow();
   });
 
@@ -142,15 +159,24 @@ describe("file writer behavior", () => {
   it("uses an existing manifest to mark previously generated files", async () => {
     const dir = await tempDir();
     await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
-    const planned = await planScaffold({ target: dir, scope: "design", runner: "none", dryRun: true, force: false });
+    const planned = await planScaffold({ command: "update", target: dir, scope: "design", runner: "none", dryRun: true, force: false });
     const agents = planned.find((file) => file.path === "AGENTS.md");
     expect(agents?.previouslyGenerated).toBe(true);
+  });
+
+  it("refuses init when a valid scaffold manifest already exists", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    const rerun = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: true, force: true });
+    const conflict = rerun.conflicts.find((file) => file.path === ".ssealed/manifest.json");
+    expect(conflict?.reason).toContain("Existing scaffold already has a valid .ssealed/manifest.json");
+    expect(conflict?.reason).toContain("ssealed update");
   });
 
   it("does not conflict on the generated manifest only because generatedAt changes", async () => {
     const dir = await tempDir();
     await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
-    const rerun = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: true, force: false });
+    const rerun = await executeScaffold({ command: "update", target: dir, scope: "design", runner: "none", dryRun: true, force: false });
     expect(rerun.conflicts.map((file) => file.path)).not.toContain(".ssealed/manifest.json");
     expect(rerun.files.find((file) => file.path === ".ssealed/manifest.json")?.action).toBe("unchanged");
   });
@@ -160,17 +186,44 @@ describe("file writer behavior", () => {
     const first = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
     expect(first.written).toContain(".ssealed/manifest.json");
     const before = await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8");
-    const rerun = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    const rerun = await executeScaffold({ command: "update", target: dir, scope: "design", runner: "none", dryRun: false, force: false });
     const after = await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8");
     expect(rerun.written).not.toContain(".ssealed/manifest.json");
     expect(after).toBe(before);
+  });
+
+  it("keeps planned manifest content aligned with unchanged existing manifest content", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    const before = await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8");
+    const planned = await planScaffold({ command: "update", target: dir, scope: "design", runner: "none", dryRun: true, force: false });
+    const manifest = planned.find((file) => file.path === ".ssealed/manifest.json");
+    expect(manifest?.action).toBe("unchanged");
+    expect(manifest?.content).toBe(before);
+  });
+
+  it("update conflicts instead of migrating an existing scaffold to a different profile", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    const result = await executeScaffold({ command: "update", target: dir, scope: "design", profile: "cli-tool", runner: "none", dryRun: false, force: true });
+    const conflict = result.conflicts.find((file) => file.path === ".ssealed/manifest.json");
+    expect(conflict?.reason).toContain("profile generic -> cli-tool");
+    await expect(readFile(path.join(dir, "docs", "cli", "command-contract.md"), "utf8")).rejects.toThrow();
+  });
+
+  it("upgrade permits explicit profile migration", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    const result = await executeScaffold({ command: "upgrade", target: dir, scope: "design", profile: "cli-tool", runner: "none", dryRun: false, force: true });
+    expect(result.conflicts).toHaveLength(0);
+    await expect(readFile(path.join(dir, "docs", "cli", "command-contract.md"), "utf8")).resolves.toContain("Command Contract");
   });
 
   it("updates the manifest instead of conflicting after user edits outside a managed .gitignore block", async () => {
     const dir = await tempDir();
     await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
     await writeFile(path.join(dir, ".gitignore"), `custom.local\n${await readFile(path.join(dir, ".gitignore"), "utf8")}`);
-    const result = await executeScaffold({ target: dir, scope: "design", runner: "none", dryRun: false, force: false });
+    const result = await executeScaffold({ command: "update", target: dir, scope: "design", runner: "none", dryRun: false, force: false });
     expect(result.conflicts.map((file) => file.path)).not.toContain(".ssealed/manifest.json");
     expect(result.written).toContain(".ssealed/manifest.json");
   });

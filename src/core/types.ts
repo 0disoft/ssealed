@@ -1,6 +1,12 @@
 export const scopes = ["backend", "frontend", "fullstack", "design"] as const;
 export type Scope = (typeof scopes)[number];
 
+export const profiles = ["generic", "cli-tool", "api-service", "desktop-app", "library"] as const;
+export type Profile = (typeof profiles)[number];
+
+export const densities = ["minimal", "standard", "strict"] as const;
+export type Density = (typeof densities)[number];
+
 export const runners = ["none", "make", "just", "task", "npm", "pnpm"] as const;
 export type Runner = (typeof runners)[number];
 
@@ -50,13 +56,20 @@ export interface Manifest {
   readonly version: string;
   readonly generatedAt: string;
   readonly scope: Scope;
+  readonly profile: Profile;
+  readonly density: Density;
   readonly runner: Runner;
   readonly files: readonly ManifestFile[];
 }
 
+export type ScaffoldCommand = "init" | "update" | "upgrade";
+
 export interface ScaffoldResult {
+  readonly command: ScaffoldCommand;
   readonly target: string;
   readonly scope: Scope;
+  readonly profile: Profile;
+  readonly density: Density;
   readonly runner: Runner;
   readonly dryRun: boolean;
   readonly force: boolean;
@@ -75,8 +88,11 @@ export interface ScaffoldWarning {
 }
 
 export interface InitOptions {
+  readonly command?: ScaffoldCommand;
   readonly target: string;
   readonly scope: Scope;
+  readonly profile?: Profile;
+  readonly density?: Density;
   readonly runner: Runner;
   readonly dryRun: boolean;
   readonly force: boolean;

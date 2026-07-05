@@ -1,4 +1,4 @@
-import type { FileKind, Runner, Scope, TemplateFile } from "../core/types.js";
+import type { Density, FileKind, Profile, Runner, Scope, TemplateFile } from "../core/types.js";
 import {
   agentSkill,
   architectureDoc,
@@ -17,142 +17,192 @@ import {
   rootReadme,
   validationDoc,
 } from "./documents.js";
+import { profileFilesFor } from "./profiles.js";
 import { runnerFiles } from "./runners.js";
 
 interface FileSpec {
   readonly path: string;
   readonly kind: FileKind;
+  readonly renderer: Renderer;
   readonly title?: string;
+  readonly density?: readonly Density[];
+}
+
+type Renderer =
+  | "editorconfig"
+  | "gitattributes"
+  | "gitignore"
+  | "root-agents"
+  | "root-readme"
+  | "validation"
+  | "checklist-router"
+  | "docs-readme"
+  | "context-map"
+  | "agent-skill"
+  | "checklist"
+  | "openapi"
+  | "success-json"
+  | "error-json"
+  | "paginated-json"
+  | "dbml"
+  | "frontend-design"
+  | "backend-doc"
+  | "engineering-doc"
+  | "ops-doc"
+  | "architecture-doc"
+  | "mermaid"
+  | "pull-request-template"
+  | "codeowners"
+  | "issue-template"
+  | "markdown";
+
+const allDensities = ["minimal", "standard", "strict"] as const satisfies readonly Density[];
+const standardAndStrict = ["standard", "strict"] as const satisfies readonly Density[];
+const strictOnly = ["strict"] as const satisfies readonly Density[];
+
+function file(path: string, kind: FileKind, renderer: Renderer, title?: string, density: readonly Density[] = standardAndStrict): FileSpec {
+  return title === undefined ? { path, kind, renderer, density } : { path, kind, renderer, title, density };
 }
 
 const commonFiles: readonly FileSpec[] = [
-  { path: ".editorconfig", kind: "hygiene" },
-  { path: ".gitattributes", kind: "hygiene" },
-  { path: ".gitignore", kind: "hygiene" },
-  { path: "AGENTS.md", kind: "agent" },
-  { path: "README.md", kind: "document" },
-  { path: "CONTRIBUTING.md", kind: "document", title: "Contributing" },
-  { path: "DEVELOPMENT.md", kind: "document", title: "Development" },
-  { path: "ARCHITECTURE.md", kind: "document", title: "Architecture" },
-  { path: "CHECKLIST.md", kind: "checklist", title: "Checklist Router" },
-  { path: "VALIDATION.md", kind: "validation" },
-  { path: ".agents/README.md", kind: "agent", title: "Agent Workspace" },
-  { path: ".agents/context-map.md", kind: "agent" },
-  { path: ".agents/checklists/security.md", kind: "checklist", title: "Security Checklist" },
-  { path: ".agents/checklists/performance.md", kind: "checklist", title: "Performance Checklist" },
-  { path: ".agents/checklists/ops-change.md", kind: "checklist", title: "Ops Change Checklist" },
-  { path: ".agents/checklists/dependency.md", kind: "checklist", title: "Dependency Checklist" },
-  { path: ".agents/validations/default.md", kind: "validation", title: "Default Validation" },
-  { path: ".agents/validations/ops-change.md", kind: "validation", title: "Ops Change Validation" },
-  { path: ".agents/validations/dependency-upgrade.md", kind: "validation", title: "Dependency Upgrade Validation" },
-  { path: ".agents/skills/feature/SKILL.md", kind: "agent", title: "feature" },
-  { path: ".agents/skills/bugfix/SKILL.md", kind: "agent", title: "bugfix" },
-  { path: ".agents/skills/refactor/SKILL.md", kind: "agent", title: "refactor" },
-  { path: ".agents/skills/ops-change/SKILL.md", kind: "agent", title: "ops-change" },
-  { path: ".agents/skills/dependency-upgrade/SKILL.md", kind: "agent", title: "dependency-upgrade" },
-  { path: ".agents/skills/test-hardening/SKILL.md", kind: "agent", title: "test-hardening" },
-  { path: "docs/README.md", kind: "document" },
-  { path: "docs/product/00-product-brief.md", kind: "document", title: "Product Brief" },
-  { path: "docs/product/01-roadmap.md", kind: "document", title: "Roadmap" },
-  { path: "docs/product/02-spec.md", kind: "document", title: "Product Specification" },
-  { path: "docs/product/03-risk-register.md", kind: "document", title: "Risk Register" },
-  { path: "docs/architecture/00-system-boundary.md", kind: "document", title: "System Boundary" },
-  { path: "docs/architecture/01-domain-model.md", kind: "document", title: "Domain Model" },
-  { path: "docs/architecture/02-runtime-flow.md", kind: "document", title: "Runtime Flow" },
-  { path: "docs/architecture/03-quality-attributes.md", kind: "document", title: "Quality Attributes" },
-  { path: "docs/adr/README.md", kind: "document", title: "Architecture Decisions" },
-  { path: "docs/adr/0000-template.md", kind: "document", title: "ADR Template" },
-  { path: "docs/adr/0001-initial-architecture-boundaries.md", kind: "document", title: "Initial Architecture Boundaries" },
-  { path: "docs/adr/0002-contract-source-of-truth.md", kind: "document", title: "Contract Source of Truth" },
-  { path: "docs/engineering/00-project-invariants.md", kind: "document", title: "Project Invariants" },
-  { path: "docs/engineering/01-design-review-questions.md", kind: "document", title: "Design Review Questions" },
-  { path: "docs/engineering/02-code-review-checklist.md", kind: "document", title: "Code Review Checklist" },
-  { path: "docs/engineering/03-performance-budget.md", kind: "document", title: "Performance Budget" },
-  { path: "docs/engineering/04-security-baseline.md", kind: "document", title: "Security Baseline" },
-  { path: "docs/engineering/05-testing-standard.md", kind: "document", title: "Testing Standard" },
-  { path: "docs/engineering/06-dependency-and-change-policy.md", kind: "document", title: "Dependency and Change Policy" },
-  { path: "docs/engineering/07-operability-and-failure-standard.md", kind: "document", title: "Operability and Failure Standard" },
-  { path: "docs/ops/00-operational-contract.md", kind: "document", title: "Operational Contract" },
-  { path: "docs/ops/observability.md", kind: "document", title: "Observability" },
-  { path: "docs/ops/ci.md", kind: "document", title: "CI" },
-  { path: "docs/ops/release.md", kind: "document", title: "Release" },
-  { path: "docs/ops/rollback.md", kind: "document", title: "Rollback" },
-  { path: "docs/ops/config-and-env.md", kind: "document", title: "Config and Environment" },
-  { path: "docs/ops/secrets.md", kind: "document", title: "Secrets" },
-  { path: "docs/ops/backup-and-restore.md", kind: "document", title: "Backup and Restore" },
-  { path: "docs/ops/incident-response.md", kind: "document", title: "Incident Response" },
-  { path: "diagrams/README.md", kind: "diagram", title: "Diagrams" },
-  { path: "diagrams/system-context.mmd", kind: "diagram", title: "system-context" },
-  { path: "diagrams/container-view.mmd", kind: "diagram", title: "container-view" },
-  { path: "diagrams/core-runtime-flow.mmd", kind: "diagram", title: "core-runtime-flow" },
-  { path: "diagrams/release-flow.mmd", kind: "diagram", title: "release-flow" },
-  { path: "diagrams/rollback-flow.mmd", kind: "diagram", title: "rollback-flow" },
-  { path: ".github/PULL_REQUEST_TEMPLATE.md", kind: "github", title: "Pull Request Template" },
-  { path: ".github/CODEOWNERS", kind: "github" },
-  { path: ".github/ISSUE_TEMPLATE/bug-report.md", kind: "github", title: "Bug Report" },
-  { path: ".github/ISSUE_TEMPLATE/design-change.md", kind: "github", title: "Design Change" },
-  { path: ".github/ISSUE_TEMPLATE/architecture-question.md", kind: "github", title: "Architecture Question" },
-  { path: ".github/ISSUE_TEMPLATE/risk-register-item.md", kind: "github", title: "Risk Register Item" },
+  file(".editorconfig", "hygiene", "editorconfig", undefined, allDensities),
+  file(".gitattributes", "hygiene", "gitattributes", undefined, allDensities),
+  file(".gitignore", "hygiene", "gitignore", undefined, allDensities),
+  file("AGENTS.md", "agent", "root-agents", undefined, allDensities),
+  file("README.md", "document", "root-readme", undefined, allDensities),
+  file("CHECKLIST.md", "checklist", "checklist-router", "Checklist Router", allDensities),
+  file("VALIDATION.md", "validation", "validation", undefined, allDensities),
+  file(".agents/README.md", "agent", "markdown", "Agent Workspace", allDensities),
+  file(".agents/context-map.md", "agent", "context-map", undefined, allDensities),
+  file("docs/README.md", "document", "docs-readme", undefined, allDensities),
+  file("docs/product/00-product-brief.md", "document", "markdown", "Product Brief", allDensities),
+  file("docs/product/02-spec.md", "document", "markdown", "Product Specification", allDensities),
+  file("docs/architecture/00-system-boundary.md", "document", "architecture-doc", "System Boundary", allDensities),
+  file("docs/engineering/00-project-invariants.md", "document", "engineering-doc", "Project Invariants", allDensities),
+  file("docs/ops/00-operational-contract.md", "document", "ops-doc", "Operational Contract", allDensities),
+  file(".agents/checklists/security.md", "checklist", "checklist", "Security Checklist", allDensities),
+  file(".agents/checklists/ops-change.md", "checklist", "checklist", "Ops Change Checklist", allDensities),
+  file(".agents/skills/feature/SKILL.md", "agent", "agent-skill", "feature", allDensities),
+  file(".agents/skills/bugfix/SKILL.md", "agent", "agent-skill", "bugfix", allDensities),
+  file(".github/PULL_REQUEST_TEMPLATE.md", "github", "pull-request-template", "Pull Request Template", allDensities),
+  file("CONTRIBUTING.md", "document", "markdown", "Contributing"),
+  file("DEVELOPMENT.md", "document", "markdown", "Development"),
+  file("ARCHITECTURE.md", "document", "architecture-doc", "Architecture"),
+  file(".agents/checklists/performance.md", "checklist", "checklist", "Performance Checklist"),
+  file(".agents/checklists/dependency.md", "checklist", "checklist", "Dependency Checklist"),
+  file(".agents/validations/default.md", "validation", "validation", "Default Validation"),
+  file(".agents/validations/ops-change.md", "validation", "validation", "Ops Change Validation"),
+  file(".agents/validations/dependency-upgrade.md", "validation", "validation", "Dependency Upgrade Validation"),
+  file(".agents/skills/refactor/SKILL.md", "agent", "agent-skill", "refactor"),
+  file(".agents/skills/ops-change/SKILL.md", "agent", "agent-skill", "ops-change"),
+  file(".agents/skills/dependency-upgrade/SKILL.md", "agent", "agent-skill", "dependency-upgrade"),
+  file(".agents/skills/test-hardening/SKILL.md", "agent", "agent-skill", "test-hardening"),
+  file("docs/product/01-roadmap.md", "document", "markdown", "Roadmap"),
+  file("docs/product/03-risk-register.md", "document", "markdown", "Risk Register"),
+  file("docs/architecture/01-domain-model.md", "document", "architecture-doc", "Domain Model"),
+  file("docs/architecture/02-runtime-flow.md", "document", "architecture-doc", "Runtime Flow"),
+  file("docs/architecture/03-quality-attributes.md", "document", "architecture-doc", "Quality Attributes"),
+  file("docs/adr/README.md", "document", "markdown", "Architecture Decisions"),
+  file("docs/adr/0000-template.md", "document", "markdown", "ADR Template"),
+  file("docs/adr/0001-initial-architecture-boundaries.md", "document", "markdown", "Initial Architecture Boundaries"),
+  file("docs/adr/0002-contract-source-of-truth.md", "document", "markdown", "Contract Source of Truth"),
+  file("docs/engineering/01-design-review-questions.md", "document", "engineering-doc", "Design Review Questions"),
+  file("docs/engineering/02-code-review-checklist.md", "document", "engineering-doc", "Code Review Checklist"),
+  file("docs/engineering/03-performance-budget.md", "document", "engineering-doc", "Performance Budget"),
+  file("docs/engineering/04-security-baseline.md", "document", "engineering-doc", "Security Baseline"),
+  file("docs/engineering/05-testing-standard.md", "document", "engineering-doc", "Testing Standard"),
+  file("docs/engineering/06-dependency-and-change-policy.md", "document", "engineering-doc", "Dependency and Change Policy"),
+  file("docs/engineering/07-operability-and-failure-standard.md", "document", "engineering-doc", "Operability and Failure Standard"),
+  file("docs/ops/observability.md", "document", "ops-doc", "Observability"),
+  file("docs/ops/ci.md", "document", "ops-doc", "CI"),
+  file("docs/ops/release.md", "document", "ops-doc", "Release"),
+  file("docs/ops/rollback.md", "document", "ops-doc", "Rollback"),
+  file("docs/ops/config-and-env.md", "document", "ops-doc", "Config and Environment"),
+  file("docs/ops/secrets.md", "document", "ops-doc", "Secrets"),
+  file("docs/ops/backup-and-restore.md", "document", "ops-doc", "Backup and Restore"),
+  file("docs/ops/incident-response.md", "document", "ops-doc", "Incident Response"),
+  file("diagrams/README.md", "diagram", "markdown", "Diagrams"),
+  file("diagrams/system-context.mmd", "diagram", "mermaid", "system-context"),
+  file("diagrams/container-view.mmd", "diagram", "mermaid", "container-view"),
+  file("diagrams/core-runtime-flow.mmd", "diagram", "mermaid", "core-runtime-flow"),
+  file("diagrams/release-flow.mmd", "diagram", "mermaid", "release-flow"),
+  file("diagrams/rollback-flow.mmd", "diagram", "mermaid", "rollback-flow"),
+  file(".github/CODEOWNERS", "github", "codeowners"),
+  file(".github/ISSUE_TEMPLATE/bug-report.md", "github", "issue-template", "Bug Report"),
+  file(".github/ISSUE_TEMPLATE/design-change.md", "github", "issue-template", "Design Change"),
+  file(".github/ISSUE_TEMPLATE/architecture-question.md", "github", "issue-template", "Architecture Question"),
+  file(".github/ISSUE_TEMPLATE/risk-register-item.md", "github", "issue-template", "Risk Register Item"),
+  file("docs/engineering/08-threat-model.md", "document", "engineering-doc", "Threat Model", strictOnly),
+  file("docs/engineering/09-data-integrity.md", "document", "engineering-doc", "Data Integrity", strictOnly),
+  file("docs/ops/disaster-recovery.md", "document", "ops-doc", "Disaster Recovery", strictOnly),
+  file("docs/ops/service-levels.md", "document", "ops-doc", "Service Levels", strictOnly),
+  file(".agents/checklists/release-readiness.md", "checklist", "checklist", "Release Readiness Checklist", strictOnly),
+  file(".agents/validations/release-readiness.md", "validation", "validation", "Release Readiness Validation", strictOnly),
 ];
 
 const backendFiles: readonly FileSpec[] = [
-  { path: "docs/backend/README.md", kind: "document", title: "Backend" },
-  { path: "docs/backend/00-api-server-boundary.md", kind: "document", title: "API Server Boundary" },
-  { path: "docs/backend/01-authentication.md", kind: "document", title: "Authentication" },
-  { path: "docs/backend/02-authorization.md", kind: "document", title: "Authorization" },
-  { path: "docs/backend/03-persistence-model.md", kind: "document", title: "Persistence Model" },
-  { path: "docs/backend/04-http-api-policy.md", kind: "document", title: "HTTP API Policy" },
-  { path: "docs/backend/05-error-response.md", kind: "document", title: "Error Response" },
-  { path: "docs/backend/06-logging-and-observability.md", kind: "document", title: "Logging and Observability" },
-  { path: "docs/backend/07-migration-strategy.md", kind: "document", title: "Migration Strategy" },
-  { path: "docs/backend/08-backend-security.md", kind: "document", title: "Backend Security" },
-  { path: "api/openapi.yaml", kind: "contract" },
-  { path: "api/examples/success-response.json", kind: "contract" },
-  { path: "api/examples/error-response.json", kind: "contract" },
-  { path: "api/examples/paginated-response.json", kind: "contract" },
-  { path: "db/schema.dbml", kind: "contract" },
-  { path: "db/migrations/README.md", kind: "document", title: "Migrations" },
-  { path: "db/seed/README.md", kind: "document", title: "Seed Data" },
-  { path: "diagrams/data-model.mmd", kind: "diagram", title: "data-model" },
-  { path: "diagrams/auth-flow.mmd", kind: "diagram", title: "auth-flow" },
-  { path: "diagrams/authorization-flow.mmd", kind: "diagram", title: "authorization-flow" },
-  { path: "diagrams/request-lifecycle.mmd", kind: "diagram", title: "request-lifecycle" },
-  { path: ".agents/skills/backend-api/SKILL.md", kind: "agent", title: "backend-api" },
-  { path: ".agents/skills/db-migration/SKILL.md", kind: "agent", title: "db-migration" },
-  { path: ".agents/checklists/backend-api.md", kind: "checklist", title: "Backend API Checklist" },
-  { path: ".agents/checklists/db-migration.md", kind: "checklist", title: "DB Migration Checklist" },
-  { path: ".agents/validations/backend-api.md", kind: "validation", title: "Backend API Validation" },
-  { path: ".agents/validations/db-migration.md", kind: "validation", title: "DB Migration Validation" },
+  file("docs/backend/README.md", "document", "backend-doc", "Backend", allDensities),
+  file("docs/backend/00-api-server-boundary.md", "document", "backend-doc", "API Server Boundary", allDensities),
+  file("api/openapi.yaml", "contract", "openapi", undefined, allDensities),
+  file(".agents/skills/backend-api/SKILL.md", "agent", "agent-skill", "backend-api", allDensities),
+  file(".agents/checklists/backend-api.md", "checklist", "checklist", "Backend API Checklist", allDensities),
+  file("api/examples/success-response.json", "contract", "success-json"),
+  file("api/examples/error-response.json", "contract", "error-json"),
+  file("api/examples/paginated-response.json", "contract", "paginated-json"),
+  file("docs/backend/01-authentication.md", "document", "backend-doc", "Authentication"),
+  file("docs/backend/02-authorization.md", "document", "backend-doc", "Authorization"),
+  file("docs/backend/03-persistence-model.md", "document", "backend-doc", "Persistence Model"),
+  file("docs/backend/04-http-api-policy.md", "document", "backend-doc", "HTTP API Policy"),
+  file("docs/backend/05-error-response.md", "document", "backend-doc", "Error Response"),
+  file("docs/backend/06-logging-and-observability.md", "document", "backend-doc", "Logging and Observability"),
+  file("docs/backend/07-migration-strategy.md", "document", "backend-doc", "Migration Strategy"),
+  file("docs/backend/08-backend-security.md", "document", "backend-doc", "Backend Security"),
+  file("db/schema.dbml", "contract", "dbml"),
+  file("db/migrations/README.md", "document", "markdown", "Migrations"),
+  file("db/seed/README.md", "document", "markdown", "Seed Data"),
+  file("diagrams/data-model.mmd", "diagram", "mermaid", "data-model"),
+  file("diagrams/auth-flow.mmd", "diagram", "mermaid", "auth-flow"),
+  file("diagrams/authorization-flow.mmd", "diagram", "mermaid", "authorization-flow"),
+  file("diagrams/request-lifecycle.mmd", "diagram", "mermaid", "request-lifecycle"),
+  file(".agents/skills/db-migration/SKILL.md", "agent", "agent-skill", "db-migration"),
+  file(".agents/checklists/db-migration.md", "checklist", "checklist", "DB Migration Checklist"),
+  file(".agents/validations/backend-api.md", "validation", "validation", "Backend API Validation"),
+  file(".agents/validations/db-migration.md", "validation", "validation", "DB Migration Validation"),
+  file("docs/backend/09-api-evolution.md", "document", "backend-doc", "API Evolution", strictOnly),
+  file("docs/backend/10-data-integrity.md", "document", "backend-doc", "Backend Data Integrity", strictOnly),
 ];
 
 const frontendFiles: readonly FileSpec[] = [
-  { path: "docs/frontend/FRONTEND_DESIGN.md", kind: "document" },
-  { path: "docs/integrations/backend-api.md", kind: "document", title: "Backend API Integration" },
-  { path: "contracts/backend-api/README.md", kind: "contract", title: "Backend API Contract" },
-  { path: "contracts/backend-api/openapi.yaml", kind: "contract" },
-  { path: "contracts/backend-api/examples/success-response.json", kind: "contract" },
-  { path: "contracts/backend-api/examples/error-response.json", kind: "contract" },
-  { path: "contracts/backend-api/examples/paginated-response.json", kind: "contract" },
-  { path: "diagrams/user-flow.mmd", kind: "diagram", title: "user-flow" },
-  { path: "diagrams/route-map.mmd", kind: "diagram", title: "route-map" },
-  { path: "diagrams/state-ownership.mmd", kind: "diagram", title: "state-ownership" },
-  { path: "diagrams/component-boundary.mmd", kind: "diagram", title: "component-boundary" },
-  { path: "diagrams/request-lifecycle.mmd", kind: "diagram", title: "request-lifecycle" },
-  { path: ".agents/skills/frontend-ui/SKILL.md", kind: "agent", title: "frontend-ui" },
-  { path: ".agents/checklists/frontend-ui.md", kind: "checklist", title: "Frontend UI Checklist" },
-  { path: ".agents/checklists/accessibility.md", kind: "checklist", title: "Accessibility Checklist" },
-  { path: ".agents/validations/frontend-ui.md", kind: "validation", title: "Frontend UI Validation" },
+  file("docs/frontend/FRONTEND_DESIGN.md", "document", "frontend-design", undefined, allDensities),
+  file("docs/integrations/backend-api.md", "document", "markdown", "Backend API Integration", allDensities),
+  file("contracts/backend-api/openapi.yaml", "contract", "openapi", undefined, allDensities),
+  file(".agents/skills/frontend-ui/SKILL.md", "agent", "agent-skill", "frontend-ui", allDensities),
+  file(".agents/checklists/frontend-ui.md", "checklist", "checklist", "Frontend UI Checklist", allDensities),
+  file("contracts/backend-api/README.md", "contract", "markdown", "Backend API Contract"),
+  file("contracts/backend-api/examples/success-response.json", "contract", "success-json"),
+  file("contracts/backend-api/examples/error-response.json", "contract", "error-json"),
+  file("contracts/backend-api/examples/paginated-response.json", "contract", "paginated-json"),
+  file("diagrams/user-flow.mmd", "diagram", "mermaid", "user-flow"),
+  file("diagrams/route-map.mmd", "diagram", "mermaid", "route-map"),
+  file("diagrams/state-ownership.mmd", "diagram", "mermaid", "state-ownership"),
+  file("diagrams/component-boundary.mmd", "diagram", "mermaid", "component-boundary"),
+  file("diagrams/request-lifecycle.mmd", "diagram", "mermaid", "request-lifecycle"),
+  file(".agents/checklists/accessibility.md", "checklist", "checklist", "Accessibility Checklist"),
+  file(".agents/validations/frontend-ui.md", "validation", "validation", "Frontend UI Validation"),
+  file("docs/frontend/accessibility.md", "document", "markdown", "Accessibility", strictOnly),
+  file("docs/frontend/state-and-cache.md", "document", "markdown", "State and Cache", strictOnly),
 ];
 
-export function templateFilesFor(scope: Scope, runner: Runner): readonly TemplateFile[] {
+export function templateFilesFor(scope: Scope, runner: Runner, profile: Profile = "generic", density: Density = "standard"): readonly TemplateFile[] {
   const scopedFiles = [
     ...commonFiles,
     ...(scope === "backend" || scope === "fullstack" ? backendFiles : []),
     ...(scope === "frontend" || scope === "fullstack" ? frontendFilesFor(scope) : []),
-  ];
+  ].filter((file) => includesDensity(file, density));
 
   const files = [
-    ...scopedFiles.map((file) => renderFile(file, scope)),
+    ...scopedFiles.map((file) => renderFile(file, scope, profile)),
+    ...profileFilesFor(profile, scope, density),
     ...runnerFiles(runner),
   ];
   assertUniqueTemplatePaths(files);
@@ -164,6 +214,10 @@ function frontendFilesFor(scope: Scope): readonly FileSpec[] {
     return frontendFiles;
   }
   return frontendFiles.filter((file) => !file.path.startsWith("contracts/backend-api/") && file.path !== "diagrams/request-lifecycle.mmd");
+}
+
+function includesDensity(file: FileSpec, density: Density): boolean {
+  return file.density?.includes(density) ?? density !== "minimal";
 }
 
 function assertUniqueTemplatePaths(files: readonly TemplateFile[]): void {
@@ -180,94 +234,74 @@ function assertUniqueTemplatePaths(files: readonly TemplateFile[]): void {
   }
 }
 
-function renderFile(file: FileSpec, scope: Scope): TemplateFile {
-  if (file.path === ".editorconfig") {
-    return { ...file, content: editorconfig() };
+function renderFile(file: FileSpec, scope: Scope, profile: Profile): TemplateFile {
+  switch (file.renderer) {
+    case "editorconfig":
+      return { ...file, content: editorconfig() };
+    case "gitattributes":
+      return { ...file, content: gitattributes() };
+    case "gitignore":
+      return { ...file, content: gitignoreBlock(), merge: "gitignore" };
+    case "root-agents":
+      return { ...file, content: rootAgents(scope, profile) };
+    case "root-readme":
+      return { ...file, content: rootReadme(scope, profile) };
+    case "validation":
+      return { ...file, content: validationDoc(file.title ?? "Validation", scope, profile) };
+    case "checklist-router":
+      return { ...file, content: checklistRouter(scope, profile) };
+    case "docs-readme":
+      return { ...file, content: docsReadme(scope, profile) };
+    case "context-map":
+      return { ...file, content: contextMap(scope, profile) };
+    case "agent-skill":
+      return { ...file, content: agentSkill(file.title ?? "agent-skill") };
+    case "checklist":
+      return { ...file, content: checklistDoc(file.title ?? file.path) };
+    case "openapi":
+      return { ...file, content: openApiSkeleton() };
+    case "success-json":
+      return { ...file, content: `${JSON.stringify({ data: { id: "resource_UNDECIDED", type: "Resource" } }, null, 2)}\n` };
+    case "error-json":
+      return {
+        ...file,
+        content: `${JSON.stringify(
+          {
+            error: {
+              code: "UNDECIDED_ERROR",
+              message: "A safe public error message.",
+              requestId: "req_UNDECIDED",
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      };
+    case "paginated-json":
+      return { ...file, content: `${JSON.stringify({ data: [], page: { limit: 25, nextCursor: null } }, null, 2)}\n` };
+    case "dbml":
+      return { ...file, content: dbml() };
+    case "frontend-design":
+      return { ...file, content: frontendDesignDoc() };
+    case "backend-doc":
+      return { ...file, content: backendDoc(file.title ?? file.path) };
+    case "engineering-doc":
+      return { ...file, content: engineeringDoc(file.title ?? file.path) };
+    case "ops-doc":
+      return { ...file, content: opsDoc(file.title ?? file.path) };
+    case "architecture-doc":
+      return { ...file, content: architectureDoc(file.title ?? file.path) };
+    case "mermaid":
+      return { ...file, content: mermaid(file.title ?? "diagram") };
+    case "pull-request-template":
+      return { ...file, content: pullRequestTemplate() };
+    case "codeowners":
+      return { ...file, content: "# Replace @REPLACE_WITH_OWNER with your GitHub user or team before enabling CODEOWNERS.\n# * @REPLACE_WITH_OWNER\n" };
+    case "issue-template":
+      return { ...file, content: githubIssueTemplate(file.title ?? "Issue") };
+    case "markdown":
+      return { ...file, content: markdownDoc(file.title ?? file.path) };
   }
-  if (file.path === ".gitattributes") {
-    return { ...file, content: gitattributes() };
-  }
-  if (file.path === ".gitignore") {
-    return { ...file, content: gitignoreBlock(), merge: "gitignore" };
-  }
-  if (file.path === "AGENTS.md") {
-    return { ...file, content: rootAgents(scope) };
-  }
-  if (file.path === "README.md") {
-    return { ...file, content: rootReadme(scope) };
-  }
-  if (file.path === "VALIDATION.md") {
-    return { ...file, content: validationDoc("Validation", scope) };
-  }
-  if (file.path === "CHECKLIST.md") {
-    return { ...file, content: checklistRouter(scope) };
-  }
-  if (file.path === "docs/README.md") {
-    return { ...file, content: docsReadme(scope) };
-  }
-  if (file.path === ".agents/context-map.md") {
-    return { ...file, content: contextMap(scope) };
-  }
-  if (file.path.endsWith("/SKILL.md")) {
-    const name = file.title ?? "agent-skill";
-    return { ...file, content: agentSkill(name) };
-  }
-  if (file.path.includes("/checklists/")) {
-    return { ...file, content: checklistDoc(file.title ?? file.path) };
-  }
-  if (file.path.includes("/validations/")) {
-    return { ...file, content: validationDoc(file.title ?? file.path, scope) };
-  }
-  if (file.path === "api/openapi.yaml" || file.path === "contracts/backend-api/openapi.yaml") {
-    return { ...file, content: openApiSkeleton() };
-  }
-  if (file.path.endsWith("success-response.json")) {
-    return { ...file, content: `${JSON.stringify({ data: { id: "resource_UNDECIDED", type: "Resource" } }, null, 2)}\n` };
-  }
-  if (file.path.endsWith("error-response.json")) {
-    const errorResponse = {
-      error: {
-        code: "UNDECIDED_ERROR",
-        message: "A safe public error message.",
-        requestId: "req_UNDECIDED",
-      },
-    };
-    return { ...file, content: `${JSON.stringify(errorResponse, null, 2)}\n` };
-  }
-  if (file.path.endsWith("paginated-response.json")) {
-    return { ...file, content: `${JSON.stringify({ data: [], page: { limit: 25, nextCursor: null } }, null, 2)}\n` };
-  }
-  if (file.path === "db/schema.dbml") {
-    return { ...file, content: dbml() };
-  }
-  if (file.path === "docs/frontend/FRONTEND_DESIGN.md") {
-    return { ...file, content: frontendDesignDoc() };
-  }
-  if (file.path.startsWith("docs/backend/")) {
-    return { ...file, content: backendDoc(file.title ?? file.path) };
-  }
-  if (file.path.startsWith("docs/engineering/")) {
-    return { ...file, content: engineeringDoc(file.title ?? file.path) };
-  }
-  if (file.path.startsWith("docs/ops/")) {
-    return { ...file, content: opsDoc(file.title ?? file.path) };
-  }
-  if (file.path.startsWith("docs/architecture/") || file.path === "ARCHITECTURE.md") {
-    return { ...file, content: architectureDoc(file.title ?? file.path) };
-  }
-  if (file.path.endsWith(".mmd")) {
-    return { ...file, content: mermaid(file.title ?? "diagram") };
-  }
-  if (file.path === ".github/PULL_REQUEST_TEMPLATE.md") {
-    return { ...file, content: pullRequestTemplate() };
-  }
-  if (file.path === ".github/CODEOWNERS") {
-    return { ...file, content: "# Replace @REPLACE_WITH_OWNER with your GitHub user or team before enabling CODEOWNERS.\n# * @REPLACE_WITH_OWNER\n" };
-  }
-  if (file.path.startsWith(".github/ISSUE_TEMPLATE/")) {
-    return { ...file, content: githubIssueTemplate(file.title ?? "Issue") };
-  }
-  return { ...file, content: markdownDoc(file.title ?? file.path) };
 }
 
 function editorconfig(): string {
@@ -345,7 +379,7 @@ tmp/
 `;
 }
 
-function checklistRouter(scope: Scope): string {
+function checklistRouter(scope: Scope, profile: Profile): string {
   const scopedRoutes = [
     ...(scope === "backend" || scope === "fullstack"
       ? ["- Backend API changes: .agents/checklists/backend-api.md", "- DB migration changes: .agents/checklists/db-migration.md"]
@@ -353,6 +387,7 @@ function checklistRouter(scope: Scope): string {
     ...(scope === "frontend" || scope === "fullstack"
       ? ["- Frontend UI changes: .agents/checklists/frontend-ui.md", "- Accessibility changes: .agents/checklists/accessibility.md"]
       : []),
+    ...profileChecklistRoutes(profile),
   ];
 
   return `# Checklist Router
@@ -368,6 +403,22 @@ Use this file as a router. Do not turn it into one giant checklist.
 - Repository hygiene changes: .agents/checklists/security.md and .agents/checklists/ops-change.md
 ${scopedRoutes.join("\n")}
 `;
+}
+
+function profileChecklistRoutes(profile: Profile): readonly string[] {
+  if (profile === "cli-tool") {
+    return ["- CLI tool changes: .agents/checklists/cli-tool.md"];
+  }
+  if (profile === "api-service") {
+    return ["- API service changes: .agents/checklists/api-service.md"];
+  }
+  if (profile === "desktop-app") {
+    return ["- Desktop app changes: .agents/checklists/desktop-app.md"];
+  }
+  if (profile === "library") {
+    return ["- Library package changes: .agents/checklists/library-package.md"];
+  }
+  return [];
 }
 
 function mermaid(name: string): string {

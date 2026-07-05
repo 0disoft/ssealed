@@ -112,12 +112,38 @@ describe("runner generation", () => {
     expect(pkg.scripts.test).toBe(validationScripts("pnpm").test);
   });
 
+  it("updates generated validation scripts without force when no scaffold manifest owns the runner state", async () => {
+    const dir = await tempDir();
+    await writeFile(path.join(dir, "package.json"), JSON.stringify({ scripts: { test: validationScripts("npm").test } }, null, 2));
+    const result = await executeScaffold({ target: dir, scope: "design", runner: "pnpm", dryRun: false, force: false });
+    expect(result.conflicts).toHaveLength(0);
+    const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
+    expect(pkg.scripts.test).toBe(validationScripts("pnpm").test);
+  });
+
+  it("conflicts instead of silently changing runner for an existing scaffold", async () => {
+    const dir = await scaffold("npm");
+    const result = await executeScaffold({ command: "update", target: dir, scope: "design", runner: "pnpm", dryRun: false, force: true });
+    const conflict = result.conflicts.find((file) => file.path === ".ssealed/manifest.json");
+    expect(conflict?.reason).toContain("runner npm -> pnpm");
+    const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
+    expect(pkg.scripts.test).toBe(validationScripts("npm").test);
+  });
+
+  it("upgrade permits explicit runner changes for an existing scaffold", async () => {
+    const dir = await scaffold("npm");
+    const result = await executeScaffold({ command: "upgrade", target: dir, scope: "design", runner: "pnpm", dryRun: false, force: true });
+    expect(result.conflicts).toHaveLength(0);
+    const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
+    expect(pkg.scripts.test).toBe(validationScripts("pnpm").test);
+  });
+
   it("updates the manifest instead of conflicting after user adds package metadata", async () => {
     const dir = await scaffold("npm");
     const packagePath = path.join(dir, "package.json");
     const pkg = JSON.parse(await readFile(packagePath, "utf8")) as PackageJsonForTest;
     await writeFile(packagePath, JSON.stringify({ ...pkg, name: "example" }, null, 2));
-    const result = await executeScaffold({ target: dir, scope: "design", runner: "npm", dryRun: false, force: false });
+    const result = await executeScaffold({ command: "update", target: dir, scope: "design", runner: "npm", dryRun: false, force: false });
     expect(result.conflicts.map((file) => file.path)).not.toContain(".ssealed/manifest.json");
     expect(result.written).toContain(".ssealed/manifest.json");
     const updated = JSON.parse(await readFile(packagePath, "utf8")) as PackageJsonForTest;

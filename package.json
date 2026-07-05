@@ -1,6 +1,6 @@
 {
   "name": "ssealed",
-  "version": "0.2.3",
+  "version": "0.4.0",
   "type": "module",
   "description": "LLM-friendly design scaffold CLI for repository documentation, agent instructions, contracts, validations, and hygiene files.",
   "repository": {
@@ -38,7 +38,8 @@
     "test": "vitest run",
     "smoke:node-runtime": "node scripts/smoke-runtime.mjs node",
     "smoke:bun-runtime": "node scripts/smoke-runtime.mjs bun",
-    "smoke": "bun run smoke:node-runtime && bun run smoke:bun-runtime",
+    "smoke:packed-install": "node scripts/smoke-packed-install.mjs",
+    "smoke": "bun run smoke:node-runtime && bun run smoke:bun-runtime && bun run smoke:packed-install",
     "check": "bun run typecheck && bun run test && bun run build && bun run smoke",
     "dev": "tsx src/cli.ts",
     "mf": "mf",

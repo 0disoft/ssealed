@@ -18,7 +18,7 @@ The npm package keeps the portable `ssealed` binary name. npm-installed command 
 bun install
 bun run build
 node dist/cli.js init --scope backend --runner none
-bun dist/cli.js init --scope backend --runner none
+bun dist/cli.js init --scope backend --profile api-service --runner none
 ```
 
 ## Development Commands
@@ -30,17 +30,19 @@ bun run test
 bun run build
 bun run smoke:node-runtime
 bun run smoke:bun-runtime
+bun run smoke:packed-install
 bun run check
 ```
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.2.3`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.4.0`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
 - installs dependencies with Bun;
 - runs `bun run check`;
+- verifies the packed package can be installed and executed through the npm bin shim;
 - verifies the npm package contents with `npm pack --dry-run --json`;
 - publishes the package to npm;
 - creates or updates the matching GitHub Release.
@@ -59,25 +61,25 @@ Do not store an npm token in the repository unless Trusted Publishing is unavail
 ## CLI
 
 ```sh
-ssealed init [target]
-ssealed init [target] --scope backend
-ssealed init [target] --scope frontend
-ssealed init [target] --scope fullstack
-ssealed init [target] --scope design
-ssealed init [target] --runner none
-ssealed init [target] --runner make
-ssealed init [target] --runner just
-ssealed init [target] --runner task
-ssealed init [target] --runner npm
-ssealed init [target] --runner pnpm
-ssealed init [target] --yes
-ssealed init [target] --dry-run
-ssealed init [target] --force
-ssealed init [target] --json
+ssealed init [target] --scope backend|frontend|fullstack|design
+ssealed update [target]
+ssealed upgrade [target]
+ssealed doctor [target]
+ssealed init [target] --profile generic|cli-tool|api-service|desktop-app|library
+ssealed init [target] --density minimal|standard|strict
+ssealed init [target] --runner none|make|just|task|npm|pnpm
+ssealed update [target] --dry-run --json
+ssealed upgrade [target] --profile api-service --density strict --runner make --force
+ssealed doctor [target] --json
 ssealed --help
 ssealed --version
 ssealed init --help
 ```
+
+`init` creates a new scaffold and refuses targets with an existing valid `.ssealed/manifest.json`.
+`update` reapplies the existing manifest settings and refreshes checksums without changing `scope`, `profile`, `density`, or `runner`.
+`upgrade` is the explicit path for changing scaffold settings.
+`doctor` checks manifest-tracked files for missing or modified content.
 
 ## Scope Matrix
 
@@ -87,6 +89,26 @@ ssealed init --help
 - `design`: common design, architecture, engineering, operational, validation, checklist, and agent scaffolds only.
 
 Backend scope does not generate frontend docs because ownership drift makes agents edit the wrong surface. Frontend scope does not generate backend internals because database, migration, and authorization implementation details belong to backend owners.
+
+## Profile Matrix
+
+Profiles describe the repository shape. They are intentionally separate from scope so a backend-owned repository can be an API service, a design-only repository can still draft CLI contracts, and a fullstack repository can also carry desktop-app release and update contracts.
+
+- `generic`: default behavior. Generates no repository-shape-specific profile files.
+- `cli-tool`: adds CLI command, configuration, output, exit-code, shell-completion, checklist, validation, and agent-skill documents.
+- `api-service`: adds API service lifecycle, idempotency, rate-limit, SLO, checklist, validation, and agent-skill documents. If the selected scope does not already own `api/openapi.yaml`, the profile adds an OpenAPI skeleton and API response examples.
+- `desktop-app`: adds installer, auto-update, crash-reporting, local-data, OS-support, desktop-security, checklist, validation, and agent-skill documents.
+- `library`: adds public API, semantic versioning, compatibility, package surface, migration guide, checklist, validation, and agent-skill documents.
+
+`--profile` defaults to `generic`, so existing commands keep the same scaffold shape unless a profile is explicitly selected.
+
+## Density Matrix
+
+- `minimal`: creates the core agent, documentation, checklist, validation, hygiene, and selected scope/profile essentials.
+- `standard`: default behavior. Adds the normal operating, engineering, API, UI, diagram, and validation surfaces.
+- `strict`: adds deeper risk, release-readiness, service-level, data-integrity, migration, package-surface, and profile-specific hardening surfaces.
+
+Use `minimal` for small repos that need a compact starting point, `standard` for normal teams, and `strict` when the repository needs stronger operational, security, or release review coverage.
 
 ## Runner Matrix
 
@@ -103,13 +125,15 @@ Runner files are optional because many repositories already have their own task 
 
 Existing files are not overwritten by default. Identical files are marked `unchanged`. Different files are marked `conflict`. If any conflict exists and `--force` is not provided, no files are written.
 
-`--force` overwrites conflicting files only when the current `.ssealed/manifest.json` verifies that the existing content is scaffold-managed. It does not overwrite unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced.
+`--force` overwrites conflicting files only when the current file content matches the checksum recorded for that path in the previous `.ssealed/manifest.json`. The manifest is a local previous-run record, not a security boundary, and it never authorizes overwriting unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced.
 
 ## Manifest Behavior
 
-Every write run refreshes `.ssealed/manifest.json` with tool version, generation timestamp, scope, runner, generated file paths, kinds, and SHA-256 checksums of normalized LF content.
+Every write run refreshes `.ssealed/manifest.json` with tool version, generation timestamp, scope, profile, density, runner, generated file paths, kinds, and SHA-256 checksums of normalized LF content.
 
 The manifest helps identify previously generated files, but it never authorizes silent overwrite of user-modified files.
+
+`init` is intentionally conservative and refuses a target that already has a valid `.ssealed/manifest.json`. Use `update` to reapply the recorded scaffold settings, or use `upgrade` to explicitly change `scope`, `profile`, `density`, or `runner`. `update` rejects setting changes so old generated files do not silently become untracked scaffold leftovers.
 
 ## Path Safety
 
@@ -145,13 +169,17 @@ If a managed block exists and differs from the current generated block, the file
 
 ```sh
 ssealed init --scope backend --runner none
-ssealed init --scope frontend --runner just
-ssealed init ./my-service --scope backend --runner make --yes
-ssealed init --scope fullstack --runner pnpm
-ssealed init --scope design --dry-run
+ssealed init --scope frontend --density minimal --runner just
+ssealed init ./my-service --scope backend --profile api-service --runner make --yes
+ssealed init --scope design --profile cli-tool --dry-run
+ssealed init --scope design --profile library --runner npm
+ssealed init --scope fullstack --profile desktop-app --runner pnpm
+ssealed update ./my-service --dry-run --json
+ssealed upgrade ./my-service --profile api-service --density strict --runner make --force
+ssealed doctor ./my-service --json
 ```
 
-`--json` prints a public result shape with file paths, kinds, actions, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.
+`--json` prints a public result shape with command, target, scope, profile, density, runner, file paths, kinds, actions, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.
 
 ## Why `.agents/skills`
 

@@ -4,7 +4,7 @@ import { normalizeText } from "./checksum.js";
 import { formatManifest, createManifest } from "./manifest.js";
 import { planTemplateFile, writePlannedFiles } from "./file-writer.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
-import type { InitOptions, PlannedFile, ScaffoldResult, ScaffoldWarning } from "./types.js";
+import type { Density, FileKind, InitOptions, PlannedFile, Profile, Runner, ScaffoldCommand, ScaffoldResult, ScaffoldWarning, Scope } from "./types.js";
 import { templateFilesFor } from "../templates/index.js";
 
 export async function planScaffold(options: InitOptions): Promise<readonly PlannedFile[]> {
@@ -16,7 +16,10 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
   readonly warnings: readonly ScaffoldWarning[];
 }> {
   const targetRoot = path.resolve(options.target);
-  const templates = templateFilesFor(options.scope, options.runner);
+  const command = options.command ?? "init";
+  const profile = options.profile ?? "generic";
+  const density = options.density ?? "standard";
+  const templates = templateFilesFor(options.scope, options.runner, profile, density);
   const previousManifest = await readPreviousManifest(targetRoot);
   const planned = await Promise.all(
     templates.map((template) =>
@@ -24,13 +27,15 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
         targetRoot,
         template,
         force: options.force,
-        previousChecksum: previousManifest.checksums.get(template.path),
+        previousChecksum: previousManifest.files.get(template.path)?.kind === template.kind ? previousManifest.files.get(template.path)?.checksum : undefined,
       }),
     ),
   );
 
   const manifest = createManifest({
     scope: options.scope,
+    profile,
+    density,
     runner: options.runner,
     generatedAt: new Date().toISOString(),
     files: planned,
@@ -45,16 +50,37 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
       content: manifestContent,
       merge: "manifest",
     },
-    previousChecksum: previousManifest.checksums.get(".ssealed/manifest.json"),
+    previousChecksum:
+      previousManifest.files.get(".ssealed/manifest.json")?.kind === "manifest"
+        ? previousManifest.files.get(".ssealed/manifest.json")?.checksum
+        : undefined,
   });
 
-  return { files: [...planned, { ...manifestPlan, content: normalizeText(manifestContent) }], warnings: previousManifest.warnings };
+  const settingsConflict = planManifestSettingsConflict(command, previousManifest.settings, {
+    scope: options.scope,
+    profile,
+    density,
+    runner: options.runner,
+    manifestContent,
+  });
+
+  return { files: [...planned, settingsConflict ?? manifestPlan], warnings: previousManifest.warnings };
 }
 
-async function readPreviousManifest(targetRoot: string): Promise<{
-  readonly checksums: ReadonlyMap<string, string>;
+export interface PreviousManifestSettings {
+  readonly scope: Scope;
+  readonly profile: Profile;
+  readonly density: Density;
+  readonly runner: Runner;
+}
+
+export interface PreviousManifestState {
+  readonly files: ReadonlyMap<string, { readonly checksum: string; readonly kind: FileKind }>;
+  readonly settings: PreviousManifestSettings | undefined;
   readonly warnings: readonly ScaffoldWarning[];
-}> {
+}
+
+export async function readPreviousManifest(targetRoot: string): Promise<PreviousManifestState> {
   const manifestPath = path.join(path.resolve(targetRoot), ".ssealed", "manifest.json");
   const content = await readFile(manifestPath, "utf8").catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
@@ -63,17 +89,26 @@ async function readPreviousManifest(targetRoot: string): Promise<{
     throw error;
   });
   if (content === undefined) {
-    return { checksums: new Map(), warnings: [] };
+    return { files: new Map(), settings: undefined, warnings: [] };
   }
 
   try {
     const parsed: unknown = JSON.parse(content);
     if (!isManifestLike(parsed)) {
-      return { checksums: new Map(), warnings: [invalidManifestWarning()] };
+      return { files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
     }
-    return { checksums: new Map(parsed.files.map((file) => [file.path, file.checksum])), warnings: [] };
+    return {
+      files: new Map(parsed.files.map((file) => [file.path, { checksum: file.checksum, kind: file.kind }])),
+      settings: {
+        scope: parsed.scope,
+        profile: parsed.profile ?? "generic",
+        density: parsed.density ?? "standard",
+        runner: parsed.runner,
+      },
+      warnings: [],
+    };
   } catch {
-    return { checksums: new Map(), warnings: [invalidManifestWarning()] };
+    return { files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
   }
 }
 
@@ -85,23 +120,115 @@ function invalidManifestWarning(): ScaffoldWarning {
   };
 }
 
-function isManifestLike(value: unknown): value is { readonly files: ReadonlyArray<{ readonly path: string; readonly checksum: string }> } {
+function isManifestLike(value: unknown): value is {
+  readonly tool: "ssealed";
+  readonly scope: Scope;
+  readonly profile?: Profile;
+  readonly density?: Density;
+  readonly runner: Runner;
+  readonly files: ReadonlyArray<{ readonly path: string; readonly checksum: string; readonly kind: FileKind }>;
+} {
   if (typeof value !== "object" || value === null || !("files" in value)) {
     return false;
   }
-  const files = (value as { readonly files: unknown }).files;
-  return Array.isArray(files) && files.every((file) => isManifestFileLike(file));
+  const candidate = value as {
+    readonly tool?: unknown;
+    readonly scope?: unknown;
+    readonly profile?: unknown;
+    readonly density?: unknown;
+    readonly runner?: unknown;
+    readonly files: unknown;
+  };
+  return (
+    candidate.tool === "ssealed" &&
+    isScope(candidate.scope) &&
+    (candidate.profile === undefined || isProfile(candidate.profile)) &&
+    (candidate.density === undefined || isDensity(candidate.density)) &&
+    isRunner(candidate.runner) &&
+    Array.isArray(candidate.files) &&
+    candidate.files.every((file) => isManifestFileLike(file))
+  );
 }
 
-function isManifestFileLike(value: unknown): value is { readonly path: string; readonly checksum: string } {
+function isManifestFileLike(value: unknown): value is { readonly path: string; readonly checksum: string; readonly kind: FileKind } {
   return (
     typeof value === "object" &&
     value !== null &&
     "path" in value &&
     "checksum" in value &&
+    "kind" in value &&
     typeof (value as { readonly path: unknown }).path === "string" &&
-    typeof (value as { readonly checksum: unknown }).checksum === "string"
+    typeof (value as { readonly checksum: unknown }).checksum === "string" &&
+    isFileKind((value as { readonly kind: unknown }).kind)
   );
+}
+
+function isScope(value: unknown): value is Scope {
+  return value === "backend" || value === "frontend" || value === "fullstack" || value === "design";
+}
+
+function isProfile(value: unknown): value is Profile {
+  return value === "generic" || value === "cli-tool" || value === "api-service" || value === "desktop-app" || value === "library";
+}
+
+function isDensity(value: unknown): value is Density {
+  return value === "minimal" || value === "standard" || value === "strict";
+}
+
+function isRunner(value: unknown): value is Runner {
+  return value === "none" || value === "make" || value === "just" || value === "task" || value === "npm" || value === "pnpm";
+}
+
+function isFileKind(value: unknown): value is FileKind {
+  return (
+    value === "document" ||
+    value === "contract" ||
+    value === "agent" ||
+    value === "checklist" ||
+    value === "validation" ||
+    value === "diagram" ||
+    value === "github" ||
+    value === "runner" ||
+    value === "manifest" ||
+    value === "hygiene"
+  );
+}
+
+function planManifestSettingsConflict(
+  command: ScaffoldCommand,
+  previous: PreviousManifestSettings | undefined,
+  current: PreviousManifestSettings & { readonly manifestContent: string },
+): PlannedFile | undefined {
+  if (previous === undefined) {
+    return undefined;
+  }
+  if (command === "init") {
+    return {
+      path: ".ssealed/manifest.json",
+      kind: "manifest",
+      action: "conflict",
+      content: normalizeText(current.manifestContent),
+      reason: "Existing scaffold already has a valid .ssealed/manifest.json. Use ssealed update to reapply it or ssealed upgrade to change scaffold settings.",
+    };
+  }
+  const changed = [
+    previous.scope === current.scope ? undefined : `scope ${previous.scope} -> ${current.scope}`,
+    previous.profile === current.profile ? undefined : `profile ${previous.profile} -> ${current.profile}`,
+    previous.density === current.density ? undefined : `density ${previous.density} -> ${current.density}`,
+    previous.runner === current.runner ? undefined : `runner ${previous.runner} -> ${current.runner}`,
+  ].filter((value): value is string => value !== undefined);
+
+  if (changed.length === 0 || command === "upgrade") {
+    return undefined;
+  }
+
+  return {
+    path: ".ssealed/manifest.json",
+    kind: "manifest",
+    action: "conflict",
+    content: normalizeText(current.manifestContent),
+    reason: `Existing scaffold was initialized with different settings (${changed.join(", ")}). update does not migrate scope, profile, density, or runner; use ssealed upgrade for an explicit transition.`,
+  };
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
@@ -109,12 +236,18 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 }
 
 export async function executeScaffold(options: InitOptions): Promise<ScaffoldResult> {
+  const command = options.command ?? "init";
+  const profile = options.profile ?? "generic";
+  const density = options.density ?? "standard";
   if (options.dryRun) {
     const plan = await planScaffoldWithWarnings(options);
     const conflicts = plan.files.filter((file) => file.action === "conflict");
     return {
       target: path.resolve(options.target),
+      command,
       scope: options.scope,
+      profile,
+      density,
       runner: options.runner,
       dryRun: options.dryRun,
       force: options.force,
@@ -131,7 +264,10 @@ export async function executeScaffold(options: InitOptions): Promise<ScaffoldRes
     if (conflicts.length > 0) {
       return {
         target: path.resolve(options.target),
+        command,
         scope: options.scope,
+        profile,
+        density,
         runner: options.runner,
         dryRun: false,
         force: options.force,
@@ -145,7 +281,10 @@ export async function executeScaffold(options: InitOptions): Promise<ScaffoldRes
     const written = await writePlannedFiles(path.resolve(options.target), plan.files);
     return {
       target: path.resolve(options.target),
+      command,
       scope: options.scope,
+      profile,
+      density,
       runner: options.runner,
       dryRun: false,
       force: options.force,
