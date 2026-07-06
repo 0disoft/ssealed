@@ -25,7 +25,7 @@ describe("CLI argument parsing", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await expect(main(["init", "./one", "./two", "--scope", "design", "--dry-run"])).resolves.toBe(1);
+      await expect(main(["init", "./one", "./two", "--scope", "general", "--dry-run"])).resolves.toBe(1);
       expect(stderr).toHaveBeenCalledWith("ssealed: init accepts at most one target, got 2\n");
       expect(stdout).not.toHaveBeenCalled();
     } finally {
@@ -41,23 +41,30 @@ describe("CLI argument parsing", () => {
       await expect(main(["init", "--scope", "nope", "--json"])).resolves.toBe(1);
       expect(stderr).not.toHaveBeenCalled();
       const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
-      expect(payload).toEqual({ ok: false, error: { code: "INVALID_SCOPE", message: "Invalid scope: nope. Valid scopes: backend, frontend, fullstack, design" } });
+      expect(payload).toEqual({
+        ok: false,
+        error: { code: "INVALID_SCOPE", message: "Invalid scope: nope. Valid scopes: backend, frontend, fullstack, general, mobile, infra, data" },
+      });
     } finally {
       stderr.mockRestore();
       stdout.mockRestore();
     }
   });
 
-  it("returns JSON errors for invalid profiles", async () => {
+  it("returns JSON errors for invalid repository types", async () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await expect(main(["init", "--scope", "design", "--profile", "nope", "--json"])).resolves.toBe(1);
+      await expect(main(["init", "--scope", "general", "--profile", "nope", "--json"])).resolves.toBe(1);
       expect(stderr).not.toHaveBeenCalled();
       const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
       expect(payload).toEqual({
         ok: false,
-        error: { code: "INVALID_PROFILE", message: "Invalid profile: nope. Valid profiles: generic, cli-tool, api-service, desktop-app, library" },
+        error: {
+          code: "INVALID_PROFILE",
+          message:
+            "Invalid repository type: nope. Valid repository types: generic, cli-tool, api-service, desktop-app, library, web-app, mobile-app, sdk, worker-service, infra-module, data-pipeline, github-action, browser-extension, plugin, docs-site, monorepo",
+        },
       });
     } finally {
       stderr.mockRestore();
@@ -69,7 +76,7 @@ describe("CLI argument parsing", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await expect(main(["init", "--scope", "design", "--density", "huge", "--json"])).resolves.toBe(1);
+      await expect(main(["init", "--scope", "general", "--density", "huge", "--json"])).resolves.toBe(1);
       expect(stderr).not.toHaveBeenCalled();
       const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
       expect(payload).toEqual({
@@ -91,7 +98,7 @@ describe("CLI argument parsing", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await expect(main(["init", dir, "--scope", "design", "--profile", "cli-tool", "--runner", "npm", "--dry-run", "--json"])).resolves.toBe(0);
+      await expect(main(["init", dir, "--scope", "general", "--profile", "cli-tool", "--runner", "npm", "--dry-run", "--json"])).resolves.toBe(0);
       expect(stderr).not.toHaveBeenCalled();
       const rawPayload = String(stdout.mock.calls[0]?.[0]);
       expect(rawPayload).not.toContain("SECRET_TOKEN_123");
@@ -100,6 +107,8 @@ describe("CLI argument parsing", () => {
       expect(payload.ok).toBe(true);
       expect(payload.command).toBe("init");
       expect(payload.profile).toBe("cli-tool");
+      expect(payload.repoType).toBe("cli-tool");
+      expect(payload.addons).toEqual([]);
       expect(payload.density).toBe("standard");
       expect(payload.files).toContainEqual(expect.objectContaining({ path: "docs/cli/command-contract.md", kind: "document", action: "create" }));
       expect(payload.files.find((file: { path: string }) => file.path === "package.json")).toEqual(
@@ -111,12 +120,50 @@ describe("CLI argument parsing", () => {
     }
   });
 
-  it("reports manifest-tracked file drift through doctor JSON output", async () => {
+  it("accepts repo-type and repeatable addons", async () => {
+    const dir = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(
+        main(["init", dir, "--scope", "general", "--repo-type", "cli-tool", "--addon", "github-action", "--addon", "docs-site", "--json"]),
+      ).resolves.toBe(0);
+      expect(stderr).not.toHaveBeenCalled();
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload.profile).toBe("cli-tool");
+      expect(payload.repoType).toBe("cli-tool");
+      expect(payload.addons).toEqual(["github-action", "docs-site"]);
+      expect(payload.files).toContainEqual(expect.objectContaining({ path: "docs/github-action/action-contract.md", action: "create" }));
+      expect(payload.files).toContainEqual(expect.objectContaining({ path: "docs/docs-site/information-architecture.md", action: "create" }));
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("normalizes the legacy design scope alias to general", async () => {
     const dir = await tempDir();
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
       await expect(main(["init", dir, "--scope", "design", "--yes", "--json"])).resolves.toBe(0);
+      expect(stderr).not.toHaveBeenCalled();
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload.scope).toBe("general");
+      const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+      expect(manifest.scope).toBe("general");
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("reports manifest-tracked file drift through doctor JSON output", async () => {
+    const dir = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["init", dir, "--scope", "general", "--yes", "--json"])).resolves.toBe(0);
       stdout.mockClear();
 
       await expect(main(["doctor", dir, "--json"])).resolves.toBe(0);
@@ -125,7 +172,7 @@ describe("CLI argument parsing", () => {
         expect.objectContaining({
           ok: true,
           command: "doctor",
-          scope: "design",
+          scope: "general",
           density: "standard",
         }),
       );
@@ -152,7 +199,7 @@ describe("CLI argument parsing", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await expect(main(["init", dir, "--scope", "design", "--dry-run", "--json"])).resolves.toBe(0);
+      await expect(main(["init", dir, "--scope", "general", "--dry-run", "--json"])).resolves.toBe(0);
       expect(stderr).not.toHaveBeenCalled();
       const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
       expect(payload.ok).toBe(true);
@@ -174,7 +221,7 @@ describe("CLI argument parsing", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await expect(main(["init", dir, "--scope", "design", "--json"])).resolves.toBe(1);
+      await expect(main(["init", dir, "--scope", "general", "--json"])).resolves.toBe(1);
       expect(stderr).not.toHaveBeenCalled();
       const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
       expect(payload).toEqual({

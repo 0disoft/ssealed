@@ -1,4 +1,4 @@
-import type { Density, FileKind, Profile, Runner, Scope, TemplateFile } from "../core/types.js";
+import type { Addon, Density, FileKind, Profile, Runner, Scope, TemplateFile } from "../core/types.js";
 import {
   agentSkill,
   architectureDoc,
@@ -193,18 +193,61 @@ const frontendFiles: readonly FileSpec[] = [
   file("docs/frontend/state-and-cache.md", "document", "markdown", "State and Cache", strictOnly),
 ];
 
-export function templateFilesFor(scope: Scope, runner: Runner, profile: Profile = "generic", density: Density = "standard"): readonly TemplateFile[] {
+const mobileFiles: readonly FileSpec[] = [
+  file("docs/mobile/README.md", "document", "markdown", "Mobile", allDensities),
+  file("docs/mobile/app-contract.md", "document", "markdown", "Mobile App Contract", allDensities),
+  file("docs/mobile/platform-support.md", "document", "markdown", "Mobile Platform Support", standardAndStrict),
+  file("docs/mobile/offline-and-sync.md", "document", "markdown", "Offline and Sync", standardAndStrict),
+  file("docs/mobile/store-release.md", "document", "markdown", "Store Release", strictOnly),
+  file(".agents/skills/mobile-app/SKILL.md", "agent", "agent-skill", "mobile-app", allDensities),
+  file(".agents/checklists/mobile-app.md", "checklist", "checklist", "Mobile App Checklist", allDensities),
+  file(".agents/validations/mobile-app.md", "validation", "validation", "Mobile App Validation", standardAndStrict),
+  file("diagrams/mobile-user-flow.mmd", "diagram", "mermaid", "mobile-user-flow", standardAndStrict),
+];
+
+const infraFiles: readonly FileSpec[] = [
+  file("docs/infra/README.md", "document", "markdown", "Infrastructure", allDensities),
+  file("docs/infra/module-contract.md", "document", "markdown", "Infrastructure Module Contract", allDensities),
+  file("docs/infra/environments.md", "document", "markdown", "Environments", standardAndStrict),
+  file("docs/infra/change-plan.md", "document", "markdown", "Infrastructure Change Plan", standardAndStrict),
+  file("docs/infra/drift-and-rollback.md", "document", "markdown", "Drift and Rollback", strictOnly),
+  file(".agents/skills/infra-change/SKILL.md", "agent", "agent-skill", "infra-change", allDensities),
+  file(".agents/checklists/infra-change.md", "checklist", "checklist", "Infrastructure Change Checklist", allDensities),
+  file(".agents/validations/infra-change.md", "validation", "validation", "Infrastructure Change Validation", standardAndStrict),
+  file("diagrams/infra-boundary.mmd", "diagram", "mermaid", "infra-boundary", standardAndStrict),
+];
+
+const dataFiles: readonly FileSpec[] = [
+  file("docs/data/README.md", "document", "markdown", "Data", allDensities),
+  file("docs/data/pipeline-contract.md", "document", "markdown", "Pipeline Contract", allDensities),
+  file("docs/data/lineage.md", "document", "markdown", "Data Lineage", standardAndStrict),
+  file("docs/data/quality.md", "document", "markdown", "Data Quality", standardAndStrict),
+  file("docs/data/privacy-and-retention.md", "document", "markdown", "Privacy and Retention", strictOnly),
+  file(".agents/skills/data-pipeline/SKILL.md", "agent", "agent-skill", "data-pipeline", allDensities),
+  file(".agents/checklists/data-pipeline.md", "checklist", "checklist", "Data Pipeline Checklist", allDensities),
+  file(".agents/validations/data-pipeline.md", "validation", "validation", "Data Pipeline Validation", standardAndStrict),
+  file("diagrams/data-lineage.mmd", "diagram", "mermaid", "data-lineage", standardAndStrict),
+];
+
+export function templateFilesFor(
+  scope: Scope,
+  runner: Runner,
+  profile: Profile = "generic",
+  density: Density = "standard",
+  addons: readonly Addon[] = [],
+): readonly TemplateFile[] {
   const scopedFiles = [
     ...commonFiles,
     ...(scope === "backend" || scope === "fullstack" ? backendFiles : []),
     ...(scope === "frontend" || scope === "fullstack" ? frontendFilesFor(scope) : []),
+    ...(scope === "mobile" ? mobileFiles : []),
+    ...(scope === "infra" ? infraFiles : []),
+    ...(scope === "data" ? dataFiles : []),
   ].filter((file) => includesDensity(file, density));
 
-  const files = [
-    ...scopedFiles.map((file) => renderFile(file, scope, profile)),
-    ...profileFilesFor(profile, scope, density),
-    ...runnerFiles(runner),
-  ];
+  const renderedScopedFiles = scopedFiles.map((file) => renderFile(file, scope, profile, addons));
+  const scopedPaths = new Set(renderedScopedFiles.map((file) => file.path));
+  const files = [...renderedScopedFiles, ...profileFilesFor(profile, scope, density, addons).filter((file) => !scopedPaths.has(file.path)), ...runnerFiles(runner)];
   assertUniqueTemplatePaths(files);
   return files;
 }
@@ -234,7 +277,7 @@ function assertUniqueTemplatePaths(files: readonly TemplateFile[]): void {
   }
 }
 
-function renderFile(file: FileSpec, scope: Scope, profile: Profile): TemplateFile {
+function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: readonly Addon[]): TemplateFile {
   switch (file.renderer) {
     case "editorconfig":
       return { ...file, content: editorconfig() };
@@ -243,17 +286,17 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile): TemplateFil
     case "gitignore":
       return { ...file, content: gitignoreBlock(), merge: "gitignore" };
     case "root-agents":
-      return { ...file, content: rootAgents(scope, profile) };
+      return { ...file, content: rootAgents(scope, profile, addons) };
     case "root-readme":
-      return { ...file, content: rootReadme(scope, profile) };
+      return { ...file, content: rootReadme(scope, profile, addons) };
     case "validation":
-      return { ...file, content: validationDoc(file.title ?? "Validation", scope, profile) };
+      return { ...file, content: validationDoc(file.title ?? "Validation", scope, profile, addons) };
     case "checklist-router":
-      return { ...file, content: checklistRouter(scope, profile) };
+      return { ...file, content: checklistRouter(scope, profile, addons) };
     case "docs-readme":
-      return { ...file, content: docsReadme(scope, profile) };
+      return { ...file, content: docsReadme(scope, profile, addons) };
     case "context-map":
-      return { ...file, content: contextMap(scope, profile) };
+      return { ...file, content: contextMap(scope, profile, addons) };
     case "agent-skill":
       return { ...file, content: agentSkill(file.title ?? "agent-skill") };
     case "checklist":
@@ -379,7 +422,7 @@ tmp/
 `;
 }
 
-function checklistRouter(scope: Scope, profile: Profile): string {
+function checklistRouter(scope: Scope, profile: Profile, addons: readonly Addon[]): string {
   const scopedRoutes = [
     ...(scope === "backend" || scope === "fullstack"
       ? ["- Backend API changes: .agents/checklists/backend-api.md", "- DB migration changes: .agents/checklists/db-migration.md"]
@@ -387,7 +430,10 @@ function checklistRouter(scope: Scope, profile: Profile): string {
     ...(scope === "frontend" || scope === "fullstack"
       ? ["- Frontend UI changes: .agents/checklists/frontend-ui.md", "- Accessibility changes: .agents/checklists/accessibility.md"]
       : []),
-    ...profileChecklistRoutes(profile),
+    ...(scope === "mobile" ? ["- Mobile app changes: .agents/checklists/mobile-app.md"] : []),
+    ...(scope === "infra" ? ["- Infrastructure changes: .agents/checklists/infra-change.md"] : []),
+    ...(scope === "data" ? ["- Data pipeline changes: .agents/checklists/data-pipeline.md"] : []),
+    ...profileChecklistRoutes(profile, addons),
   ];
 
   return `# Checklist Router
@@ -405,20 +451,34 @@ ${scopedRoutes.join("\n")}
 `;
 }
 
-function profileChecklistRoutes(profile: Profile): readonly string[] {
-  if (profile === "cli-tool") {
-    return ["- CLI tool changes: .agents/checklists/cli-tool.md"];
-  }
-  if (profile === "api-service") {
-    return ["- API service changes: .agents/checklists/api-service.md"];
-  }
-  if (profile === "desktop-app") {
-    return ["- Desktop app changes: .agents/checklists/desktop-app.md"];
-  }
-  if (profile === "library") {
-    return ["- Library package changes: .agents/checklists/library-package.md"];
-  }
-  return [];
+function profileChecklistRoutes(profile: Profile, addons: readonly Addon[]): readonly string[] {
+  return profileList(profile, addons).map((value) => `- ${profileChecklistLabel(value)} changes: .agents/checklists/${profileChecklistSlug(value)}.md`);
+}
+
+function profileList(profile: Profile, addons: readonly Addon[]): readonly Addon[] {
+  return [profile, ...addons].filter((value): value is Addon => value !== "generic");
+}
+
+function profileChecklistSlug(profile: Addon): string {
+  return profile === "library" ? "library-package" : profile;
+}
+
+function profileChecklistLabel(profile: Addon): string {
+  if (profile === "cli-tool") return "CLI tool";
+  if (profile === "api-service") return "API service";
+  if (profile === "desktop-app") return "Desktop app";
+  if (profile === "library") return "Library package";
+  if (profile === "web-app") return "Web app";
+  if (profile === "mobile-app") return "Mobile app";
+  if (profile === "sdk") return "SDK";
+  if (profile === "worker-service") return "Worker service";
+  if (profile === "infra-module") return "Infrastructure module";
+  if (profile === "data-pipeline") return "Data pipeline";
+  if (profile === "github-action") return "GitHub Action";
+  if (profile === "browser-extension") return "Browser extension";
+  if (profile === "plugin") return "Plugin";
+  if (profile === "docs-site") return "Docs site";
+  return "Monorepo";
 }
 
 function mermaid(name: string): string {

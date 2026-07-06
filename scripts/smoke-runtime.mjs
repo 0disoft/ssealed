@@ -29,7 +29,7 @@ try {
     throw new Error(`${runtime} --version returned unexpected stdout: ${JSON.stringify(version.stdout)}`);
   }
 
-  const result = await runCli(["init", target, "--scope", "design", "--runner", "none", "--yes", "--json"]);
+  const result = await runCli(["init", target, "--scope", "general", "--runner", "none", "--yes", "--json"]);
   const payload = JSON.parse(result.stdout);
   const written = Array.isArray(payload.written) ? payload.written : [];
   const files = Array.isArray(payload.files) ? payload.files : [];
@@ -37,7 +37,7 @@ try {
   if (
     payload.target !== target ||
     payload.ok !== true ||
-    payload.scope !== "design" ||
+    payload.scope !== "general" ||
     payload.runner !== "none" ||
     !written.includes("AGENTS.md") ||
     !written.includes(".ssealed/manifest.json") ||

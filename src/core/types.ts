@@ -1,8 +1,28 @@
-export const scopes = ["backend", "frontend", "fullstack", "design"] as const;
+export const scopes = ["backend", "frontend", "fullstack", "general", "mobile", "infra", "data"] as const;
 export type Scope = (typeof scopes)[number];
 
-export const profiles = ["generic", "cli-tool", "api-service", "desktop-app", "library"] as const;
+export const profiles = [
+  "generic",
+  "cli-tool",
+  "api-service",
+  "desktop-app",
+  "library",
+  "web-app",
+  "mobile-app",
+  "sdk",
+  "worker-service",
+  "infra-module",
+  "data-pipeline",
+  "github-action",
+  "browser-extension",
+  "plugin",
+  "docs-site",
+  "monorepo",
+] as const;
 export type Profile = (typeof profiles)[number];
+export type Addon = Exclude<Profile, "generic">;
+
+export const addons = profiles.filter((profile): profile is Addon => profile !== "generic");
 
 export const densities = ["minimal", "standard", "strict"] as const;
 export type Density = (typeof densities)[number];
@@ -57,6 +77,7 @@ export interface Manifest {
   readonly generatedAt: string;
   readonly scope: Scope;
   readonly profile: Profile;
+  readonly addons: readonly Addon[];
   readonly density: Density;
   readonly runner: Runner;
   readonly files: readonly ManifestFile[];
@@ -69,6 +90,7 @@ export interface ScaffoldResult {
   readonly target: string;
   readonly scope: Scope;
   readonly profile: Profile;
+  readonly addons: readonly Addon[];
   readonly density: Density;
   readonly runner: Runner;
   readonly dryRun: boolean;
@@ -92,8 +114,33 @@ export interface InitOptions {
   readonly target: string;
   readonly scope: Scope;
   readonly profile?: Profile;
+  readonly addons?: readonly Addon[];
   readonly density?: Density;
   readonly runner: Runner;
   readonly dryRun: boolean;
   readonly force: boolean;
+}
+
+export function normalizeScope(value: string): Scope | undefined {
+  if (value === "design") {
+    return "general";
+  }
+  return isScope(value) ? value : undefined;
+}
+
+export function isScope(value: unknown): value is Scope {
+  return typeof value === "string" && scopes.includes(value as Scope);
+}
+
+export function isProfile(value: unknown): value is Profile {
+  return typeof value === "string" && profiles.includes(value as Profile);
+}
+
+export function isAddon(value: unknown): value is Addon {
+  return typeof value === "string" && addons.includes(value as Addon);
+}
+
+export function normalizeAddons(values: readonly Addon[]): readonly Addon[] {
+  const selected = new Set(values);
+  return addons.filter((addon) => selected.has(addon));
 }

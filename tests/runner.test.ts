@@ -39,7 +39,7 @@ async function exists(root: string, relativePath: string): Promise<boolean> {
 
 async function scaffold(runner: Runner): Promise<string> {
   const dir = await tempDir();
-  const result = await executeScaffold({ target: dir, scope: "design", runner, dryRun: false, force: false });
+  const result = await executeScaffold({ target: dir, scope: "general", runner, dryRun: false, force: false });
   expect(result.conflicts).toHaveLength(0);
   return dir;
 }
@@ -85,7 +85,7 @@ describe("runner generation", () => {
   it("pnpm runner merges package scripts without overwriting existing scripts", async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, "package.json"), '{\n  "scripts": {\n    "test": "custom-test"\n  },\n  "name": "example"\n}\n');
-    const result = await executeScaffold({ target: dir, scope: "design", runner: "pnpm", dryRun: false, force: false });
+    const result = await executeScaffold({ target: dir, scope: "general", runner: "pnpm", dryRun: false, force: false });
     expect(result.conflicts).toHaveLength(0);
     const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
     expect(pkg.name).toBe("example");
@@ -96,7 +96,7 @@ describe("runner generation", () => {
   it("force conflicts instead of overwriting user-owned package scripts", async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, "package.json"), '{\n  "scripts": {\n    "test": "custom-test"\n  }\n}\n');
-    const result = await executeScaffold({ target: dir, scope: "design", runner: "npm", dryRun: false, force: true });
+    const result = await executeScaffold({ target: dir, scope: "general", runner: "npm", dryRun: false, force: true });
     expect(result.conflicts.map((file) => file.path)).toContain("package.json");
     const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
     expect(pkg.scripts.test).toBe("custom-test");
@@ -106,7 +106,7 @@ describe("runner generation", () => {
   it("force updates generated validation scripts in package.json", async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, "package.json"), JSON.stringify({ scripts: { test: validationScripts("npm").test } }, null, 2));
-    const result = await executeScaffold({ target: dir, scope: "design", runner: "pnpm", dryRun: false, force: true });
+    const result = await executeScaffold({ target: dir, scope: "general", runner: "pnpm", dryRun: false, force: true });
     expect(result.conflicts).toHaveLength(0);
     const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
     expect(pkg.scripts.test).toBe(validationScripts("pnpm").test);
@@ -115,7 +115,7 @@ describe("runner generation", () => {
   it("updates generated validation scripts without force when no scaffold manifest owns the runner state", async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, "package.json"), JSON.stringify({ scripts: { test: validationScripts("npm").test } }, null, 2));
-    const result = await executeScaffold({ target: dir, scope: "design", runner: "pnpm", dryRun: false, force: false });
+    const result = await executeScaffold({ target: dir, scope: "general", runner: "pnpm", dryRun: false, force: false });
     expect(result.conflicts).toHaveLength(0);
     const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
     expect(pkg.scripts.test).toBe(validationScripts("pnpm").test);
@@ -123,7 +123,7 @@ describe("runner generation", () => {
 
   it("conflicts instead of silently changing runner for an existing scaffold", async () => {
     const dir = await scaffold("npm");
-    const result = await executeScaffold({ command: "update", target: dir, scope: "design", runner: "pnpm", dryRun: false, force: true });
+    const result = await executeScaffold({ command: "update", target: dir, scope: "general", runner: "pnpm", dryRun: false, force: true });
     const conflict = result.conflicts.find((file) => file.path === ".ssealed/manifest.json");
     expect(conflict?.reason).toContain("runner npm -> pnpm");
     const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
@@ -132,7 +132,7 @@ describe("runner generation", () => {
 
   it("upgrade permits explicit runner changes for an existing scaffold", async () => {
     const dir = await scaffold("npm");
-    const result = await executeScaffold({ command: "upgrade", target: dir, scope: "design", runner: "pnpm", dryRun: false, force: true });
+    const result = await executeScaffold({ command: "upgrade", target: dir, scope: "general", runner: "pnpm", dryRun: false, force: true });
     expect(result.conflicts).toHaveLength(0);
     const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8")) as PackageJsonForTest;
     expect(pkg.scripts.test).toBe(validationScripts("pnpm").test);
@@ -143,7 +143,7 @@ describe("runner generation", () => {
     const packagePath = path.join(dir, "package.json");
     const pkg = JSON.parse(await readFile(packagePath, "utf8")) as PackageJsonForTest;
     await writeFile(packagePath, JSON.stringify({ ...pkg, name: "example" }, null, 2));
-    const result = await executeScaffold({ command: "update", target: dir, scope: "design", runner: "npm", dryRun: false, force: false });
+    const result = await executeScaffold({ command: "update", target: dir, scope: "general", runner: "npm", dryRun: false, force: false });
     expect(result.conflicts.map((file) => file.path)).not.toContain(".ssealed/manifest.json");
     expect(result.written).toContain(".ssealed/manifest.json");
     const updated = JSON.parse(await readFile(packagePath, "utf8")) as PackageJsonForTest;
@@ -153,7 +153,7 @@ describe("runner generation", () => {
   it("invalid package.json conflicts for npm runner", async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, "package.json"), "{nope");
-    const result = await executeScaffold({ target: dir, scope: "design", runner: "npm", dryRun: false, force: false });
+    const result = await executeScaffold({ target: dir, scope: "general", runner: "npm", dryRun: false, force: false });
     expect(result.conflicts.map((file) => file.path)).toContain("package.json");
     await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
   });
@@ -162,7 +162,7 @@ describe("runner generation", () => {
     const dir = await tempDir();
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await expect(runInit({ target: dir, scope: "design", runner: "bun", yes: true, dryRun: true, force: false, json: true })).resolves.toBe(1);
+      await expect(runInit({ target: dir, scope: "general", runner: "bun", yes: true, dryRun: true, force: false, json: true })).resolves.toBe(1);
       const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
       expect(payload.error.code).toBe("INVALID_RUNNER");
       await expect(readFile(path.join(dir, "bunfig.toml"), "utf8")).rejects.toThrow();

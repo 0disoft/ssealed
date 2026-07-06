@@ -1,4 +1,4 @@
-import type { Density, FileKind, Profile, Scope, TemplateFile } from "../core/types.js";
+import type { Addon, Density, FileKind, Profile, Scope, TemplateFile } from "../core/types.js";
 import { agentSkill, checklistDoc, openApiSkeleton, profileDoc, validationDoc } from "./documents.js";
 
 interface ProfileFileSpec {
@@ -65,11 +65,84 @@ const libraryFiles: readonly ProfileFileSpec[] = [
   { path: ".agents/validations/library-package.md", kind: "validation", title: "Library Package Validation", renderer: "validation", density: ["standard", "strict"] },
 ];
 
-export function profileFilesFor(profile: Profile, scope: Scope, density: Density): readonly TemplateFile[] {
-  return profileFileSpecs(profile, scope).filter((file) => includesDensity(file, density)).map((file) => renderProfileFile(file, profile, scope));
+const webAppFiles = profileGroup("web-app", "Web App", "docs/web-app", [
+  ["routing-and-rendering.md", "Routing and Rendering", ["minimal", "standard", "strict"]],
+  ["browser-state.md", "Browser State", ["standard", "strict"]],
+  ["frontend-observability.md", "Frontend Observability", ["strict"]],
+]);
+
+const mobileAppFiles = profileGroup("mobile-app", "Mobile App", "docs/mobile-app", [
+  ["app-lifecycle.md", "App Lifecycle", ["minimal", "standard", "strict"]],
+  ["offline-and-sync.md", "Offline and Sync", ["standard", "strict"]],
+  ["store-release.md", "Store Release", ["strict"]],
+]);
+
+const sdkFiles = profileGroup("sdk", "SDK", "docs/sdk", [
+  ["public-api.md", "SDK Public API", ["minimal", "standard", "strict"]],
+  ["compatibility.md", "SDK Compatibility", ["standard", "strict"]],
+  ["examples-and-samples.md", "Examples and Samples", ["strict"]],
+]);
+
+const workerServiceFiles = profileGroup("worker-service", "Worker Service", "docs/worker-service", [
+  ["job-contract.md", "Job Contract", ["minimal", "standard", "strict"]],
+  ["retry-and-idempotency.md", "Retry and Idempotency", ["standard", "strict"]],
+  ["queue-operations.md", "Queue Operations", ["strict"]],
+]);
+
+const infraModuleFiles = profileGroup("infra-module", "Infrastructure Module", "docs/infra-module", [
+  ["module-interface.md", "Module Interface", ["minimal", "standard", "strict"]],
+  ["environment-contract.md", "Environment Contract", ["standard", "strict"]],
+  ["drift-policy.md", "Drift Policy", ["strict"]],
+]);
+
+const dataPipelineFiles = profileGroup("data-pipeline", "Data Pipeline", "docs/data-pipeline", [
+  ["lineage.md", "Data Lineage", ["minimal", "standard", "strict"]],
+  ["quality-gates.md", "Quality Gates", ["standard", "strict"]],
+  ["retention-and-privacy.md", "Retention and Privacy", ["strict"]],
+]);
+
+const githubActionFiles = profileGroup("github-action", "GitHub Action", "docs/github-action", [
+  ["action-contract.md", "Action Contract", ["minimal", "standard", "strict"]],
+  ["inputs-and-outputs.md", "Inputs and Outputs", ["minimal", "standard", "strict"]],
+  ["permissions.md", "Permissions", ["standard", "strict"]],
+]);
+
+const browserExtensionFiles = profileGroup("browser-extension", "Browser Extension", "docs/browser-extension", [
+  ["extension-contract.md", "Extension Contract", ["minimal", "standard", "strict"]],
+  ["permissions.md", "Permissions", ["standard", "strict"]],
+  ["content-script-boundaries.md", "Content Script Boundaries", ["strict"]],
+]);
+
+const pluginFiles = profileGroup("plugin", "Plugin", "docs/plugin", [
+  ["host-contract.md", "Host Contract", ["minimal", "standard", "strict"]],
+  ["extension-points.md", "Extension Points", ["standard", "strict"]],
+  ["compatibility.md", "Plugin Compatibility", ["strict"]],
+]);
+
+const docsSiteFiles = profileGroup("docs-site", "Docs Site", "docs/docs-site", [
+  ["information-architecture.md", "Information Architecture", ["minimal", "standard", "strict"]],
+  ["publishing.md", "Publishing", ["standard", "strict"]],
+  ["content-quality.md", "Content Quality", ["strict"]],
+]);
+
+const monorepoFiles = profileGroup("monorepo", "Monorepo", "docs/monorepo", [
+  ["workspace-boundaries.md", "Workspace Boundaries", ["minimal", "standard", "strict"]],
+  ["package-ownership.md", "Package Ownership", ["standard", "strict"]],
+  ["change-coordination.md", "Change Coordination", ["strict"]],
+]);
+
+export function profileFilesFor(profile: Profile, scope: Scope, density: Density, addons: readonly Addon[] = []): readonly TemplateFile[] {
+  const rendered = profileList(profile, addons).flatMap((repoType) =>
+    profileFileSpecs(repoType, scope).filter((file) => includesDensity(file, density)).map((file) => renderProfileFile(file, repoType, scope)),
+  );
+  return dedupeTemplateFiles(rendered);
 }
 
-function profileFileSpecs(profile: Profile, scope: Scope): readonly ProfileFileSpec[] {
+function profileList(profile: Profile, addons: readonly Addon[]): readonly Addon[] {
+  return [profile, ...addons].filter((value): value is Addon => value !== "generic");
+}
+
+function profileFileSpecs(profile: Addon, scope: Scope): readonly ProfileFileSpec[] {
   if (profile === "cli-tool") {
     return cliToolFiles;
   }
@@ -83,10 +156,40 @@ function profileFileSpecs(profile: Profile, scope: Scope): readonly ProfileFileS
   if (profile === "library") {
     return libraryFiles;
   }
-  return [];
+  if (profile === "web-app") {
+    return webAppFiles;
+  }
+  if (profile === "mobile-app") {
+    return mobileAppFiles;
+  }
+  if (profile === "sdk") {
+    return sdkFiles;
+  }
+  if (profile === "worker-service") {
+    return workerServiceFiles;
+  }
+  if (profile === "infra-module") {
+    return infraModuleFiles;
+  }
+  if (profile === "data-pipeline") {
+    return dataPipelineFiles;
+  }
+  if (profile === "github-action") {
+    return githubActionFiles;
+  }
+  if (profile === "browser-extension") {
+    return browserExtensionFiles;
+  }
+  if (profile === "plugin") {
+    return pluginFiles;
+  }
+  if (profile === "docs-site") {
+    return docsSiteFiles;
+  }
+  return monorepoFiles;
 }
 
-function renderProfileFile(file: ProfileFileSpec, profile: Profile, scope: Scope): TemplateFile {
+function renderProfileFile(file: ProfileFileSpec, profile: Addon, scope: Scope): TemplateFile {
   switch (file.renderer) {
     case "agent-skill":
       return { ...file, content: agentSkill(file.title) };
@@ -122,4 +225,35 @@ function renderProfileFile(file: ProfileFileSpec, profile: Profile, scope: Scope
 
 function includesDensity(file: ProfileFileSpec, density: Density): boolean {
   return file.density?.includes(density) ?? density !== "minimal";
+}
+
+function profileGroup(profile: Addon, title: string, dir: string, docs: ReadonlyArray<readonly [string, string, readonly Density[]]>): readonly ProfileFileSpec[] {
+  const checklistSlug = profile === "library" ? "library-package" : profile;
+  return [
+    { path: `${dir}/README.md`, kind: "document", title, renderer: "profile-doc", density: ["minimal", "standard", "strict"] },
+    ...docs.map(
+      ([filename, docTitle, density]): ProfileFileSpec => ({
+        path: `${dir}/${filename}`,
+        kind: "document",
+        title: docTitle,
+        renderer: "profile-doc",
+        density,
+      }),
+    ),
+    { path: `.agents/skills/${checklistSlug}/SKILL.md`, kind: "agent", title: checklistSlug, renderer: "agent-skill", density: ["minimal", "standard", "strict"] },
+    { path: `.agents/checklists/${checklistSlug}.md`, kind: "checklist", title: `${title} Checklist`, renderer: "checklist", density: ["minimal", "standard", "strict"] },
+    { path: `.agents/validations/${checklistSlug}.md`, kind: "validation", title: `${title} Validation`, renderer: "validation", density: ["standard", "strict"] },
+  ];
+}
+
+function dedupeTemplateFiles(files: readonly TemplateFile[]): readonly TemplateFile[] {
+  const seen = new Set<string>();
+  const deduped: TemplateFile[] = [];
+  for (const file of files) {
+    if (!seen.has(file.path)) {
+      seen.add(file.path);
+      deduped.push(file);
+    }
+  }
+  return deduped;
 }

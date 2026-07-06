@@ -7,29 +7,31 @@ const commandNames = ["init", "update", "upgrade", "doctor"] as const satisfies 
 const helpText = `ssealed
 
 Usage:
-  ssealed init [target] --scope backend|frontend|fullstack|design [--profile generic|cli-tool|api-service|desktop-app|library] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
+  ssealed init [target] --scope backend|frontend|fullstack|general|mobile|infra|data [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed update [target]
-  ssealed upgrade [target] [--scope backend|frontend|fullstack|design] [--profile generic|cli-tool|api-service|desktop-app|library] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
+  ssealed upgrade [target] [--scope backend|frontend|fullstack|general|mobile|infra|data] [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed doctor [target]
   ssealed --help
   ssealed --version
 
 Options:
-  --scope    Scaffold ownership scope.
-  --profile  Repository shape profile. Defaults to generic for init.
-  --density  Scaffold density. Defaults to standard for init.
-  --runner   Optional validation runner entrypoint. Defaults to none for init.
-  --yes      Never prompt.
-  --dry-run  Print planned operations without writing files.
-  --force    Overwrite conflicts only when current content matches previous manifest checksums.
-  --json     Print machine-readable JSON.
+  --scope      Scaffold ownership scope.
+  --repo-type  Primary repository shape. Defaults to generic for init.
+  --profile    Alias for --repo-type.
+  --addon      Add an extra repository-shape surface. Repeatable.
+  --density    Scaffold density. Defaults to standard for init.
+  --runner     Optional validation runner entrypoint. Defaults to none for init.
+  --yes        Never prompt.
+  --dry-run    Print planned operations without writing files.
+  --force      Overwrite conflicts only when current content matches previous manifest checksums.
+  --json       Print machine-readable JSON.
 `;
 
 const commandHelpText = `ssealed init|update|upgrade|doctor [target]
 
 Commands:
   init     Create a new scaffold. Refuses targets with an existing valid manifest.
-  update   Reapply the existing manifest settings without changing scope, profile, density, or runner.
+  update   Reapply the existing manifest settings without changing scope, repo type, addons, density, or runner.
   upgrade  Explicitly change scaffold settings and replan generated files.
   doctor   Check manifest-tracked files for missing or modified content.
 
@@ -37,14 +39,31 @@ Scopes:
   backend
   frontend
   fullstack
-  design
+  general
+  mobile
+  infra
+  data
 
-Profiles:
+Repository Types:
   generic
   cli-tool
   api-service
   desktop-app
   library
+  web-app
+  mobile-app
+  sdk
+  worker-service
+  infra-module
+  data-pipeline
+  github-action
+  browser-extension
+  plugin
+  docs-site
+  monorepo
+
+Addons:
+  Any repository type except generic. Repeat --addon for multiple surfaces.
 
 Densities:
   minimal
@@ -61,9 +80,10 @@ Runners:
 
 Examples:
   ssealed init --scope backend --runner none
-  ssealed init --scope frontend --profile generic --density minimal --runner just
+  ssealed init --scope frontend --repo-type generic --density minimal --runner just
+  ssealed init --scope general --repo-type cli-tool --addon github-action --dry-run
   ssealed update ./my-service --yes
-  ssealed upgrade ./my-service --profile api-service --density strict --runner make --yes --force
+  ssealed upgrade ./my-service --repo-type api-service --density strict --runner make --yes --force
   ssealed doctor ./my-service --json
 `;
 
@@ -71,6 +91,8 @@ interface ParsedScaffoldArgs {
   readonly values: {
     readonly scope?: string;
     readonly profile?: string;
+    readonly "repo-type"?: string;
+    readonly addon?: string | readonly string[];
     readonly density?: string;
     readonly runner?: string;
     readonly yes?: boolean;
@@ -145,7 +167,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       dryRun: parsed.values["dry-run"] ?? false,
       force: parsed.values.force ?? false,
       json: parsed.values.json ?? false,
+      ...(parsed.values["repo-type"] === undefined ? {} : { repoType: parsed.values["repo-type"] }),
       ...(parsed.values.profile === undefined ? {} : { profile: parsed.values.profile }),
+      ...(parsed.values.addon === undefined ? {} : { addon: parsed.values.addon }),
       ...(parsed.values.density === undefined ? {} : { density: parsed.values.density }),
     });
   } catch (error: unknown) {
@@ -164,7 +188,9 @@ function parseScaffoldArgs(args: readonly string[]): ParsedScaffoldArgs | Error 
       allowPositionals: true,
       options: {
         scope: { type: "string" },
+        "repo-type": { type: "string" },
         profile: { type: "string" },
+        addon: { type: "string", multiple: true },
         density: { type: "string" },
         runner: { type: "string" },
         yes: { type: "boolean", default: false },

@@ -5,7 +5,23 @@ import { stdin as input, stdout as output } from "node:process";
 import { sha256 } from "../core/checksum.js";
 import { executeScaffold, readPreviousManifest, type PreviousManifestSettings } from "../core/scaffold.js";
 import { resolveInsideTarget } from "../core/path-safety.js";
-import { densities, profiles, runners, scopes, type Density, type Profile, type Runner, type ScaffoldCommand, type Scope } from "../core/types.js";
+import {
+  addons,
+  densities,
+  isAddon,
+  isProfile,
+  normalizeAddons,
+  normalizeScope,
+  profiles,
+  runners,
+  scopes,
+  type Addon,
+  type Density,
+  type Profile,
+  type Runner,
+  type ScaffoldCommand,
+  type Scope,
+} from "../core/types.js";
 
 export type CliCommand = ScaffoldCommand | "doctor";
 
@@ -14,6 +30,8 @@ export interface InitCliOptions {
   readonly target: string | undefined;
   readonly scope: string | undefined;
   readonly profile?: string;
+  readonly repoType?: string;
+  readonly addon?: string | readonly string[];
   readonly density?: string;
   readonly runner: string | undefined;
   readonly yes: boolean;
@@ -42,6 +60,7 @@ export async function runScaffoldCommand(options: InitCliOptions & { readonly co
     target,
     scope: settings.scope,
     profile: settings.profile,
+    addons: settings.addons,
     density: settings.density,
     runner: settings.runner,
     dryRun: options.dryRun,
@@ -60,8 +79,10 @@ export async function runScaffoldCommand(options: InitCliOptions & { readonly co
 type InitErrorCode =
   | "INVALID_SCOPE"
   | "INVALID_PROFILE"
+  | "INVALID_ADDON"
   | "INVALID_DENSITY"
   | "INVALID_RUNNER"
+  | "CONFLICTING_REPOSITORY_TYPE"
   | "MISSING_SCOPE"
   | "MISSING_MANIFEST"
   | "SETTINGS_CHANGE_REQUIRES_UPGRADE";
@@ -81,9 +102,9 @@ async function resolveScaffoldSettings(
     if (isInitError(scope)) {
       return scope;
     }
-    const profile = resolveProfile(options.profile);
-    if (isInitError(profile)) {
-      return profile;
+    const repositoryShape = resolveRepositoryShape(options);
+    if (isInitError(repositoryShape)) {
+      return repositoryShape;
     }
     const density = resolveDensity(options.density);
     if (isInitError(density)) {
@@ -95,7 +116,8 @@ async function resolveScaffoldSettings(
     }
     return {
       scope,
-      profile,
+      profile: repositoryShape.profile,
+      addons: repositoryShape.addons,
       density,
       runner,
     };
@@ -116,9 +138,9 @@ async function resolveScaffoldSettings(
   if (isInitError(scope)) {
     return scope;
   }
-  const profile = options.profile === undefined ? previous.settings.profile : resolveProfile(options.profile);
-  if (isInitError(profile)) {
-    return profile;
+  const repositoryShape = resolveRepositoryShape(options, previous.settings);
+  if (isInitError(repositoryShape)) {
+    return repositoryShape;
   }
   const density = options.density === undefined ? previous.settings.density : resolveDensity(options.density);
   if (isInitError(density)) {
@@ -128,12 +150,13 @@ async function resolveScaffoldSettings(
   if (isInitError(runner)) {
     return runner;
   }
-  const resolved = { scope, profile, density, runner };
+  const resolved = { scope, profile: repositoryShape.profile, addons: repositoryShape.addons, density, runner };
 
   if (options.command === "update") {
     const changed = [
       resolved.scope === previous.settings.scope ? undefined : `scope ${previous.settings.scope} -> ${resolved.scope}`,
       resolved.profile === previous.settings.profile ? undefined : `profile ${previous.settings.profile} -> ${resolved.profile}`,
+      sameAddons(resolved.addons, previous.settings.addons) ? undefined : `addons ${formatAddons(previous.settings.addons)} -> ${formatAddons(resolved.addons)}`,
       resolved.density === previous.settings.density ? undefined : `density ${previous.settings.density} -> ${resolved.density}`,
       resolved.runner === previous.settings.runner ? undefined : `runner ${previous.settings.runner} -> ${resolved.runner}`,
     ].filter((value): value is string => value !== undefined);
@@ -157,7 +180,7 @@ async function resolveInitScope(options: InitCliOptions): Promise<Scope | InitEr
   if (options.yes) {
     return {
       code: "MISSING_SCOPE",
-      message: "Missing --scope. --yes disables prompts, so pass one of: backend, frontend, fullstack, design.",
+      message: `Missing --scope. --yes disables prompts, so pass one of: ${scopes.join(", ")}.`,
       showExamples: true,
     };
   }
@@ -168,7 +191,7 @@ async function resolveInitScope(options: InitCliOptions): Promise<Scope | InitEr
 
   const rl = readline.createInterface({ input, output });
   try {
-    const answer = (await rl.question("Select scope (backend/frontend/fullstack/design): ")).trim();
+    const answer = (await rl.question(`Select scope (${scopes.join("/")}): `)).trim();
     return resolveScopeValue(answer);
   } finally {
     rl.close();
@@ -176,8 +199,9 @@ async function resolveInitScope(options: InitCliOptions): Promise<Scope | InitEr
 }
 
 function resolveScopeValue(value: string): Scope | InitError {
-  return isScope(value)
-    ? value
+  const scope = normalizeScope(value);
+  return scope !== undefined
+    ? scope
     : { code: "INVALID_SCOPE", message: `Invalid scope: ${value}. Valid scopes: ${scopes.join(", ")}` };
 }
 
@@ -190,13 +214,53 @@ function resolveRunner(value: string | undefined): Runner | InitError {
     : { code: "INVALID_RUNNER", message: `Invalid runner: ${value}. Valid runners: ${runners.join(", ")}` };
 }
 
-function resolveProfile(value: string | undefined): Profile | InitError {
-  if (value === undefined) {
-    return "generic";
+interface RepositoryShape {
+  readonly profile: Profile;
+  readonly addons: readonly Addon[];
+}
+
+function resolveRepositoryShape(options: InitCliOptions, previous?: PreviousManifestSettings): RepositoryShape | InitError {
+  const repoType = options.repoType;
+  if (repoType !== undefined && options.profile !== undefined && repoType !== options.profile) {
+    return {
+      code: "CONFLICTING_REPOSITORY_TYPE",
+      message: `Conflicting repository type options: --repo-type ${repoType} and --profile ${options.profile}. Use one value.`,
+    };
   }
-  return isProfile(value)
-    ? value
-    : { code: "INVALID_PROFILE", message: `Invalid profile: ${value}. Valid profiles: ${profiles.join(", ")}` };
+
+  const profileValue = repoType ?? options.profile;
+  const profile = profileValue === undefined ? previous?.profile ?? "generic" : resolveProfile(profileValue);
+  if (isInitError(profile)) {
+    return profile;
+  }
+
+  const addonValues = options.addon === undefined ? previous?.addons ?? [] : toStringArray(options.addon);
+  const parsedAddons: Addon[] = [];
+  for (const value of addonValues) {
+    if (value === "generic") {
+      return { code: "INVALID_ADDON", message: "Invalid addon: generic. Addons must be repository-specific; valid addons: " + addons.join(", ") };
+    }
+    if (!isAddon(value)) {
+      return { code: "INVALID_ADDON", message: `Invalid addon: ${value}. Valid addons: ${addons.join(", ")}` };
+    }
+    if (value === profile) {
+      return { code: "INVALID_ADDON", message: `Invalid addon: ${value}. Addons must differ from the primary repository type.` };
+    }
+    parsedAddons.push(value);
+  }
+
+  return {
+    profile,
+    addons: normalizeAddons(parsedAddons),
+  };
+}
+
+function toStringArray(value: string | readonly string[]): readonly string[] {
+  return typeof value === "string" ? [value] : value;
+}
+
+function resolveProfile(value: string): Profile | InitError {
+  return isProfile(value) ? value : { code: "INVALID_PROFILE", message: `Invalid repository type: ${value}. Valid repository types: ${profiles.join(", ")}` };
 }
 
 function resolveDensity(value: string | undefined): Density | InitError {
@@ -206,14 +270,6 @@ function resolveDensity(value: string | undefined): Density | InitError {
   return isDensity(value)
     ? value
     : { code: "INVALID_DENSITY", message: `Invalid density: ${value}. Valid densities: ${densities.join(", ")}` };
-}
-
-function isScope(value: string): value is Scope {
-  return scopes.includes(value as Scope);
-}
-
-function isProfile(value: string): value is Profile {
-  return profiles.includes(value as Profile);
 }
 
 function isDensity(value: string): value is Density {
@@ -233,9 +289,9 @@ function printExamples(): void {
     [
       "Examples:",
       "  ssealed init --scope backend --runner none",
-      "  ssealed init --scope frontend --profile generic --density minimal --runner just",
+      "  ssealed init --scope frontend --repo-type generic --density minimal --runner just",
       "  ssealed update ./my-service --yes",
-      "  ssealed upgrade ./my-service --profile api-service --density strict --runner make --yes --force",
+      "  ssealed upgrade ./my-service --repo-type api-service --density strict --runner make --yes --force",
       "  ssealed doctor ./my-service --json",
     ].join("\n") + "\n",
   );
@@ -264,6 +320,8 @@ function formatJsonResult(result: Awaited<ReturnType<typeof executeScaffold>>): 
     target: result.target,
     scope: result.scope,
     profile: result.profile,
+    repoType: result.profile,
+    addons: result.addons,
     density: result.density,
     runner: result.runner,
     dryRun: result.dryRun,
@@ -290,7 +348,8 @@ function formatHumanResult(result: Awaited<ReturnType<typeof executeScaffold>>):
     `ssealed ${result.command} ${result.dryRun ? "plan" : "result"}`,
     `Target: ${result.target}`,
     `Scope: ${result.scope}`,
-    `Profile: ${result.profile}`,
+    `Repository Type: ${result.profile}`,
+    `Addons: ${formatAddons(result.addons)}`,
     `Density: ${result.density}`,
     `Runner: ${result.runner}`,
   ];
@@ -372,6 +431,8 @@ async function runDoctor(target: string, json: boolean): Promise<number> {
     target,
     scope: previous.settings.scope,
     profile: previous.settings.profile,
+    repoType: previous.settings.profile,
+    addons: previous.settings.addons,
     density: previous.settings.density,
     runner: previous.settings.runner,
     checks,
@@ -392,6 +453,7 @@ function formatDoctorHuman(payload: {
   readonly target: string;
   readonly scope: Scope;
   readonly profile: Profile;
+  readonly addons: readonly Addon[];
   readonly density: Density;
   readonly runner: Runner;
   readonly checks: readonly DoctorCheck[];
@@ -400,7 +462,8 @@ function formatDoctorHuman(payload: {
     "ssealed doctor result",
     `Target: ${payload.target}`,
     `Scope: ${payload.scope}`,
-    `Profile: ${payload.profile}`,
+    `Repository Type: ${payload.profile}`,
+    `Addons: ${formatAddons(payload.addons)}`,
     `Density: ${payload.density}`,
     `Runner: ${payload.runner}`,
     `Status: ${payload.ok ? "ok" : "drift"}`,
@@ -410,6 +473,14 @@ function formatDoctorHuman(payload: {
     lines.push(`- ${check.status}: ${check.path}`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+function sameAddons(left: readonly Addon[], right: readonly Addon[]): boolean {
+  return left.length === right.length && left.every((addon, index) => addon === right[index]);
+}
+
+function formatAddons(values: readonly Addon[]): string {
+  return values.length === 0 ? "none" : values.join(", ");
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

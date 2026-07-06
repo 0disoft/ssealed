@@ -18,7 +18,7 @@ The npm package keeps the portable `ssealed` binary name. npm-installed command 
 bun install
 bun run build
 node dist/cli.js init --scope backend --runner none
-bun dist/cli.js init --scope backend --profile api-service --runner none
+bun dist/cli.js init --scope backend --repo-type api-service --runner none
 ```
 
 ## Development Commands
@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.4.0`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.5.0`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -61,15 +61,16 @@ Do not store an npm token in the repository unless Trusted Publishing is unavail
 ## CLI
 
 ```sh
-ssealed init [target] --scope backend|frontend|fullstack|design
+ssealed init [target] --scope backend|frontend|fullstack|general|mobile|infra|data
 ssealed update [target]
 ssealed upgrade [target]
 ssealed doctor [target]
-ssealed init [target] --profile generic|cli-tool|api-service|desktop-app|library
+ssealed init [target] --repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo
+ssealed init [target] --addon github-action --addon docs-site
 ssealed init [target] --density minimal|standard|strict
 ssealed init [target] --runner none|make|just|task|npm|pnpm
 ssealed update [target] --dry-run --json
-ssealed upgrade [target] --profile api-service --density strict --runner make --force
+ssealed upgrade [target] --repo-type api-service --density strict --runner make --force
 ssealed doctor [target] --json
 ssealed --help
 ssealed --version
@@ -77,36 +78,64 @@ ssealed init --help
 ```
 
 `init` creates a new scaffold and refuses targets with an existing valid `.ssealed/manifest.json`.
-`update` reapplies the existing manifest settings and refreshes checksums without changing `scope`, `profile`, `density`, or `runner`.
+`update` reapplies the existing manifest settings and refreshes checksums without changing `scope`, repository type, addons, `density`, or `runner`.
 `upgrade` is the explicit path for changing scaffold settings.
 `doctor` checks manifest-tracked files for missing or modified content.
 
+`--profile` remains accepted as an alias for `--repo-type`.
+
 ## Scope Matrix
+
+Scopes describe the ownership area of the repository.
 
 - `backend`: common scaffold plus backend docs, `api/openapi.yaml`, DBML, backend skills, backend checklists, and backend validations.
 - `frontend`: common scaffold plus `docs/frontend/FRONTEND_DESIGN.md`, consumed backend API contracts, frontend skills, frontend checklists, and frontend validations.
 - `fullstack`: common plus backend and frontend surfaces. It does not generate `contracts/backend-api/` because `api/openapi.yaml` is the source of truth.
-- `design`: common design, architecture, engineering, operational, validation, checklist, and agent scaffolds only.
+- `general`: common product, architecture, engineering, operational, validation, checklist, and agent scaffolds.
+- `mobile`: common scaffold plus mobile product surface, platform support, offline/sync, store release, mobile skill, checklist, and validation documents.
+- `infra`: common scaffold plus infrastructure contract, environment, change-plan, drift, rollback, infra skill, checklist, and validation documents. It does not generate runtime infrastructure code.
+- `data`: common scaffold plus data pipeline contract, lineage, quality, privacy, retention, data skill, checklist, and validation documents.
 
 Backend scope does not generate frontend docs because ownership drift makes agents edit the wrong surface. Frontend scope does not generate backend internals because database, migration, and authorization implementation details belong to backend owners.
 
-## Profile Matrix
+## Repository Type Matrix
 
-Profiles describe the repository shape. They are intentionally separate from scope so a backend-owned repository can be an API service, a design-only repository can still draft CLI contracts, and a fullstack repository can also carry desktop-app release and update contracts.
+Repository types describe the shape of the repository. They are intentionally separate from scope so a backend-owned repository can be an API service, a general repository can still draft CLI contracts, and a fullstack repository can also carry desktop-app release and update contracts.
 
-- `generic`: default behavior. Generates no repository-shape-specific profile files.
+- `generic`: default behavior. Generates no repository-shape-specific files.
 - `cli-tool`: adds CLI command, configuration, output, exit-code, shell-completion, checklist, validation, and agent-skill documents.
-- `api-service`: adds API service lifecycle, idempotency, rate-limit, SLO, checklist, validation, and agent-skill documents. If the selected scope does not already own `api/openapi.yaml`, the profile adds an OpenAPI skeleton and API response examples.
+- `api-service`: adds API service lifecycle, idempotency, rate-limit, SLO, checklist, validation, and agent-skill documents. If the selected scope does not already own `api/openapi.yaml`, the repository type adds an OpenAPI skeleton and API response examples.
 - `desktop-app`: adds installer, auto-update, crash-reporting, local-data, OS-support, desktop-security, checklist, validation, and agent-skill documents.
 - `library`: adds public API, semantic versioning, compatibility, package surface, migration guide, checklist, validation, and agent-skill documents.
+- `web-app`: adds web app routing, rendering, browser-state, frontend observability, checklist, validation, and agent-skill documents.
+- `mobile-app`: adds app lifecycle, offline/sync, store release, checklist, validation, and agent-skill documents.
+- `sdk`: adds SDK public API, compatibility, examples, checklist, validation, and agent-skill documents.
+- `worker-service`: adds job contract, retry/idempotency, queue operations, checklist, validation, and agent-skill documents.
+- `infra-module`: adds module interface, environment contract, drift policy, checklist, validation, and agent-skill documents.
+- `data-pipeline`: adds lineage, quality gates, retention/privacy, checklist, validation, and agent-skill documents.
+- `github-action`: adds action contract, inputs/outputs, permissions, checklist, validation, and agent-skill documents.
+- `browser-extension`: adds extension contract, permissions, content-script boundaries, checklist, validation, and agent-skill documents.
+- `plugin`: adds host contract, extension points, compatibility, checklist, validation, and agent-skill documents.
+- `docs-site`: adds information architecture, publishing, content quality, checklist, validation, and agent-skill documents.
+- `monorepo`: adds workspace boundaries, package ownership, change coordination, checklist, validation, and agent-skill documents.
 
-`--profile` defaults to `generic`, so existing commands keep the same scaffold shape unless a profile is explicitly selected.
+`--repo-type` defaults to `generic`, so existing commands keep the same scaffold shape unless a repository type is explicitly selected.
+
+## Addons
+
+Use `--addon` when one repository needs extra repository-shape surfaces beyond its primary type.
+
+```sh
+ssealed init --scope general --repo-type cli-tool --addon github-action --addon docs-site
+```
+
+Addons may be any repository type except `generic`. They are recorded in `.ssealed/manifest.json` as `addons` and are compared by `update`; use `upgrade` to change them intentionally.
 
 ## Density Matrix
 
-- `minimal`: creates the core agent, documentation, checklist, validation, hygiene, and selected scope/profile essentials.
+- `minimal`: creates the core agent, documentation, checklist, validation, hygiene, and selected scope/repository-type essentials.
 - `standard`: default behavior. Adds the normal operating, engineering, API, UI, diagram, and validation surfaces.
-- `strict`: adds deeper risk, release-readiness, service-level, data-integrity, migration, package-surface, and profile-specific hardening surfaces.
+- `strict`: adds deeper risk, release-readiness, service-level, data-integrity, migration, package-surface, and repository-type-specific hardening surfaces.
 
 Use `minimal` for small repos that need a compact starting point, `standard` for normal teams, and `strict` when the repository needs stronger operational, security, or release review coverage.
 
@@ -129,11 +158,11 @@ Existing files are not overwritten by default. Identical files are marked `uncha
 
 ## Manifest Behavior
 
-Every write run refreshes `.ssealed/manifest.json` with tool version, generation timestamp, scope, profile, density, runner, generated file paths, kinds, and SHA-256 checksums of normalized LF content.
+Every write run refreshes `.ssealed/manifest.json` with tool version, generation timestamp, scope, profile, addons, density, runner, generated file paths, kinds, and SHA-256 checksums of normalized LF content. The `profile` field is retained for manifest compatibility and represents the selected primary repository type.
 
 The manifest helps identify previously generated files, but it never authorizes silent overwrite of user-modified files.
 
-`init` is intentionally conservative and refuses a target that already has a valid `.ssealed/manifest.json`. Use `update` to reapply the recorded scaffold settings, or use `upgrade` to explicitly change `scope`, `profile`, `density`, or `runner`. `update` rejects setting changes so old generated files do not silently become untracked scaffold leftovers.
+`init` is intentionally conservative and refuses a target that already has a valid `.ssealed/manifest.json`. Use `update` to reapply the recorded scaffold settings, or use `upgrade` to explicitly change `scope`, repository type, addons, `density`, or `runner`. `update` rejects setting changes so old generated files do not silently become untracked scaffold leftovers.
 
 ## Path Safety
 
@@ -170,16 +199,18 @@ If a managed block exists and differs from the current generated block, the file
 ```sh
 ssealed init --scope backend --runner none
 ssealed init --scope frontend --density minimal --runner just
-ssealed init ./my-service --scope backend --profile api-service --runner make --yes
-ssealed init --scope design --profile cli-tool --dry-run
-ssealed init --scope design --profile library --runner npm
-ssealed init --scope fullstack --profile desktop-app --runner pnpm
+ssealed init ./my-service --scope backend --repo-type api-service --runner make --yes
+ssealed init --scope general --repo-type cli-tool --addon github-action --dry-run
+ssealed init --scope general --repo-type library --runner npm
+ssealed init --scope fullstack --repo-type desktop-app --runner pnpm
+ssealed init --scope infra --repo-type infra-module --density strict
+ssealed init --scope data --repo-type data-pipeline --addon docs-site
 ssealed update ./my-service --dry-run --json
-ssealed upgrade ./my-service --profile api-service --density strict --runner make --force
+ssealed upgrade ./my-service --repo-type api-service --density strict --runner make --force
 ssealed doctor ./my-service --json
 ```
 
-`--json` prints a public result shape with command, target, scope, profile, density, runner, file paths, kinds, actions, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.
+`--json` prints a public result shape with command, target, scope, profile, repoType, addons, density, runner, file paths, kinds, actions, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.
 
 ## Why `.agents/skills`
 

@@ -1,11 +1,12 @@
 import { sha256 } from "./checksum.js";
-import type { Density, Manifest, ManifestFile, PlannedFile, Profile, Runner, Scope } from "./types.js";
+import type { Addon, Density, Manifest, ManifestFile, PlannedFile, Profile, Runner, Scope } from "./types.js";
 
-export const toolVersion = "0.4.0";
+export const toolVersion = "0.5.0";
 
 export function createManifest(params: {
   readonly scope: Scope;
   readonly profile: Profile;
+  readonly addons: readonly Addon[];
   readonly density: Density;
   readonly runner: Runner;
   readonly generatedAt: string;
@@ -26,6 +27,7 @@ export function createManifest(params: {
     generatedAt: params.generatedAt,
     scope: params.scope,
     profile: params.profile,
+    addons: params.addons,
     density: params.density,
     runner: params.runner,
     files,

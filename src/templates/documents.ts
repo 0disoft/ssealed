@@ -1,4 +1,4 @@
-import type { Profile, Scope } from "../core/types.js";
+import type { Addon, Profile, Scope } from "../core/types.js";
 
 export function markdownDoc(title: string): string {
   return `# ${title}
@@ -207,7 +207,7 @@ function opsBody(lowerTitle: string): string {
   return "Define severity, roles, first 10 minutes, communication, timeline, postmortem, follow-up policy, and evidence preservation.";
 }
 
-export function rootAgents(scope: Scope, profile: Profile): string {
+export function rootAgents(scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
   const scopeText = {
     backend: `Scope: backend
 
@@ -237,11 +237,32 @@ engineering standards, and operational standards.
 API request and response shapes are sourced from \`api/openapi.yaml\`.
 
 DB structure is sourced from \`db/schema.dbml\`.`,
-    design: `Scope: design
+    general: `Scope: general
 
-This repository owns product, architecture, ADR, engineering, and operational design scaffolds only.
+This repository owns product, architecture, ADR, engineering, and operational design scaffolds.
 
 It does not own implementation source code.`,
+    mobile: `Scope: mobile
+
+This repository owns mobile product surface behavior, platform support decisions, app lifecycle,
+offline and sync contracts, store release notes, and mobile-specific validation surfaces.
+
+This repository does not own backend internals, server-side authorization implementation,
+database schema, or runtime infrastructure.`,
+    infra: `Scope: infra
+
+This repository owns infrastructure design contracts, environment boundaries, change plans,
+drift handling, rollback decisions, and operational validation surfaces.
+
+This repository does not generate runtime infrastructure code, credentials, cloud resources,
+or deployment secrets.`,
+    data: `Scope: data
+
+This repository owns data pipeline contracts, lineage, quality gates, retention decisions,
+privacy boundaries, and data validation surfaces.
+
+This repository does not generate production datasets, credentials, warehouse objects,
+or application runtime code.`,
   } satisfies Record<Scope, string>;
 
   return `# AGENTS.md
@@ -250,10 +271,8 @@ It does not own implementation source code.`,
 
 ${scopeText[scope]}
 
-${profile === "generic" ? "" : `## Repository Profile
+${repositoryShapeBlock(profile, addons)}
 
-${profileContract(profile)}
-`}
 ## Source of Truth
 
 - Product scope: docs/product/02-spec.md
@@ -297,11 +316,13 @@ ${profileContract(profile)}
 `;
 }
 
-export function rootReadme(scope: Scope, profile: Profile): string {
+export function rootReadme(scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
   return `# Repository Design Scaffold
 
 Status: Draft
-Scope: ${scope}${profile === "generic" ? "" : `\nProfile: ${profile}`}
+Scope: ${scope}
+Repository Type: ${profile}
+Addons: ${formatAddons(addons)}
 
 This repository contains an LLM-friendly design scaffold. It is not application source code.
 
@@ -313,10 +334,8 @@ This repository contains an LLM-friendly design scaffold. It is not application 
 - .agents/context-map.md: agent route map
 - docs/: design, operations, architecture, and engineering standards
 
-${profile === "generic" ? "" : `## Profile Notes
+${repositoryShapeNotes(profile, addons)}
 
-${profileContract(profile)}
-`}
 ## Repository Hygiene
 
 .editorconfig, .gitattributes, and .gitignore are generated to keep line endings,
@@ -328,7 +347,7 @@ Project-specific implementation choices remain UNDECIDED until the repository ow
 `;
 }
 
-export function docsReadme(scope: Scope, profile: Profile): string {
+export function docsReadme(scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
   const sourceLines = [
     "- Product scope source: docs/product/02-spec.md",
     ...(scope === "backend" || scope === "fullstack" ? ["- API source for backend/fullstack: api/openapi.yaml"] : []),
@@ -338,11 +357,14 @@ export function docsReadme(scope: Scope, profile: Profile): string {
     ...(scope === "frontend" || scope === "fullstack"
       ? ["- Frontend design source: docs/frontend/FRONTEND_DESIGN.md when generated"]
       : []),
+    ...(scope === "mobile" ? ["- Mobile source: docs/mobile/app-contract.md"] : []),
+    ...(scope === "infra" ? ["- Infrastructure source: docs/infra/module-contract.md"] : []),
+    ...(scope === "data" ? ["- Data pipeline source: docs/data/pipeline-contract.md"] : []),
     "- Operational standard source: docs/ops/00-operational-contract.md",
     "- Validation source: VALIDATION.md",
     "- Agent routing source: .agents/context-map.md",
     "- Repository hygiene source: .editorconfig, .gitattributes, .gitignore",
-    ...profileSourceLines(profile, scope),
+    ...profileList(profile, addons).flatMap((value) => profileSourceLines(value, scope)),
   ];
 
   return `# Documentation
@@ -355,7 +377,7 @@ ${sourceLines.join("\n")}
 `;
 }
 
-export function contextMap(scope: Scope, profile: Profile): string {
+export function contextMap(scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
   const routes = [
     ...(scope === "backend" || scope === "fullstack"
       ? ["- Backend API route: .agents/skills/backend-api/SKILL.md", "- DB migration route: .agents/skills/db-migration/SKILL.md"]
@@ -363,14 +385,17 @@ export function contextMap(scope: Scope, profile: Profile): string {
     ...(scope === "frontend" || scope === "fullstack"
       ? ["- Frontend UI route: .agents/skills/frontend-ui/SKILL.md", "- Backend API contract consumption: docs/integrations/backend-api.md"]
       : []),
-    ...(scope === "design"
+    ...(scope === "general"
       ? [
           "- Product scope route: docs/product/02-spec.md",
           "- Architecture route: docs/architecture/ and docs/adr/",
           "- Documentation update route: docs/README.md",
         ]
       : []),
-    ...profileRoutes(profile),
+    ...(scope === "mobile" ? ["- Mobile app route: .agents/skills/mobile-app/SKILL.md"] : []),
+    ...(scope === "infra" ? ["- Infrastructure route: .agents/skills/infra-change/SKILL.md"] : []),
+    ...(scope === "data" ? ["- Data pipeline route: .agents/skills/data-pipeline/SKILL.md"] : []),
+    ...profileList(profile, addons).flatMap((value) => profileRoutes(value)),
     "- Ops route: .agents/skills/ops-change/SKILL.md",
     "- Dependency route: .agents/skills/dependency-upgrade/SKILL.md",
     "- Bugfix route: .agents/skills/bugfix/SKILL.md",
@@ -381,7 +406,9 @@ export function contextMap(scope: Scope, profile: Profile): string {
   return `# Agent Context Map
 
 Status: Draft
-Scope: ${scope}${profile === "generic" ? "" : `\nProfile: ${profile}`}
+Scope: ${scope}
+Repository Type: ${profile}
+Addons: ${formatAddons(addons)}
 
 ## Routes
 
@@ -389,7 +416,7 @@ ${routes.join("\n")}
 `;
 }
 
-export function validationDoc(title: string, scope: Scope, profile: Profile): string {
+export function validationDoc(title: string, scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
   return `# ${title}
 
 Status: Draft
@@ -428,10 +455,10 @@ tracked secret files, ignored build/cache artifacts, and generated-output drift.
 ## Scope
 
 ${scope} validation routes must stay stack-neutral unless a runner file explicitly defines a command.
-${profile === "generic" ? "" : `
-## Profile
+${profileList(profile, addons).length === 0 ? "" : `
+## Repository Shape
 
-${profile} profile validation must stay repository-shape focused and must not imply generated application source code.
+${profileList(profile, addons).join(", ")} validation must stay repository-shape focused and must not imply generated application source code.
 `}
 `;
 }
@@ -440,9 +467,9 @@ export function profileDoc(title: string, profile: Profile): string {
   return `# ${title}
 
 Status: Draft
-Profile: ${profile}
+Repository Type: ${profile}
 
-## Profile Contract
+## Repository Type Contract
 
 ${profileContract(profile)}
 
@@ -462,156 +489,173 @@ ${profileReviewBlockers(profile).map((blocker) => `- ${blocker}`).join("\n")}
 `;
 }
 
-function profileContract(profile: Profile): string {
-  if (profile === "cli-tool") {
-    return [
-      "This repository profile owns command behavior, arguments, flags, config loading,",
-      "exit codes, terminal output, JSON output, runtime compatibility, and shell integration contracts.",
-    ].join(" ");
+function repositoryShapeBlock(profile: Profile, addons: readonly Addon[]): string {
+  const selected = profileList(profile, addons);
+  if (selected.length === 0) {
+    return "";
   }
-  if (profile === "api-service") {
-    return [
-      "This repository profile owns service API lifecycle, request and response contracts,",
-      "idempotency, rate limits, service SLOs, operational readiness, and client-facing error behavior.",
-    ].join(" ");
-  }
-  if (profile === "desktop-app") {
-    return [
-      "This repository profile owns installed app behavior, OS support, local data, installer,",
-      "auto-update, crash reporting, permissions, and desktop-specific security contracts.",
-    ].join(" ");
-  }
-  if (profile === "library") {
-    return [
-      "This repository profile owns public API surface, package compatibility, semantic versioning,",
-      "migration guidance, distribution artifacts, and consumer-facing deprecation policy.",
-    ].join(" ");
-  }
-  return "The generic profile adds no repository-shape-specific documents beyond the selected scope.";
+  return `## Repository Shape
+
+Primary repository type: ${profile}
+Addons: ${formatAddons(addons)}
+
+${selected.map((value) => `- ${value}: ${profileContract(value)}`).join("\n")}
+`;
 }
 
-function profileSourceLines(profile: Profile, scope: Scope): readonly string[] {
-  if (profile === "cli-tool") {
-    return [
-      "- CLI command contract source: docs/cli/command-contract.md",
-      "- CLI output and exit-code source: docs/cli/output-and-exit-codes.md",
-      "- CLI config source: docs/cli/configuration.md",
-    ];
+function repositoryShapeNotes(profile: Profile, addons: readonly Addon[]): string {
+  const selected = profileList(profile, addons);
+  if (selected.length === 0) {
+    return "";
   }
-  if (profile === "api-service") {
-    return [
-      ...(scope === "backend" || scope === "fullstack" ? [] : ["- API source for api-service profile: api/openapi.yaml"]),
-      "- API lifecycle source: docs/api-service/api-lifecycle.md",
-      "- API idempotency source: docs/api-service/idempotency.md",
-      "- API rate-limit source: docs/api-service/rate-limits.md",
-      "- API service SLO source: docs/api-service/slo.md",
-    ];
-  }
-  if (profile === "desktop-app") {
-    return [
-      "- Desktop installer source: docs/desktop/installers.md",
-      "- Desktop auto-update source: docs/desktop/auto-update.md",
-      "- Desktop local data source: docs/desktop/local-data.md",
-      "- Desktop OS support source: docs/desktop/os-support.md",
-    ];
-  }
-  if (profile === "library") {
-    return [
-      "- Library public API source: docs/library/public-api.md",
-      "- Library semver source: docs/library/semver.md",
-      "- Library compatibility source: docs/library/compatibility.md",
-      "- Library migration source: docs/library/migration-guide.md",
-    ];
-  }
-  return [];
+  return `## Repository Shape Notes
+
+${selected.map((value) => `- ${value}: ${profileContract(value)}`).join("\n")}
+`;
 }
 
-function profileRoutes(profile: Profile): readonly string[] {
-  if (profile === "cli-tool") {
-    return ["- CLI tool route: .agents/skills/cli-tool/SKILL.md"];
-  }
-  if (profile === "api-service") {
-    return ["- API service route: .agents/skills/api-service/SKILL.md"];
-  }
-  if (profile === "desktop-app") {
-    return ["- Desktop app route: .agents/skills/desktop-app/SKILL.md"];
-  }
-  if (profile === "library") {
-    return ["- Library package route: .agents/skills/library-package/SKILL.md"];
-  }
-  return [];
+function profileList(profile: Profile, addons: readonly Addon[]): readonly Addon[] {
+  return [profile, ...addons].filter((value): value is Addon => value !== "generic");
 }
 
-function profileRequiredDecisions(profile: Profile): readonly string[] {
-  if (profile === "cli-tool") {
-    return [
+function formatAddons(addons: readonly Addon[]): string {
+  return addons.length === 0 ? "none" : addons.join(", ");
+}
+
+interface ProfileMetadata {
+  readonly contract: string;
+  readonly sources: readonly string[];
+  readonly route: string;
+  readonly decisions: readonly string[];
+  readonly blockers: readonly string[];
+}
+
+const profileMetadata = {
+  "cli-tool": {
+    contract: "This repository type owns command behavior, arguments, flags, config loading, exit codes, terminal output, JSON output, runtime compatibility, and shell integration contracts.",
+    sources: ["- CLI command contract source: docs/cli/command-contract.md", "- CLI output and exit-code source: docs/cli/output-and-exit-codes.md", "- CLI config source: docs/cli/configuration.md"],
+    route: "- CLI tool route: .agents/skills/cli-tool/SKILL.md",
+    decisions: [
       "Command list and flag ownership: UNDECIDED",
       "Exit-code taxonomy: UNDECIDED",
       "Machine-readable output contract: UNDECIDED",
       "Config precedence and default behavior: UNDECIDED",
       "Runtime compatibility floor: UNDECIDED",
-    ];
-  }
-  if (profile === "api-service") {
-    return [
+    ],
+    blockers: [
+      "A command changes without updating help, examples, output, and exit-code expectations.",
+      "JSON output exposes generated or existing file contents.",
+      "Runtime compatibility changes without smoke validation.",
+    ],
+  },
+  "api-service": {
+    contract: "This repository type owns service API lifecycle, request and response contracts, idempotency, rate limits, service SLOs, operational readiness, and client-facing error behavior.",
+    sources: ["- API lifecycle source: docs/api-service/api-lifecycle.md", "- API idempotency source: docs/api-service/idempotency.md", "- API rate-limit source: docs/api-service/rate-limits.md", "- API service SLO source: docs/api-service/slo.md"],
+    route: "- API service route: .agents/skills/api-service/SKILL.md",
+    decisions: [
       "OpenAPI ownership and publish path: UNDECIDED",
       "Authentication and authorization surface: UNDECIDED",
       "Idempotency and retry behavior: UNDECIDED",
       "Rate-limit and quota policy: UNDECIDED",
       "SLO, health, and operational readiness: UNDECIDED",
-    ];
-  }
-  if (profile === "desktop-app") {
-    return [
+    ],
+    blockers: [
+      "Request or response behavior changes without source contract updates.",
+      "Retry-prone writes lack idempotency behavior.",
+      "Operational readiness is implied without health, SLO, rollback, or observability evidence.",
+    ],
+  },
+  "desktop-app": {
+    contract: "This repository type owns installed app behavior, OS support, local data, installer, auto-update, crash reporting, permissions, and desktop-specific security contracts.",
+    sources: ["- Desktop installer source: docs/desktop/installers.md", "- Desktop auto-update source: docs/desktop/auto-update.md", "- Desktop local data source: docs/desktop/local-data.md", "- Desktop OS support source: docs/desktop/os-support.md"],
+    route: "- Desktop app route: .agents/skills/desktop-app/SKILL.md",
+    decisions: [
       "Supported operating systems and architectures: UNDECIDED",
       "Installer and update channel ownership: UNDECIDED",
       "Local data and cache ownership: UNDECIDED",
       "Crash report and diagnostic data policy: UNDECIDED",
       "Desktop permission and security boundaries: UNDECIDED",
-    ];
-  }
-  if (profile === "library") {
-    return [
+    ],
+    blockers: [
+      "Installer, update, or OS support behavior changes without platform-specific validation.",
+      "Local data behavior changes without migration, privacy, and recovery notes.",
+      "Crash diagnostics or logs can expose private data.",
+    ],
+  },
+  library: {
+    contract: "This repository type owns public API surface, package compatibility, semantic versioning, migration guidance, distribution artifacts, and consumer-facing deprecation policy.",
+    sources: ["- Library public API source: docs/library/public-api.md", "- Library semver source: docs/library/semver.md", "- Library compatibility source: docs/library/compatibility.md", "- Library migration source: docs/library/migration-guide.md"],
+    route: "- Library package route: .agents/skills/library-package/SKILL.md",
+    decisions: [
       "Public API ownership: UNDECIDED",
       "Semantic versioning policy: UNDECIDED",
       "Runtime and platform compatibility: UNDECIDED",
       "Package artifact and export surface: UNDECIDED",
       "Deprecation and migration policy: UNDECIDED",
-    ];
-  }
-  return ["Repository-shape-specific decisions: UNDECIDED"];
-}
-
-function profileReviewBlockers(profile: Profile): readonly string[] {
-  if (profile === "cli-tool") {
-    return [
-      "A command changes without updating help, examples, output, and exit-code expectations.",
-      "JSON output exposes generated or existing file contents.",
-      "Runtime compatibility changes without smoke validation.",
-    ];
-  }
-  if (profile === "api-service") {
-    return [
-      "Request or response behavior changes without source contract updates.",
-      "Retry-prone writes lack idempotency behavior.",
-      "Operational readiness is implied without health, SLO, rollback, or observability evidence.",
-    ];
-  }
-  if (profile === "desktop-app") {
-    return [
-      "Installer, update, or OS support behavior changes without platform-specific validation.",
-      "Local data behavior changes without migration, privacy, and recovery notes.",
-      "Crash diagnostics or logs can expose private data.",
-    ];
-  }
-  if (profile === "library") {
-    return [
+    ],
+    blockers: [
       "Public exports change without semver and migration notes.",
       "Compatibility claims lack runtime or consumer evidence.",
       "Package artifacts drift from documented public API.",
-    ];
+    ],
+  },
+  "web-app": profileMetadataEntry("Web app", "docs/web-app", "web-app", ["routes, rendering mode, browser state, accessibility, and client observability"], ["Route or rendering behavior changes without documented user-visible states.", "Browser state ownership is unclear or duplicates server state."]),
+  "mobile-app": profileMetadataEntry("Mobile app", "docs/mobile-app", "mobile-app", ["platform support, app lifecycle, offline behavior, store release, and mobile diagnostics"], ["Platform-specific behavior changes without OS and device validation.", "Offline or sync behavior lacks conflict and recovery notes."]),
+  sdk: profileMetadataEntry("SDK", "docs/sdk", "sdk", ["public API, compatibility, examples, versioning, and consumer migration"], ["SDK examples drift from public API.", "Compatibility claims lack runtime or consumer evidence."]),
+  "worker-service": profileMetadataEntry("Worker service", "docs/worker-service", "worker-service", ["job contracts, queue ownership, retry policy, idempotency, and worker observability"], ["Retry behavior lacks idempotency and poison-message handling.", "Queue changes lack visibility, backpressure, or recovery evidence."]),
+  "infra-module": profileMetadataEntry("Infrastructure module", "docs/infra-module", "infra-module", ["module interface, environment contract, drift policy, rollout, and rollback"], ["Infrastructure drift is accepted without owner and rollback notes.", "Environment changes lack blast-radius and validation evidence."]),
+  "data-pipeline": profileMetadataEntry("Data pipeline", "docs/data-pipeline", "data-pipeline", ["lineage, freshness, quality gates, privacy, retention, and downstream contracts"], ["Pipeline changes lack lineage or freshness evidence.", "Data quality claims lack measured gates and failure handling."]),
+  "github-action": profileMetadataEntry("GitHub Action", "docs/github-action", "github-action", ["action inputs, outputs, permissions, token handling, and runner compatibility"], ["Action permission changes lack least-privilege review.", "Outputs or exit behavior changes without workflow examples."]),
+  "browser-extension": profileMetadataEntry("Browser extension", "docs/browser-extension", "browser-extension", ["extension permissions, content-script boundaries, browser compatibility, and privacy"], ["Permission expansion lacks user-visible justification.", "Content script behavior crosses host-page boundaries without review."]),
+  plugin: profileMetadataEntry("Plugin", "docs/plugin", "plugin", ["host contract, extension points, compatibility, lifecycle, and sandbox boundaries"], ["Host compatibility changes lack version and fallback notes.", "Plugin extension points expose unstable internals."]),
+  "docs-site": profileMetadataEntry("Docs site", "docs/docs-site", "docs-site", ["information architecture, publishing, search, content quality, and redirects"], ["Content structure changes break navigation or redirects.", "Publishing behavior changes without preview or link validation."]),
+  monorepo: profileMetadataEntry("Monorepo", "docs/monorepo", "monorepo", ["workspace boundaries, package ownership, dependency policy, and change coordination"], ["Cross-package changes lack ownership and dependency impact review.", "Workspace scripts or package boundaries drift from documented contracts."]),
+} satisfies Record<Addon, ProfileMetadata>;
+
+function profileMetadataEntry(label: string, sourceDir: string, skillSlug: string, owns: readonly string[], blockers: readonly string[]): ProfileMetadata {
+  return {
+    contract: `This repository type owns ${owns.join(", ")}.`,
+    sources: [`- ${label} source: ${sourceDir}/README.md`],
+    route: `- ${label} route: .agents/skills/${skillSlug}/SKILL.md`,
+    decisions: [
+      `${label} ownership boundary: UNDECIDED`,
+      `${label} public contract: UNDECIDED`,
+      `${label} validation evidence: UNDECIDED`,
+      `${label} release or rollout policy: UNDECIDED`,
+      `${label} compatibility and migration policy: UNDECIDED`,
+    ],
+    blockers,
+  };
+}
+
+function profileContract(profile: Profile): string {
+  if (profile === "generic") {
+    return "The generic repository type adds no repository-shape-specific documents beyond the selected scope.";
   }
-  return ["A profile-specific claim is made without a matching profile document."];
+  return profileMetadata[profile].contract;
+}
+
+function profileSourceLines(profile: Addon, scope: Scope): readonly string[] {
+  const apiSource = profile === "api-service" && scope !== "backend" && scope !== "fullstack" ? ["- API source for api-service repository type: api/openapi.yaml"] : [];
+  return [...apiSource, ...profileMetadata[profile].sources];
+}
+
+function profileRoutes(profile: Addon): readonly string[] {
+  return [profileMetadata[profile].route];
+}
+
+function profileRequiredDecisions(profile: Profile): readonly string[] {
+  if (profile === "generic") {
+    return ["Repository-shape-specific decisions: UNDECIDED"];
+  }
+  return profileMetadata[profile].decisions;
+}
+
+function profileReviewBlockers(profile: Profile): readonly string[] {
+  if (profile === "generic") {
+    return ["A repository-type-specific claim is made without a matching repository-type document."];
+  }
+  return profileMetadata[profile].blockers;
 }
 
 export function checklistDoc(title: string): string {

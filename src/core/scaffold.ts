@@ -4,7 +4,23 @@ import { normalizeText } from "./checksum.js";
 import { formatManifest, createManifest } from "./manifest.js";
 import { planTemplateFile, writePlannedFiles } from "./file-writer.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
-import type { Density, FileKind, InitOptions, PlannedFile, Profile, Runner, ScaffoldCommand, ScaffoldResult, ScaffoldWarning, Scope } from "./types.js";
+import {
+  isAddon,
+  isProfile,
+  normalizeAddons,
+  normalizeScope,
+  type Addon,
+  type Density,
+  type FileKind,
+  type InitOptions,
+  type PlannedFile,
+  type Profile,
+  type Runner,
+  type ScaffoldCommand,
+  type ScaffoldResult,
+  type ScaffoldWarning,
+  type Scope,
+} from "./types.js";
 import { templateFilesFor } from "../templates/index.js";
 
 export async function planScaffold(options: InitOptions): Promise<readonly PlannedFile[]> {
@@ -18,8 +34,9 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
   const targetRoot = path.resolve(options.target);
   const command = options.command ?? "init";
   const profile = options.profile ?? "generic";
+  const addons = normalizeAddons(options.addons ?? []);
   const density = options.density ?? "standard";
-  const templates = templateFilesFor(options.scope, options.runner, profile, density);
+  const templates = templateFilesFor(options.scope, options.runner, profile, density, addons);
   const previousManifest = await readPreviousManifest(targetRoot);
   const planned = await Promise.all(
     templates.map((template) =>
@@ -35,6 +52,7 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
   const manifest = createManifest({
     scope: options.scope,
     profile,
+    addons,
     density,
     runner: options.runner,
     generatedAt: new Date().toISOString(),
@@ -59,6 +77,7 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
   const settingsConflict = planManifestSettingsConflict(command, previousManifest.settings, {
     scope: options.scope,
     profile,
+    addons,
     density,
     runner: options.runner,
     manifestContent,
@@ -70,6 +89,7 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
 export interface PreviousManifestSettings {
   readonly scope: Scope;
   readonly profile: Profile;
+  readonly addons: readonly Addon[];
   readonly density: Density;
   readonly runner: Runner;
 }
@@ -100,8 +120,9 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
     return {
       files: new Map(parsed.files.map((file) => [file.path, { checksum: file.checksum, kind: file.kind }])),
       settings: {
-        scope: parsed.scope,
+        scope: normalizeManifestScope(parsed.scope),
         profile: parsed.profile ?? "generic",
+        addons: normalizeManifestAddons(parsed.addons),
         density: parsed.density ?? "standard",
         runner: parsed.runner,
       },
@@ -122,8 +143,9 @@ function invalidManifestWarning(): ScaffoldWarning {
 
 function isManifestLike(value: unknown): value is {
   readonly tool: "ssealed";
-  readonly scope: Scope;
+  readonly scope: string;
   readonly profile?: Profile;
+  readonly addons?: readonly Addon[];
   readonly density?: Density;
   readonly runner: Runner;
   readonly files: ReadonlyArray<{ readonly path: string; readonly checksum: string; readonly kind: FileKind }>;
@@ -135,14 +157,17 @@ function isManifestLike(value: unknown): value is {
     readonly tool?: unknown;
     readonly scope?: unknown;
     readonly profile?: unknown;
+    readonly addons?: unknown;
     readonly density?: unknown;
     readonly runner?: unknown;
     readonly files: unknown;
   };
   return (
     candidate.tool === "ssealed" &&
-    isScope(candidate.scope) &&
+    typeof candidate.scope === "string" &&
+    normalizeScope(candidate.scope) !== undefined &&
     (candidate.profile === undefined || isProfile(candidate.profile)) &&
+    (candidate.addons === undefined || (Array.isArray(candidate.addons) && candidate.addons.every((addon) => isAddon(addon)))) &&
     (candidate.density === undefined || isDensity(candidate.density)) &&
     isRunner(candidate.runner) &&
     Array.isArray(candidate.files) &&
@@ -161,14 +186,6 @@ function isManifestFileLike(value: unknown): value is { readonly path: string; r
     typeof (value as { readonly checksum: unknown }).checksum === "string" &&
     isFileKind((value as { readonly kind: unknown }).kind)
   );
-}
-
-function isScope(value: unknown): value is Scope {
-  return value === "backend" || value === "frontend" || value === "fullstack" || value === "design";
-}
-
-function isProfile(value: unknown): value is Profile {
-  return value === "generic" || value === "cli-tool" || value === "api-service" || value === "desktop-app" || value === "library";
 }
 
 function isDensity(value: unknown): value is Density {
@@ -214,6 +231,7 @@ function planManifestSettingsConflict(
   const changed = [
     previous.scope === current.scope ? undefined : `scope ${previous.scope} -> ${current.scope}`,
     previous.profile === current.profile ? undefined : `profile ${previous.profile} -> ${current.profile}`,
+    sameAddons(previous.addons, current.addons) ? undefined : `addons ${formatAddons(previous.addons)} -> ${formatAddons(current.addons)}`,
     previous.density === current.density ? undefined : `density ${previous.density} -> ${current.density}`,
     previous.runner === current.runner ? undefined : `runner ${previous.runner} -> ${current.runner}`,
   ].filter((value): value is string => value !== undefined);
@@ -227,8 +245,28 @@ function planManifestSettingsConflict(
     kind: "manifest",
     action: "conflict",
     content: normalizeText(current.manifestContent),
-    reason: `Existing scaffold was initialized with different settings (${changed.join(", ")}). update does not migrate scope, profile, density, or runner; use ssealed upgrade for an explicit transition.`,
+    reason: `Existing scaffold was initialized with different settings (${changed.join(", ")}). update does not migrate scope, profile, addons, density, or runner; use ssealed upgrade for an explicit transition.`,
   };
+}
+
+function normalizeManifestAddons(value: readonly Addon[] | undefined): readonly Addon[] {
+  return normalizeAddons(value ?? []);
+}
+
+function normalizeManifestScope(value: string): Scope {
+  const scope = normalizeScope(value);
+  if (scope === undefined) {
+    throw new Error(`Invalid manifest scope: ${value}`);
+  }
+  return scope;
+}
+
+function sameAddons(left: readonly Addon[], right: readonly Addon[]): boolean {
+  return left.length === right.length && left.every((addon, index) => addon === right[index]);
+}
+
+function formatAddons(addons: readonly Addon[]): string {
+  return addons.length === 0 ? "none" : addons.join("+");
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
@@ -238,6 +276,7 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 export async function executeScaffold(options: InitOptions): Promise<ScaffoldResult> {
   const command = options.command ?? "init";
   const profile = options.profile ?? "generic";
+  const addons = normalizeAddons(options.addons ?? []);
   const density = options.density ?? "standard";
   if (options.dryRun) {
     const plan = await planScaffoldWithWarnings(options);
@@ -247,6 +286,7 @@ export async function executeScaffold(options: InitOptions): Promise<ScaffoldRes
       command,
       scope: options.scope,
       profile,
+      addons,
       density,
       runner: options.runner,
       dryRun: options.dryRun,
@@ -267,6 +307,7 @@ export async function executeScaffold(options: InitOptions): Promise<ScaffoldRes
         command,
         scope: options.scope,
         profile,
+        addons,
         density,
         runner: options.runner,
         dryRun: false,
@@ -284,6 +325,7 @@ export async function executeScaffold(options: InitOptions): Promise<ScaffoldRes
       command,
       scope: options.scope,
       profile,
+      addons,
       density,
       runner: options.runner,
       dryRun: false,

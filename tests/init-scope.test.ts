@@ -8,6 +8,7 @@ import { templateFilesFor } from "../src/templates/index.js";
 
 interface ManifestForTest {
   profile: string;
+  addons: string[];
   density: string;
   files: Array<{
     path: string;
@@ -86,8 +87,8 @@ describe("scope generation", () => {
     await expect(exists(dir, "contracts/backend-api/openapi.yaml")).resolves.toBe(false);
   });
 
-  it("generates design scope with common files only", async () => {
-    const dir = await scaffold("design");
+  it("generates general scope with common files only", async () => {
+    const dir = await scaffold("general");
     await expect(exists(dir, "docs/README.md")).resolves.toBe(true);
     await expect(exists(dir, "docs/backend/README.md")).resolves.toBe(false);
     await expect(exists(dir, "docs/frontend/FRONTEND_DESIGN.md")).resolves.toBe(false);
@@ -103,6 +104,7 @@ describe("scope generation", () => {
     await expect(exists(dir, ".gitignore")).resolves.toBe(true);
     const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")) as ManifestForTest;
     expect(manifest.profile).toBe("generic");
+    expect(manifest.addons).toEqual([]);
     expect(manifest.density).toBe("standard");
     expect(manifest.files).toContainEqual(expect.objectContaining({ path: ".editorconfig", kind: "hygiene" }));
     expect(manifest.files.every((file) => file.checksum.startsWith("sha256:"))).toBe(true);
@@ -122,7 +124,7 @@ describe("scope generation", () => {
   });
 
   it("density minimal keeps the core scaffold small", async () => {
-    const dir = await scaffold("design", "none", "generic", "minimal");
+    const dir = await scaffold("general", "none", "generic", "minimal");
     await expect(exists(dir, "AGENTS.md")).resolves.toBe(true);
     await expect(exists(dir, "docs/ops/00-operational-contract.md")).resolves.toBe(true);
     await expect(exists(dir, "docs/ops/release.md")).resolves.toBe(false);
@@ -137,7 +139,7 @@ describe("scope generation", () => {
   });
 
   it("generates CLI tool profile contracts without changing the selected scope", async () => {
-    const dir = await scaffold("design", "none", "cli-tool");
+    const dir = await scaffold("general", "none", "cli-tool");
     await expect(exists(dir, "docs/cli/command-contract.md")).resolves.toBe(true);
     await expect(exists(dir, "docs/cli/output-and-exit-codes.md")).resolves.toBe(true);
     await expect(exists(dir, ".agents/skills/cli-tool/SKILL.md")).resolves.toBe(true);
@@ -145,7 +147,7 @@ describe("scope generation", () => {
   });
 
   it("generates API service profile contracts and avoids duplicate backend OpenAPI ownership", async () => {
-    const designDir = await scaffold("design", "none", "api-service");
+    const designDir = await scaffold("general", "none", "api-service");
     await expect(exists(designDir, "docs/api-service/api-lifecycle.md")).resolves.toBe(true);
     await expect(exists(designDir, "api/openapi.yaml")).resolves.toBe(true);
 
@@ -157,17 +159,53 @@ describe("scope generation", () => {
   });
 
   it("generates desktop app profile contracts", async () => {
-    const dir = await scaffold("design", "none", "desktop-app");
+    const dir = await scaffold("general", "none", "desktop-app");
     await expect(exists(dir, "docs/desktop/installers.md")).resolves.toBe(true);
     await expect(exists(dir, "docs/desktop/auto-update.md")).resolves.toBe(true);
     await expect(exists(dir, ".agents/skills/desktop-app/SKILL.md")).resolves.toBe(true);
   });
 
   it("generates library profile contracts", async () => {
-    const dir = await scaffold("design", "none", "library");
+    const dir = await scaffold("general", "none", "library");
     await expect(exists(dir, "docs/library/public-api.md")).resolves.toBe(true);
     await expect(exists(dir, "docs/library/semver.md")).resolves.toBe(true);
     await expect(exists(dir, ".agents/skills/library-package/SKILL.md")).resolves.toBe(true);
+  });
+
+  it("generates ownership files for mobile, infra, and data scopes", async () => {
+    const mobileDir = await scaffold("mobile");
+    await expect(exists(mobileDir, "docs/mobile/app-contract.md")).resolves.toBe(true);
+    await expect(exists(mobileDir, ".agents/checklists/mobile-app.md")).resolves.toBe(true);
+
+    const infraDir = await scaffold("infra");
+    await expect(exists(infraDir, "docs/infra/module-contract.md")).resolves.toBe(true);
+    await expect(exists(infraDir, ".agents/checklists/infra-change.md")).resolves.toBe(true);
+
+    const dataDir = await scaffold("data");
+    await expect(exists(dataDir, "docs/data/pipeline-contract.md")).resolves.toBe(true);
+    await expect(exists(dataDir, ".agents/checklists/data-pipeline.md")).resolves.toBe(true);
+  });
+
+  it("generates addon repository-shape contracts without changing the primary profile", async () => {
+    const dir = await tempDir();
+    const result = await executeScaffold({
+      target: dir,
+      scope: "general",
+      profile: "cli-tool",
+      addons: ["github-action", "docs-site"],
+      runner: "none",
+      dryRun: false,
+      force: false,
+    });
+    expect(result.conflicts).toHaveLength(0);
+    expect(result.profile).toBe("cli-tool");
+    expect(result.addons).toEqual(["github-action", "docs-site"]);
+    await expect(exists(dir, "docs/cli/command-contract.md")).resolves.toBe(true);
+    await expect(exists(dir, "docs/github-action/action-contract.md")).resolves.toBe(true);
+    await expect(exists(dir, "docs/docs-site/information-architecture.md")).resolves.toBe(true);
+    const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")) as ManifestForTest;
+    expect(manifest.profile).toBe("cli-tool");
+    expect(manifest.addons).toEqual(["github-action", "docs-site"]);
   });
 
   it("skill files include name and description frontmatter", async () => {
@@ -177,7 +215,7 @@ describe("scope generation", () => {
   });
 
   it("generates CODEOWNERS as an explicit commented placeholder", async () => {
-    const dir = await scaffold("design");
+    const dir = await scaffold("general");
     const codeowners = await readFile(path.join(dir, ".github", "CODEOWNERS"), "utf8");
     expect(codeowners).toContain("Replace @REPLACE_WITH_OWNER");
     expect(codeowners).toContain("# * @REPLACE_WITH_OWNER");

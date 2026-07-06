@@ -61,13 +61,13 @@ try {
     throw new Error(`installed ssealed --version returned unexpected stdout: ${JSON.stringify(version.stdout)}`);
   }
 
-  const init = await runBinShim(bin, ["init", target, "--scope", "design", "--profile", "cli-tool", "--yes", "--json"], installRoot);
+  const init = await runBinShim(bin, ["init", target, "--scope", "general", "--profile", "cli-tool", "--yes", "--json"], installRoot);
   const payload = JSON.parse(init.stdout);
   const written = Array.isArray(payload.written) ? payload.written : [];
   if (
     payload.ok !== true ||
     payload.command !== "init" ||
-    payload.scope !== "design" ||
+    payload.scope !== "general" ||
     payload.profile !== "cli-tool" ||
     payload.density !== "standard" ||
     !written.includes("docs/cli/command-contract.md") ||
