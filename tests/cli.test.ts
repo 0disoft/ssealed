@@ -158,7 +158,7 @@ describe("CLI argument parsing", () => {
     }
   });
 
-  it("reports manifest-tracked file drift through doctor JSON output", async () => {
+  it("treats seeded document edits as customization by default and drift in strict mode", async () => {
     const dir = await tempDir();
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -181,10 +181,43 @@ describe("CLI argument parsing", () => {
       await writeFile(agentsPath, `${await readFile(agentsPath, "utf8")}\nuser edit\n`);
       stdout.mockClear();
 
-      await expect(main(["doctor", dir, "--json"])).resolves.toBe(1);
-      const driftPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
-      expect(driftPayload.ok).toBe(false);
-      expect(driftPayload.checks).toContainEqual(expect.objectContaining({ path: "AGENTS.md", status: "modified" }));
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(0);
+      const legacyPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(legacyPayload.ok).toBe(true);
+      expect(legacyPayload.strict).toBe(false);
+      expect(legacyPayload.checks).toContainEqual(expect.objectContaining({ path: "AGENTS.md", status: "customized", ownership: "seeded" }));
+      stdout.mockClear();
+
+      await expect(main(["doctor", dir, "--strict", "--json"])).resolves.toBe(1);
+      const strictPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(strictPayload.ok).toBe(false);
+      expect(strictPayload.strict).toBe(true);
+      expect(strictPayload.checks).toContainEqual(expect.objectContaining({ path: "AGENTS.md", status: "modified" }));
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("allows missing optional seeded files by default but fails them in strict mode", async () => {
+    const dir = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["init", dir, "--scope", "general", "--yes", "--json"])).resolves.toBe(0);
+      stdout.mockClear();
+
+      await rm(path.join(dir, "docs", "product", "01-roadmap.md"));
+
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(0);
+      const defaultPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(defaultPayload.checks).toContainEqual(expect.objectContaining({ path: "docs/product/01-roadmap.md", status: "retired" }));
+      stdout.mockClear();
+
+      await expect(main(["doctor", dir, "--strict", "--json"])).resolves.toBe(1);
+      const strictPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(strictPayload.checks).toContainEqual(expect.objectContaining({ path: "docs/product/01-roadmap.md", status: "missing" }));
       expect(stderr).not.toHaveBeenCalled();
     } finally {
       stderr.mockRestore();

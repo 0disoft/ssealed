@@ -12,7 +12,10 @@ import {
   type Addon,
   type Density,
   type FileKind,
+  type FileOwnership,
+  type FilePresence,
   type InitOptions,
+  type ManifestFileStatus,
   type PlannedFile,
   type Profile,
   type Runner,
@@ -44,7 +47,8 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
         targetRoot,
         template,
         force: options.force,
-        previousChecksum: previousManifest.files.get(template.path)?.kind === template.kind ? previousManifest.files.get(template.path)?.checksum : undefined,
+        command,
+        previous: previousManifest.files.get(template.path)?.kind === template.kind ? previousManifest.files.get(template.path) : undefined,
       }),
     ),
   );
@@ -68,10 +72,8 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
       content: manifestContent,
       merge: "manifest",
     },
-    previousChecksum:
-      previousManifest.files.get(".ssealed/manifest.json")?.kind === "manifest"
-        ? previousManifest.files.get(".ssealed/manifest.json")?.checksum
-        : undefined,
+    command,
+    previous: previousManifest.files.get(".ssealed/manifest.json")?.kind === "manifest" ? previousManifest.files.get(".ssealed/manifest.json") : undefined,
   });
 
   const settingsConflict = planManifestSettingsConflict(command, previousManifest.settings, {
@@ -95,7 +97,16 @@ export interface PreviousManifestSettings {
 }
 
 export interface PreviousManifestState {
-  readonly files: ReadonlyMap<string, { readonly checksum: string; readonly kind: FileKind }>;
+  readonly files: ReadonlyMap<
+    string,
+    {
+      readonly checksum: string;
+      readonly kind: FileKind;
+      readonly ownership: FileOwnership;
+      readonly presence: FilePresence;
+      readonly status: ManifestFileStatus;
+    }
+  >;
   readonly settings: PreviousManifestSettings | undefined;
   readonly warnings: readonly ScaffoldWarning[];
 }
@@ -118,7 +129,18 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
       return { files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
     }
     return {
-      files: new Map(parsed.files.map((file) => [file.path, { checksum: file.checksum, kind: file.kind }])),
+      files: new Map(
+        parsed.files.map((file) => [
+          file.path,
+          {
+            checksum: file.acceptedChecksum ?? file.checksum,
+            kind: file.kind,
+            ownership: normalizeFileOwnership(file.ownership, file.path),
+            presence: normalizeFilePresence(file.presence, file.ownership, file.path),
+            status: normalizeManifestFileStatus(file.status),
+          },
+        ]),
+      ),
       settings: {
         scope: normalizeManifestScope(parsed.scope),
         profile: parsed.profile ?? "generic",
@@ -148,7 +170,15 @@ function isManifestLike(value: unknown): value is {
   readonly addons?: readonly Addon[];
   readonly density?: Density;
   readonly runner: Runner;
-  readonly files: ReadonlyArray<{ readonly path: string; readonly checksum: string; readonly kind: FileKind }>;
+  readonly files: ReadonlyArray<{
+    readonly path: string;
+    readonly checksum: string;
+    readonly acceptedChecksum?: string;
+    readonly kind: FileKind;
+    readonly ownership?: FileOwnership;
+    readonly presence?: FilePresence;
+    readonly status?: ManifestFileStatus;
+  }>;
 } {
   if (typeof value !== "object" || value === null || !("files" in value)) {
     return false;
@@ -175,7 +205,15 @@ function isManifestLike(value: unknown): value is {
   );
 }
 
-function isManifestFileLike(value: unknown): value is { readonly path: string; readonly checksum: string; readonly kind: FileKind } {
+function isManifestFileLike(value: unknown): value is {
+  readonly path: string;
+  readonly checksum: string;
+  readonly acceptedChecksum?: string;
+  readonly kind: FileKind;
+  readonly ownership?: FileOwnership;
+  readonly presence?: FilePresence;
+  readonly status?: ManifestFileStatus;
+} {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -184,7 +222,12 @@ function isManifestFileLike(value: unknown): value is { readonly path: string; r
     "kind" in value &&
     typeof (value as { readonly path: unknown }).path === "string" &&
     typeof (value as { readonly checksum: unknown }).checksum === "string" &&
-    isFileKind((value as { readonly kind: unknown }).kind)
+    ((value as { readonly acceptedChecksum?: unknown }).acceptedChecksum === undefined ||
+      typeof (value as { readonly acceptedChecksum?: unknown }).acceptedChecksum === "string") &&
+    isFileKind((value as { readonly kind: unknown }).kind) &&
+    ((value as { readonly ownership?: unknown }).ownership === undefined || isFileOwnership((value as { readonly ownership?: unknown }).ownership)) &&
+    ((value as { readonly presence?: unknown }).presence === undefined || isFilePresence((value as { readonly presence?: unknown }).presence)) &&
+    ((value as { readonly status?: unknown }).status === undefined || isManifestFileStatus((value as { readonly status?: unknown }).status))
   );
 }
 
@@ -209,6 +252,36 @@ function isFileKind(value: unknown): value is FileKind {
     value === "manifest" ||
     value === "hygiene"
   );
+}
+
+function isFileOwnership(value: unknown): value is FileOwnership {
+  return value === "seeded" || value === "managed" || value === "block-managed";
+}
+
+function isFilePresence(value: unknown): value is FilePresence {
+  return value === "required" || value === "optional";
+}
+
+function isManifestFileStatus(value: unknown): value is ManifestFileStatus {
+  return value === "active" || value === "retired";
+}
+
+function normalizeFileOwnership(value: FileOwnership | undefined, pathValue: string): FileOwnership {
+  if (value !== undefined) {
+    return value;
+  }
+  return pathValue === ".gitignore" || pathValue === "package.json" ? "block-managed" : "seeded";
+}
+
+function normalizeFilePresence(value: FilePresence | undefined, ownership: FileOwnership | undefined, pathValue: string): FilePresence {
+  if (value !== undefined) {
+    return value;
+  }
+  return normalizeFileOwnership(ownership, pathValue) === "seeded" ? "optional" : "required";
+}
+
+function normalizeManifestFileStatus(value: ManifestFileStatus | undefined): ManifestFileStatus {
+  return value ?? "active";
 }
 
 function planManifestSettingsConflict(

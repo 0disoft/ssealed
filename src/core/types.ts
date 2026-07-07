@@ -53,22 +53,34 @@ export interface TemplateFile {
 }
 
 export type PlannedAction = "create" | "unchanged" | "conflict" | "overwrite" | "merge";
+export type FileOwnership = "seeded" | "managed" | "block-managed";
+export type FilePresence = "required" | "optional";
+export type ManifestFileStatus = "active" | "retired";
 
 export interface PlannedFile {
   readonly path: string;
   readonly kind: FileKind;
-  readonly action: PlannedAction;
+  readonly action: PlannedAction | "customized" | "retired";
   readonly content: string;
   readonly existingContent?: string;
   readonly previouslyGenerated?: boolean | undefined;
-  readonly reason?: string;
+  readonly reason?: string | undefined;
   readonly merge?: TemplateFile["merge"];
+  readonly ownership?: FileOwnership;
+  readonly presence?: FilePresence;
+  readonly manifestStatus?: ManifestFileStatus;
+  readonly previousChecksum?: string | undefined;
 }
 
 export interface ManifestFile {
   readonly path: string;
   readonly checksum: string;
   readonly kind: FileKind;
+  readonly ownership: FileOwnership;
+  readonly presence: FilePresence;
+  readonly status: ManifestFileStatus;
+  readonly initialChecksum: string;
+  readonly acceptedChecksum: string;
 }
 
 export interface Manifest {

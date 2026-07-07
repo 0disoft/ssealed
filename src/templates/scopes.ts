@@ -6,6 +6,7 @@ import {
   checklistDoc,
   contextMap,
   dbml,
+  documentMetadata,
   docsReadme,
   frontendDesignDoc,
   githubIssueTemplate,
@@ -438,7 +439,7 @@ function checklistRouter(scope: Scope, profile: Profile, addons: readonly Addon[
 
   return `# Checklist Router
 
-Status: Draft
+${documentMetadata([["Status", "Draft"]])}
 
 Use this file as a router. Do not turn it into one giant checklist.
 

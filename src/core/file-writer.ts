@@ -3,7 +3,7 @@ import { lstat, mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/pr
 import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
-import type { PlannedFile, TemplateFile } from "./types.js";
+import type { FileOwnership, FilePresence, ManifestFileStatus, PlannedFile, ScaffoldCommand, TemplateFile } from "./types.js";
 import { validationScripts } from "../templates/runners.js";
 
 const gitignoreStart = "# >>> ssealed ignore patterns >>>";
@@ -13,48 +13,113 @@ export async function planTemplateFile(params: {
   readonly targetRoot: string;
   readonly template: TemplateFile;
   readonly force: boolean;
-  readonly previousChecksum: string | undefined;
+  readonly command: ScaffoldCommand;
+  readonly previous:
+    | {
+        readonly checksum: string;
+        readonly kind: string;
+        readonly ownership: FileOwnership;
+        readonly presence: FilePresence;
+        readonly status: ManifestFileStatus;
+      }
+    | undefined;
 }): Promise<PlannedFile> {
   const targetPath = resolveInsideTarget(params.targetRoot, params.template.path);
   const existing = await readExistingPath(targetPath);
   const generatedContent = normalizeText(params.template.content);
+  const ownership = params.previous?.ownership ?? defaultOwnership(params.template);
+  const presence = params.previous?.presence ?? defaultPresence(ownership);
+  const previousChecksum = params.previous?.checksum;
+  const previousStatus = params.previous?.status ?? "active";
   if (existing.kind !== "missing" && existing.kind !== "file") {
     return {
       ...params.template,
       action: "conflict",
       content: generatedContent,
+      ownership,
+      presence,
+      previousChecksum,
       reason: existingPathConflictReason(existing.kind),
     };
   }
 
   const existingContent = existing.kind === "file" ? existing.content : undefined;
   const previouslyGenerated =
-    existingContent !== undefined && params.previousChecksum !== undefined
-      ? params.previousChecksum === checksumExisting(existingContent)
+    existingContent !== undefined && previousChecksum !== undefined
+      ? previousChecksum === checksumExisting(existingContent)
       : undefined;
 
+  if (ownership === "seeded" && params.command !== "init") {
+    if (existingContent === undefined && previousChecksum !== undefined) {
+      return {
+        ...params.template,
+        action: "retired",
+        content: generatedContent,
+        ownership,
+        presence,
+        manifestStatus: "retired",
+        previousChecksum,
+        reason: "Seeded file is absent and remains retired unless init creates a fresh scaffold.",
+      };
+    }
+
+    if (existingContent !== undefined && previousStatus === "retired") {
+      return {
+        ...params.template,
+        action: "customized",
+        content: normalizeText(existingContent),
+        existingContent,
+        ownership,
+        presence,
+        manifestStatus: "active",
+        previousChecksum,
+        previouslyGenerated,
+        reason: "Previously retired seeded file exists again and is accepted as project-owned content.",
+      };
+    }
+  }
+
   if (params.template.merge === "gitignore") {
-    return planGitignore(params.template, existingContent, generatedContent, params.force, previouslyGenerated);
+    return withLifecycle(
+      planGitignore(params.template, existingContent, generatedContent, params.force, previouslyGenerated),
+      ownership,
+      presence,
+      previousChecksum,
+    );
   }
 
   if (params.template.merge === "package-json") {
-    return planPackageJson(params.template, existingContent, params.force, previouslyGenerated);
+    return withLifecycle(planPackageJson(params.template, existingContent, params.force, previouslyGenerated), ownership, presence, previousChecksum);
   }
 
   if (params.template.merge === "manifest") {
-    return planManifest(params.template, existingContent, generatedContent, params.force, previouslyGenerated);
+    return withLifecycle(planManifest(params.template, existingContent, generatedContent, params.force, previouslyGenerated), ownership, presence, previousChecksum);
   }
 
   if (existingContent === undefined) {
-    return { ...params.template, action: "create", content: generatedContent };
+    return { ...params.template, action: "create", content: generatedContent, ownership, presence, previousChecksum };
   }
 
   if (normalizeText(existingContent) === generatedContent) {
-    return { ...params.template, action: "unchanged", content: generatedContent, existingContent, previouslyGenerated };
+    return { ...params.template, action: "unchanged", content: generatedContent, existingContent, previouslyGenerated, ownership, presence, previousChecksum };
   }
 
   if (params.force && previouslyGenerated === true) {
-    return { ...params.template, action: "overwrite", content: generatedContent, existingContent, previouslyGenerated };
+    return { ...params.template, action: "overwrite", content: generatedContent, existingContent, previouslyGenerated, ownership, presence, previousChecksum };
+  }
+
+  if (ownership === "seeded" && params.command !== "init") {
+    return {
+      ...params.template,
+      action: "customized",
+      content: normalizeText(existingContent),
+      existingContent,
+      previouslyGenerated,
+      ownership,
+      presence,
+      previousChecksum,
+      reason: "Seeded file has project-owned edits and is no longer treated as scaffold drift.",
+    };
   }
 
   return {
@@ -63,6 +128,9 @@ export async function planTemplateFile(params: {
     content: generatedContent,
     existingContent,
     previouslyGenerated,
+    ownership,
+    presence,
+    previousChecksum,
     reason:
       params.force && previouslyGenerated !== true
         ? "Existing file differs from the checksum recorded for this path in .ssealed/manifest.json."
@@ -74,7 +142,9 @@ export async function writePlannedFiles(targetRoot: string, files: readonly Plan
   const written: string[] = [];
   const createdDirectories: string[] = [];
   await ensureDirectoryInsideTarget(targetRoot, targetRoot);
-  const writableFiles = files.filter((file) => file.action !== "unchanged" && file.action !== "conflict");
+  const writableFiles = files.filter(
+    (file) => file.action !== "unchanged" && file.action !== "conflict" && file.action !== "customized" && file.action !== "retired",
+  );
 
   for (const file of writableFiles) {
     const targetPath = resolveInsideTarget(targetRoot, file.path);
@@ -371,4 +441,19 @@ async function writeTextFileAtomically(targetPath: string, content: string): Pro
     await rm(temporaryPath, { force: true }).catch(() => undefined);
     throw error;
   }
+}
+
+function defaultOwnership(template: TemplateFile): FileOwnership {
+  if (template.merge === "gitignore" || template.merge === "package-json") {
+    return "block-managed";
+  }
+  return "seeded";
+}
+
+function defaultPresence(ownership: FileOwnership): FilePresence {
+  return ownership === "seeded" ? "optional" : "required";
+}
+
+function withLifecycle(file: PlannedFile, ownership: FileOwnership, presence: FilePresence, previousChecksum: string | undefined): PlannedFile {
+  return { ...file, ownership, presence, previousChecksum };
 }

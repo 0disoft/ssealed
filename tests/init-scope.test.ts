@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { executeScaffold } from "../src/core/scaffold.js";
-import { densities, profiles, runners, scopes, type Density, type Profile, type Runner, type Scope } from "../src/core/types.js";
+import { addons as supportedAddons, densities, profiles, runners, scopes, type Addon, type Density, type Profile, type Runner, type Scope } from "../src/core/types.js";
 import { templateFilesFor } from "../src/templates/index.js";
 
 interface ManifestForTest {
@@ -55,6 +55,56 @@ async function exists(root: string, relativePath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+const markdownLabelLinePattern = /^[A-Za-z][A-Za-z0-9 /()_-]*: .+$/u;
+
+function stripMarkdownFrontmatter(content: string): string {
+  if (!content.startsWith("---\n")) {
+    return content;
+  }
+  const end = content.indexOf("\n---\n", 4);
+  return end === -1 ? content : content.slice(end + "\n---\n".length);
+}
+
+function markdownParagraphBlocks(content: string): string[][] {
+  const blocks: string[][] = [];
+  let current: string[] = [];
+  let inFence = false;
+  const flush = (): void => {
+    if (current.length > 0) {
+      blocks.push(current);
+      current = [];
+    }
+  };
+
+  for (const line of stripMarkdownFrontmatter(content).split("\n")) {
+    if (/^(```|~~~)/u.test(line)) {
+      flush();
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      continue;
+    }
+    if (line.trim() === "") {
+      flush();
+      continue;
+    }
+    if (/^(#|[-*+]\s|\d+\.\s|>|\|)/u.test(line)) {
+      flush();
+      continue;
+    }
+    current.push(line);
+  }
+  flush();
+  return blocks;
+}
+
+function adjacentPlainMetadataBlocks(content: string): string[] {
+  return markdownParagraphBlocks(content)
+    .filter((block) => block.length >= 2 && block.every((line) => markdownLabelLinePattern.test(line)))
+    .map((block) => block.join("\n"));
 }
 
 describe("scope generation", () => {
@@ -208,6 +258,46 @@ describe("scope generation", () => {
     expect(manifest.addons).toEqual(["github-action", "docs-site"]);
   });
 
+  it("renders generated document metadata as Markdown list blocks", async () => {
+    const dir = await tempDir();
+    const result = await executeScaffold({
+      target: dir,
+      scope: "general",
+      profile: "library",
+      addons: ["sdk"],
+      runner: "none",
+      dryRun: false,
+      force: false,
+    });
+    expect(result.conflicts).toHaveLength(0);
+
+    const readme = await readFile(path.join(dir, "README.md"), "utf8");
+    expect(readme).toContain(
+      [
+        "- Status: Draft",
+        "- Scope: general",
+        "- Repository Type: library",
+        "- Addons: sdk",
+      ].join("\n"),
+    );
+    expect(readme).not.toMatch(/^Status: Draft\nScope:/mu);
+
+    const contextMap = await readFile(path.join(dir, ".agents", "context-map.md"), "utf8");
+    expect(contextMap).toContain(
+      [
+        "- Status: Draft",
+        "- Scope: general",
+        "- Repository Type: library",
+        "- Addons: sdk",
+      ].join("\n"),
+    );
+    expect(contextMap).not.toMatch(/^Status: Draft\nScope:/mu);
+
+    const libraryApi = await readFile(path.join(dir, "docs", "library", "public-api.md"), "utf8");
+    expect(libraryApi).toContain(["- Status: Draft", "- Repository Type: library"].join("\n"));
+    expect(libraryApi).not.toMatch(/^Status: Draft\nRepository Type:/mu);
+  });
+
   it("skill files include name and description frontmatter", async () => {
     const dir = await scaffold("backend");
     const skill = await readFile(path.join(dir, ".agents", "skills", "backend-api", "SKILL.md"), "utf8");
@@ -242,6 +332,27 @@ describe("scope generation", () => {
             const files = templateFilesFor(scope, runner, profile, density);
             const paths = files.map((file) => file.path);
             expect(new Set(paths).size, `${scope}/${profile}/${runner}/${density}`).toBe(paths.length);
+          }
+        }
+      }
+    }
+  });
+
+  it("keeps generated Markdown metadata out of collapsible plain paragraphs", () => {
+    for (const scope of scopes) {
+      for (const density of densities) {
+        const cases: Array<{ readonly profile: Profile; readonly addons: readonly Addon[]; readonly label: string }> = [
+          ...profiles.map((profile) => ({ profile, addons: [], label: `${scope}/${profile}/${density}` })),
+          ...supportedAddons.map((addon) => ({ profile: "generic" as const, addons: [addon], label: `${scope}/generic/${density}+${addon}` })),
+        ];
+
+        for (const testCase of cases) {
+          const files = templateFilesFor(scope, "none", testCase.profile, density, testCase.addons);
+          for (const file of files) {
+            if (!file.path.endsWith(".md")) {
+              continue;
+            }
+            expect(adjacentPlainMetadataBlocks(file.content), `${testCase.label}:${file.path}`).toEqual([]);
           }
         }
       }

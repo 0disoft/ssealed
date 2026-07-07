@@ -10,7 +10,7 @@ Usage:
   ssealed init [target] --scope backend|frontend|fullstack|general|mobile|infra|data [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed update [target]
   ssealed upgrade [target] [--scope backend|frontend|fullstack|general|mobile|infra|data] [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
-  ssealed doctor [target]
+  ssealed doctor [target] [--strict]
   ssealed --help
   ssealed --version
 
@@ -24,6 +24,7 @@ Options:
   --yes        Never prompt.
   --dry-run    Print planned operations without writing files.
   --force      Overwrite conflicts only when current content matches previous manifest checksums.
+  --strict     Make doctor fail on any accepted-checksum drift.
   --json       Print machine-readable JSON.
 `;
 
@@ -33,7 +34,7 @@ Commands:
   init     Create a new scaffold. Refuses targets with an existing valid manifest.
   update   Reapply the existing manifest settings without changing scope, repo type, addons, density, or runner.
   upgrade  Explicitly change scaffold settings and replan generated files.
-  doctor   Check manifest-tracked files for missing or modified content.
+  doctor   Check scaffold lifecycle metadata. Use --strict to require accepted checksums.
 
 Scopes:
   backend
@@ -85,6 +86,7 @@ Examples:
   ssealed update ./my-service --yes
   ssealed upgrade ./my-service --repo-type api-service --density strict --runner make --yes --force
   ssealed doctor ./my-service --json
+  ssealed doctor ./my-service --strict
 `;
 
 interface ParsedScaffoldArgs {
@@ -98,6 +100,7 @@ interface ParsedScaffoldArgs {
     readonly yes?: boolean;
     readonly "dry-run"?: boolean;
     readonly force?: boolean;
+    readonly strict?: boolean;
     readonly json?: boolean;
     readonly help?: boolean;
   };
@@ -166,6 +169,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       yes: parsed.values.yes ?? false,
       dryRun: parsed.values["dry-run"] ?? false,
       force: parsed.values.force ?? false,
+      strict: parsed.values.strict ?? false,
       json: parsed.values.json ?? false,
       ...(parsed.values["repo-type"] === undefined ? {} : { repoType: parsed.values["repo-type"] }),
       ...(parsed.values.profile === undefined ? {} : { profile: parsed.values.profile }),
@@ -196,6 +200,7 @@ function parseScaffoldArgs(args: readonly string[]): ParsedScaffoldArgs | Error 
         yes: { type: "boolean", default: false },
         "dry-run": { type: "boolean", default: false },
         force: { type: "boolean", default: false },
+        strict: { type: "boolean", default: false },
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
       },

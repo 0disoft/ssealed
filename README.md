@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.5.0`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.6.0`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -65,6 +65,7 @@ ssealed init [target] --scope backend|frontend|fullstack|general|mobile|infra|da
 ssealed update [target]
 ssealed upgrade [target]
 ssealed doctor [target]
+ssealed doctor [target] --strict
 ssealed init [target] --repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo
 ssealed init [target] --addon github-action --addon docs-site
 ssealed init [target] --density minimal|standard|strict
@@ -72,15 +73,16 @@ ssealed init [target] --runner none|make|just|task|npm|pnpm
 ssealed update [target] --dry-run --json
 ssealed upgrade [target] --repo-type api-service --density strict --runner make --force
 ssealed doctor [target] --json
+ssealed doctor [target] --strict --json
 ssealed --help
 ssealed --version
 ssealed init --help
 ```
 
 `init` creates a new scaffold and refuses targets with an existing valid `.ssealed/manifest.json`.
-`update` reapplies the existing manifest settings and refreshes checksums without changing `scope`, repository type, addons, `density`, or `runner`.
+`update` reapplies the existing manifest settings, accepts project-owned edits to seeded documents, keeps deleted seeded documents retired, and refreshes manifest metadata without changing `scope`, repository type, addons, `density`, or `runner`.
 `upgrade` is the explicit path for changing scaffold settings.
-`doctor` checks manifest-tracked files for missing or modified content.
+`doctor` checks scaffold lifecycle metadata. It accepts normal project evolution for seeded documents by default. Use `doctor --strict` when you intentionally want checksum drift detection against accepted manifest content.
 
 `--profile` remains accepted as an alias for `--repo-type`.
 
@@ -152,17 +154,25 @@ Runner files are optional because many repositories already have their own task 
 
 ## Overwrite Policy
 
-Existing files are not overwritten by default. Identical files are marked `unchanged`. Different files are marked `conflict`. If any conflict exists and `--force` is not provided, no files are written.
+Existing files are not overwritten by default. Identical files are marked `unchanged`. During `init`, different existing files are marked `conflict`. During `update` and `upgrade`, seeded files that already have project-owned edits are marked `customized` and are not overwritten. Seeded files that were deleted after a previous run are marked `retired` and are not recreated.
 
-`--force` overwrites conflicting files only when the current file content matches the checksum recorded for that path in the previous `.ssealed/manifest.json`. The manifest is a local previous-run record, not a security boundary, and it never authorizes overwriting unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced.
+`--force` overwrites conflicting files only when the current file content matches the checksum recorded for that path in the previous `.ssealed/manifest.json`. The manifest is a local previous-run record, not a security boundary, and it never authorizes overwriting unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced. Seeded files with project-owned edits stay project-owned unless their content still matches the previously accepted generated checksum.
 
 ## Manifest Behavior
 
-Every write run refreshes `.ssealed/manifest.json` with tool version, generation timestamp, scope, profile, addons, density, runner, generated file paths, kinds, and SHA-256 checksums of normalized LF content. The `profile` field is retained for manifest compatibility and represents the selected primary repository type.
+Every write run refreshes `.ssealed/manifest.json` with tool version, generation timestamp, scope, profile, addons, density, runner, file paths, kinds, ownership, presence, lifecycle status, and SHA-256 checksums of normalized LF content. The `profile` field is retained for manifest compatibility and represents the selected primary repository type.
 
-The manifest helps identify previously generated files, but it never authorizes silent overwrite of user-modified files.
+Manifest file ownership has three meanings:
 
-`init` is intentionally conservative and refuses a target that already has a valid `.ssealed/manifest.json`. Use `update` to reapply the recorded scaffold settings, or use `upgrade` to explicitly change `scope`, repository type, addons, `density`, or `runner`. `update` rejects setting changes so old generated files do not silently become untracked scaffold leftovers.
+- `seeded`: ssealed created an initial document or repository file, but the project is expected to edit, move, or delete it over time.
+- `block-managed`: ssealed manages a bounded block or script set inside a user-owned file, such as `.gitignore` or generated validation scripts in `package.json`.
+- `managed`: ssealed owns the full file content as tool metadata.
+
+Seeded files use `presence: optional`; missing seeded files can be retained as `status: retired`. Active files keep both `initialChecksum` and `acceptedChecksum` so tooling can distinguish original template content from project-accepted content. The legacy `checksum` field remains as the accepted checksum for compatibility.
+
+The manifest helps identify previously generated files, but it never authorizes silent overwrite of user-modified files. Default `doctor` treats modified seeded files as `customized` and missing optional seeded files as `retired`, both of which are healthy lifecycle states. `doctor --strict` reports accepted-checksum drift for callers that need the old exact-content comparison.
+
+`init` is intentionally conservative and refuses a target that already has a valid `.ssealed/manifest.json`. Use `update` to reapply the recorded scaffold settings, or use `upgrade` to explicitly change `scope`, repository type, addons, `density`, or `runner`. `update` rejects setting changes so old generated files do not silently become untracked scaffold leftovers, but it does not force project documents back to their seed text.
 
 ## Path Safety
 
@@ -208,9 +218,10 @@ ssealed init --scope data --repo-type data-pipeline --addon docs-site
 ssealed update ./my-service --dry-run --json
 ssealed upgrade ./my-service --repo-type api-service --density strict --runner make --force
 ssealed doctor ./my-service --json
+ssealed doctor ./my-service --strict --json
 ```
 
-`--json` prints a public result shape with command, target, scope, profile, repoType, addons, density, runner, file paths, kinds, actions, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.
+`--json` prints a public result shape with command, target, scope, profile, repoType, addons, density, runner, file paths, kinds, ownership, presence, actions, lifecycle statuses, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.
 
 ## Why `.agents/skills`
 

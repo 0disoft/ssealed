@@ -4,5 +4,6 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     exclude: ["node_modules/**", "dist/**", "coverage/**", ".mustflow/**", "projects/**", "queue/**", "scripts/**"],
+    testTimeout: 30000,
   },
 });

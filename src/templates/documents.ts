@@ -1,10 +1,16 @@
 import type { Addon, Profile, Scope } from "../core/types.js";
 
+export function documentMetadata(entries: ReadonlyArray<readonly [string, string]>): string {
+  return entries.map(([label, value]) => `- ${label}: ${value}`).join("\n");
+}
+
 export function markdownDoc(title: string): string {
   return `# ${title}
 
-Status: Draft
-Owner: UNASSIGNED
+${documentMetadata([
+  ["Status", "Draft"],
+  ["Owner", "UNASSIGNED"],
+])}
 
 ## Purpose
 
@@ -35,7 +41,7 @@ It is intentionally a scaffold and should be filled with project-specific decisi
 export function architectureDoc(title: string): string {
   return `# ${title}
 
-Status: Draft
+${documentMetadata([["Status", "Draft"]])}
 
 ## Boundary
 
@@ -56,7 +62,7 @@ UNDECIDED. Add the minimal sequence needed to explain request, state, failure, a
 export function backendDoc(title: string): string {
   return `# ${title}
 
-Status: Draft
+${documentMetadata([["Status", "Draft"]])}
 
 ## Backend Contract
 
@@ -86,7 +92,7 @@ export function engineeringDoc(title: string): string {
 
   return `# ${title}
 
-Status: Draft
+${documentMetadata([["Status", "Draft"]])}
 
 ## Contract
 
@@ -156,7 +162,7 @@ export function opsDoc(title: string): string {
 
   return `# ${title}
 
-Status: Draft
+${documentMetadata([["Status", "Draft"]])}
 
 ## Operational Contract
 
@@ -319,10 +325,12 @@ ${repositoryShapeBlock(profile, addons)}
 export function rootReadme(scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
   return `# Repository Design Scaffold
 
-Status: Draft
-Scope: ${scope}
-Repository Type: ${profile}
-Addons: ${formatAddons(addons)}
+${documentMetadata([
+  ["Status", "Draft"],
+  ["Scope", scope],
+  ["Repository Type", profile],
+  ["Addons", formatAddons(addons)],
+])}
 
 This repository contains an LLM-friendly design scaffold. It is not application source code.
 
@@ -369,7 +377,7 @@ export function docsReadme(scope: Scope, profile: Profile, addons: readonly Addo
 
   return `# Documentation
 
-Status: Draft
+${documentMetadata([["Status", "Draft"]])}
 
 ## Source of Truth
 
@@ -405,10 +413,12 @@ export function contextMap(scope: Scope, profile: Profile, addons: readonly Addo
 
   return `# Agent Context Map
 
-Status: Draft
-Scope: ${scope}
-Repository Type: ${profile}
-Addons: ${formatAddons(addons)}
+${documentMetadata([
+  ["Status", "Draft"],
+  ["Scope", scope],
+  ["Repository Type", profile],
+  ["Addons", formatAddons(addons)],
+])}
 
 ## Routes
 
@@ -419,7 +429,7 @@ ${routes.join("\n")}
 export function validationDoc(title: string, scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
   return `# ${title}
 
-Status: Draft
+${documentMetadata([["Status", "Draft"]])}
 
 ## Validation Source of Truth
 
@@ -466,8 +476,10 @@ ${profileList(profile, addons).join(", ")} validation must stay repository-shape
 export function profileDoc(title: string, profile: Profile): string {
   return `# ${title}
 
-Status: Draft
-Repository Type: ${profile}
+${documentMetadata([
+  ["Status", "Draft"],
+  ["Repository Type", profile],
+])}
 
 ## Repository Type Contract
 
@@ -496,8 +508,10 @@ function repositoryShapeBlock(profile: Profile, addons: readonly Addon[]): strin
   }
   return `## Repository Shape
 
-Primary repository type: ${profile}
-Addons: ${formatAddons(addons)}
+${documentMetadata([
+  ["Primary repository type", profile],
+  ["Addons", formatAddons(addons)],
+])}
 
 ${selected.map((value) => `- ${value}: ${profileContract(value)}`).join("\n")}
 `;
@@ -664,7 +678,7 @@ export function checklistDoc(title: string): string {
 
   return `# ${title}
 
-Status: Draft
+${documentMetadata([["Status", "Draft"]])}
 
 ## Failure Modes
 
@@ -866,7 +880,7 @@ export function frontendDesignDoc(): string {
   ];
   return `# Frontend Design
 
-Status: Draft
+${documentMetadata([["Status", "Draft"]])}
 
 ${sections
   .map(

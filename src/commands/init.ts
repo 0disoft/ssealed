@@ -2,9 +2,11 @@ import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { sha256 } from "../core/checksum.js";
+import { normalizeText, sha256 } from "../core/checksum.js";
 import { executeScaffold, readPreviousManifest, type PreviousManifestSettings } from "../core/scaffold.js";
 import { resolveInsideTarget } from "../core/path-safety.js";
+import { gitignoreBlock } from "../templates/index.js";
+import { validationScripts } from "../templates/runners.js";
 import {
   addons,
   densities,
@@ -37,6 +39,7 @@ export interface InitCliOptions {
   readonly yes: boolean;
   readonly dryRun: boolean;
   readonly force: boolean;
+  readonly strict?: boolean;
   readonly json: boolean;
 }
 
@@ -47,7 +50,7 @@ export async function runInit(options: InitCliOptions): Promise<number> {
 export async function runScaffoldCommand(options: InitCliOptions & { readonly command: CliCommand }): Promise<number> {
   const target = path.resolve(options.target ?? process.cwd());
   if (options.command === "doctor") {
-    return runDoctor(target, options.json);
+    return runDoctor(target, options.json, options.strict ?? false);
   }
 
   const settings = await resolveScaffoldSettings(target, { ...options, command: options.command });
@@ -338,6 +341,9 @@ function publicFile(file: Awaited<ReturnType<typeof executeScaffold>>["files"][n
     path: file.path,
     kind: file.kind,
     action: file.action,
+    ...(file.ownership === undefined ? {} : { ownership: file.ownership }),
+    ...(file.presence === undefined ? {} : { presence: file.presence }),
+    ...(file.manifestStatus === undefined ? {} : { status: file.manifestStatus }),
     ...(file.previouslyGenerated === undefined ? {} : { previouslyGenerated: file.previouslyGenerated }),
     ...(file.reason === undefined ? {} : { reason: file.reason }),
   };
@@ -372,12 +378,23 @@ function formatHumanResult(result: Awaited<ReturnType<typeof executeScaffold>>):
 interface DoctorCheck {
   readonly path: string;
   readonly kind: string;
-  readonly status: "ok" | "missing" | "modified" | "kind-mismatch" | "unreadable";
+  readonly ownership: string;
+  readonly presence: string;
+  readonly status:
+    | "ok"
+    | "customized"
+    | "retired"
+    | "missing"
+    | "modified"
+    | "block-modified"
+    | "kind-mismatch"
+    | "unreadable";
   readonly expectedChecksum: string;
   readonly actualChecksum?: string;
+  readonly reason?: string | undefined;
 }
 
-async function runDoctor(target: string, json: boolean): Promise<number> {
+async function runDoctor(target: string, json: boolean, strict: boolean): Promise<number> {
   const previous = await readPreviousManifest(target);
   if (previous.settings === undefined) {
     const payload = {
@@ -397,6 +414,7 @@ async function runDoctor(target: string, json: boolean): Promise<number> {
     }
     return 1;
   }
+  const settings = previous.settings;
 
   const checks = await Promise.all(
     [...previous.files.entries()].map(async ([relativePath, file]): Promise<DoctorCheck> => {
@@ -404,37 +422,70 @@ async function runDoctor(target: string, json: boolean): Promise<number> {
       try {
         const stat = await lstat(absolutePath);
         if (!stat.isFile()) {
-          return { path: relativePath, kind: file.kind, status: "kind-mismatch", expectedChecksum: file.checksum };
+          return {
+            path: relativePath,
+            kind: file.kind,
+            ownership: file.ownership,
+            presence: file.presence,
+            status: "kind-mismatch",
+            expectedChecksum: file.checksum,
+          };
         }
         const content = await readFile(absolutePath, "utf8");
         const actualChecksum = sha256(content);
+        return checkExistingManifestFile({
+          path: relativePath,
+          kind: file.kind,
+          ownership: file.ownership,
+          presence: file.presence,
+          manifestStatus: file.status,
+          runner: settings.runner,
+          strict,
+          content,
+          expectedChecksum: file.checksum,
+          actualChecksum,
+        });
+      } catch (error: unknown) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return {
+            path: relativePath,
+            kind: file.kind,
+            ownership: file.ownership,
+            presence: file.presence,
+            status: file.status === "retired" || (!strict && file.presence === "optional") ? "retired" : "missing",
+            expectedChecksum: file.checksum,
+            reason:
+              file.status === "retired"
+                ? "Seeded file was previously accepted as retired."
+                : !strict && file.presence === "optional"
+                  ? "Optional seeded file is absent."
+                  : undefined,
+          };
+        }
         return {
           path: relativePath,
           kind: file.kind,
-          status: actualChecksum === file.checksum ? "ok" : "modified",
+          ownership: file.ownership,
+          presence: file.presence,
+          status: "unreadable",
           expectedChecksum: file.checksum,
-          actualChecksum,
         };
-      } catch (error: unknown) {
-        if (isNodeError(error) && error.code === "ENOENT") {
-          return { path: relativePath, kind: file.kind, status: "missing", expectedChecksum: file.checksum };
-        }
-        return { path: relativePath, kind: file.kind, status: "unreadable", expectedChecksum: file.checksum };
       }
     }),
   );
 
-  const failed = checks.filter((check) => check.status !== "ok");
+  const failed = checks.filter((check) => isFailedDoctorCheck(check));
   const payload = {
     ok: failed.length === 0,
     command: "doctor",
+    strict,
     target,
-    scope: previous.settings.scope,
-    profile: previous.settings.profile,
-    repoType: previous.settings.profile,
-    addons: previous.settings.addons,
-    density: previous.settings.density,
-    runner: previous.settings.runner,
+    scope: settings.scope,
+    profile: settings.profile,
+    repoType: settings.profile,
+    addons: settings.addons,
+    density: settings.density,
+    runner: settings.runner,
     checks,
     warnings: previous.warnings,
   };
@@ -456,6 +507,7 @@ function formatDoctorHuman(payload: {
   readonly addons: readonly Addon[];
   readonly density: Density;
   readonly runner: Runner;
+  readonly strict: boolean;
   readonly checks: readonly DoctorCheck[];
 }): string {
   const lines = [
@@ -466,13 +518,98 @@ function formatDoctorHuman(payload: {
     `Addons: ${formatAddons(payload.addons)}`,
     `Density: ${payload.density}`,
     `Runner: ${payload.runner}`,
+    `Mode: ${payload.strict ? "strict" : "lifecycle"}`,
     `Status: ${payload.ok ? "ok" : "drift"}`,
   ];
 
   for (const check of payload.checks) {
-    lines.push(`- ${check.status}: ${check.path}`);
+    lines.push(`- ${check.status}: ${check.path}${check.reason ? ` (${check.reason})` : ""}`);
   }
   return `${lines.join("\n")}\n`;
+}
+
+function checkExistingManifestFile(params: {
+  readonly path: string;
+  readonly kind: string;
+  readonly ownership: string;
+  readonly presence: string;
+  readonly manifestStatus: string;
+  readonly runner: Runner;
+  readonly strict: boolean;
+  readonly content: string;
+  readonly expectedChecksum: string;
+  readonly actualChecksum: string;
+}): DoctorCheck {
+  const base = {
+    path: params.path,
+    kind: params.kind,
+    ownership: params.ownership,
+    presence: params.presence,
+    expectedChecksum: params.expectedChecksum,
+    actualChecksum: params.actualChecksum,
+  };
+
+  if (params.actualChecksum === params.expectedChecksum) {
+    return { ...base, status: "ok" };
+  }
+
+  if (params.strict) {
+    return { ...base, status: "modified", reason: "Current content differs from the accepted manifest checksum." };
+  }
+
+  if (params.ownership === "seeded") {
+    return {
+      ...base,
+      status: "customized",
+      reason:
+        params.manifestStatus === "retired"
+          ? "Previously retired seeded file exists again as project-owned content."
+          : "Seeded file has project-owned edits.",
+    };
+  }
+
+  if (params.ownership === "block-managed") {
+    const blockStatus = checkManagedBlock(params.path, params.content, params.runner);
+    if (blockStatus === undefined) {
+      return { ...base, status: "block-modified", reason: "Managed block no longer matches the scaffold contract." };
+    }
+    return blockStatus ? { ...base, status: "ok" } : { ...base, status: "block-modified", reason: "Managed block no longer matches the scaffold contract." };
+  }
+
+  return { ...base, status: "modified", reason: "Managed file differs from the accepted manifest checksum." };
+}
+
+function checkManagedBlock(pathValue: string, content: string, runner: Runner): boolean | undefined {
+  if (pathValue === ".gitignore") {
+    return normalizeText(content).includes(gitignoreBlock().trimEnd());
+  }
+  if (pathValue === "package.json") {
+    const parsed = parseJsonObject(content);
+    if (parsed === undefined || !isRecord(parsed.scripts)) {
+      return false;
+    }
+    const scripts = parsed.scripts;
+    const expectedScripts = validationScripts(runner === "pnpm" ? "pnpm" : "npm");
+    return Object.entries(expectedScripts).every(([name, value]) => scripts[name] === value);
+  }
+  return undefined;
+}
+
+function isFailedDoctorCheck(check: DoctorCheck): boolean {
+  return check.status === "modified" || check.status === "block-modified" || check.status === "kind-mismatch" || check.status === "unreadable" || check.status === "missing";
+}
+
+function parseJsonObject(content: string): Record<string, unknown> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(content);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function sameAddons(left: readonly Addon[], right: readonly Addon[]): boolean {

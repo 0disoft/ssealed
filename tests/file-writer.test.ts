@@ -241,6 +241,52 @@ describe("file writer behavior", () => {
     expect(result.written).toContain(".ssealed/manifest.json");
   });
 
+  it("accepts project-owned edits to seeded documents during update", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+    const readmePath = path.join(dir, "README.md");
+    await writeFile(readmePath, "# Project README\n\nThis repository has moved beyond the seed text.\n");
+
+    const result = await executeScaffold({ command: "update", target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+
+    expect(result.conflicts.map((file) => file.path)).not.toContain("README.md");
+    expect(result.files.find((file) => file.path === "README.md")?.action).toBe("customized");
+    expect(result.written).toContain(".ssealed/manifest.json");
+    await expect(readFile(readmePath, "utf8")).resolves.toBe("# Project README\n\nThis repository has moved beyond the seed text.\n");
+    const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+    expect(manifest.files).toContainEqual(
+      expect.objectContaining({
+        path: "README.md",
+        ownership: "seeded",
+        presence: "optional",
+        status: "active",
+        acceptedChecksum: expect.any(String),
+      }),
+    );
+  });
+
+  it("keeps deleted seeded documents retired during update", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+    await rm(path.join(dir, "docs", "product", "01-roadmap.md"));
+
+    const result = await executeScaffold({ command: "update", target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+
+    expect(result.conflicts.map((file) => file.path)).not.toContain("docs/product/01-roadmap.md");
+    expect(result.files.find((file) => file.path === "docs/product/01-roadmap.md")?.action).toBe("retired");
+    expect(result.written).not.toContain("docs/product/01-roadmap.md");
+    await expect(readFile(path.join(dir, "docs", "product", "01-roadmap.md"), "utf8")).rejects.toThrow();
+    const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+    expect(manifest.files).toContainEqual(
+      expect.objectContaining({
+        path: "docs/product/01-roadmap.md",
+        ownership: "seeded",
+        presence: "optional",
+        status: "retired",
+      }),
+    );
+  });
+
   it("conflicts clearly when an existing path is not a regular file even with force", async () => {
     const dir = await tempDir();
     await mkdir(path.join(dir, "README.md"));
