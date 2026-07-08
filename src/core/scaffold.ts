@@ -128,6 +128,7 @@ export interface PreviousManifestSettings {
 }
 
 export interface PreviousManifestState {
+  readonly version: string | undefined;
   readonly files: ReadonlyMap<
     string,
     {
@@ -154,10 +155,10 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
     throw error;
   });
   if (manifestStat === undefined) {
-    return { files: new Map(), settings: undefined, warnings: [] };
+    return { version: undefined, files: new Map(), settings: undefined, warnings: [] };
   }
   if (manifestStat.size > maxManifestBytes) {
-    return { files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json exceeds the supported 1 MiB size limit.")] };
+    return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json exceeds the supported 1 MiB size limit.")] };
   }
   const content = await readFile(manifestPath, "utf8").catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
@@ -166,15 +167,16 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
     throw error;
   });
   if (content === undefined) {
-    return { files: new Map(), settings: undefined, warnings: [] };
+    return { version: undefined, files: new Map(), settings: undefined, warnings: [] };
   }
 
   try {
     const parsed: unknown = JSON.parse(content);
     if (!isManifestLike(parsed)) {
-      return { files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
+      return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
     }
     return {
+      version: typeof parsed.version === "string" ? parsed.version : undefined,
       files: new Map(
         parsed.files.map((file) => [
           file.path,
@@ -199,7 +201,7 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
       warnings: [],
     };
   } catch {
-    return { files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
+    return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
   }
 }
 
@@ -213,6 +215,7 @@ function invalidManifestWarning(message = "Existing .ssealed/manifest.json could
 
 function isManifestLike(value: unknown): value is {
   readonly tool: "ssealed";
+  readonly version?: string;
   readonly scope: string;
   readonly profile?: Profile;
   readonly addons?: readonly Addon[];
@@ -235,6 +238,7 @@ function isManifestLike(value: unknown): value is {
   }
   const candidate = value as {
     readonly tool?: unknown;
+    readonly version?: unknown;
     readonly scope?: unknown;
     readonly profile?: unknown;
     readonly addons?: unknown;
@@ -244,6 +248,7 @@ function isManifestLike(value: unknown): value is {
   };
   return (
     candidate.tool === "ssealed" &&
+    (candidate.version === undefined || typeof candidate.version === "string") &&
     typeof candidate.scope === "string" &&
     normalizeScope(candidate.scope) !== undefined &&
     (candidate.profile === undefined || isProfile(candidate.profile)) &&

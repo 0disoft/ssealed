@@ -318,6 +318,73 @@ describe("CLI argument parsing", () => {
     }
   });
 
+  it("accepts project-owned .gitignore rules outside the managed block", async () => {
+    const dir = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["init", dir, "--scope", "general", "--yes", "--json"])).resolves.toBe(0);
+      const gitignorePath = path.join(dir, ".gitignore");
+      await writeFile(gitignorePath, `__pycache__/\n.pytest_cache/\n${await readFile(gitignorePath, "utf8")}`);
+      stdout.mockClear();
+
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(0);
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload.ok).toBe(true);
+      expect(payload.checks).toContainEqual(expect.objectContaining({ path: ".gitignore", status: "ok" }));
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("accepts legacy .gitignore managed blocks for manifests before lock ignore support", async () => {
+    const dir = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["init", dir, "--scope", "general", "--yes", "--json"])).resolves.toBe(0);
+      const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      await writeFile(manifestPath, `${JSON.stringify({ ...manifest, version: "0.6.1" }, null, 2)}\n`);
+      const gitignorePath = path.join(dir, ".gitignore");
+      const legacyGitignore = (await readFile(gitignorePath, "utf8")).replace(".ssealed-init.lock\n", "");
+      await writeFile(gitignorePath, `__pycache__/\n.pytest_cache/\n${legacyGitignore}`);
+      stdout.mockClear();
+
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(0);
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload.ok).toBe(true);
+      expect(payload.checks).toContainEqual(expect.objectContaining({ path: ".gitignore", status: "ok" }));
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("still reports legacy .gitignore managed blocks as drift for current manifests", async () => {
+    const dir = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["init", dir, "--scope", "general", "--yes", "--json"])).resolves.toBe(0);
+      const gitignorePath = path.join(dir, ".gitignore");
+      await writeFile(gitignorePath, (await readFile(gitignorePath, "utf8")).replace(".ssealed-init.lock\n", ""));
+      stdout.mockClear();
+
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(1);
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload.ok).toBe(false);
+      expect(payload.checks).toContainEqual(expect.objectContaining({ path: ".gitignore", status: "block-modified" }));
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
   it("refuses doctor reads through symlinked generated directories", async () => {
     const dir = await tempDir();
     const outside = await tempDir();

@@ -471,6 +471,7 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
           ownership: file.ownership,
           presence: file.presence,
           manifestStatus: file.status,
+          manifestVersion: previous.version,
           runner: settings.runner,
           strict,
           content,
@@ -566,6 +567,7 @@ function checkExistingManifestFile(params: {
   readonly ownership: string;
   readonly presence: string;
   readonly manifestStatus: string;
+  readonly manifestVersion: string | undefined;
   readonly runner: Runner;
   readonly strict: boolean;
   readonly content: string;
@@ -601,7 +603,7 @@ function checkExistingManifestFile(params: {
   }
 
   if (params.ownership === "block-managed") {
-    const blockStatus = checkManagedBlock(params.path, params.content, params.runner);
+    const blockStatus = checkManagedBlock(params.path, params.content, params.runner, params.manifestVersion);
     if (blockStatus === undefined) {
       return { ...base, status: "block-modified", reason: "Managed block no longer matches the scaffold contract." };
     }
@@ -611,10 +613,10 @@ function checkExistingManifestFile(params: {
   return { ...base, status: "modified", reason: "Managed file differs from the accepted manifest checksum." };
 }
 
-function checkManagedBlock(pathValue: string, content: string, runner: Runner): boolean | undefined {
+function checkManagedBlock(pathValue: string, content: string, runner: Runner, manifestVersion: string | undefined): boolean | undefined {
   if (pathValue === ".gitignore") {
     const blocks = extractManagedBlocks(content);
-    return blocks.length === 1 && normalizeText(blocks[0] ?? "") === gitignoreBlock().trimEnd();
+    return blocks.length === 1 && gitignoreBlocksAcceptedForManifest(manifestVersion).includes(normalizeText(blocks[0] ?? ""));
   }
   if (pathValue === "package.json") {
     const parsed = parseJsonObject(content);
@@ -626,6 +628,41 @@ function checkManagedBlock(pathValue: string, content: string, runner: Runner): 
     return Object.entries(expectedScripts).every(([name, value]) => scripts[name] === value);
   }
   return undefined;
+}
+
+function gitignoreBlocksAcceptedForManifest(manifestVersion: string | undefined): readonly string[] {
+  const currentBlock = normalizeText(gitignoreBlock());
+  if (!isBeforeVersion(manifestVersion, "0.6.2")) {
+    return [currentBlock];
+  }
+  return [currentBlock, normalizeText(gitignoreBlock().replace(".ssealed-init.lock\n", ""))];
+}
+
+function isBeforeVersion(value: string | undefined, minimum: string): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  const parsed = parseVersion(value);
+  const minimumParsed = parseVersion(minimum);
+  if (parsed === undefined || minimumParsed === undefined) {
+    return false;
+  }
+  for (let index = 0; index < minimumParsed.length; index += 1) {
+    const left = parsed[index] ?? 0;
+    const right = minimumParsed[index] ?? 0;
+    if (left !== right) {
+      return left < right;
+    }
+  }
+  return false;
+}
+
+function parseVersion(value: string): readonly number[] | undefined {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(value);
+  if (match === null) {
+    return undefined;
+  }
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
 function extractManagedBlocks(content: string): readonly string[] {
