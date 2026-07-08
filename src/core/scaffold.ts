@@ -1,5 +1,6 @@
 import path from "node:path";
 import { open, readFile, rm } from "node:fs/promises";
+import { hostname } from "node:os";
 import { normalizeText } from "./checksum.js";
 import { formatManifest, createManifest } from "./manifest.js";
 import { planTemplateFile, writePlannedFiles } from "./file-writer.js";
@@ -25,6 +26,8 @@ import {
   type Scope,
 } from "./types.js";
 import { templateFilesFor } from "../templates/index.js";
+
+const staleLockAgeMs = 60 * 60 * 1000;
 
 export async function planScaffold(options: InitOptions): Promise<readonly PlannedFile[]> {
   return (await planScaffoldWithWarnings(options)).files;
@@ -406,7 +409,7 @@ export async function executeScaffold(options: InitOptions): Promise<ScaffoldRes
     };
   }
 
-  return withScaffoldLock(path.resolve(options.target), async () => {
+  return withScaffoldLock(path.resolve(options.target), options.breakStaleLock ?? false, async () => {
     const plan = await planScaffoldWithWarnings(options);
     const conflicts = plan.files.filter((file) => file.action === "conflict");
     if (conflicts.length > 0) {
@@ -446,11 +449,14 @@ export async function executeScaffold(options: InitOptions): Promise<ScaffoldRes
   });
 }
 
-async function withScaffoldLock<T>(targetRoot: string, task: () => Promise<T>): Promise<T> {
+async function withScaffoldLock<T>(targetRoot: string, breakStaleLock: boolean, task: () => Promise<T>): Promise<T> {
   await ensureDirectoryInsideTarget(targetRoot, targetRoot);
   const lockPath = resolveInsideTarget(targetRoot, ".ssealed-init.lock");
   await assertNoSymlinkInPath(targetRoot, lockPath);
+  return acquireScaffoldLock(lockPath, breakStaleLock, task);
+}
 
+async function acquireScaffoldLock<T>(lockPath: string, breakStaleLock: boolean, task: () => Promise<T>): Promise<T> {
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let acquired = false;
   try {
@@ -461,6 +467,7 @@ async function withScaffoldLock<T>(targetRoot: string, task: () => Promise<T>): 
         {
           tool: "ssealed",
           pid: process.pid,
+          hostname: hostname(),
           createdAt: new Date().toISOString(),
         },
         null,
@@ -473,7 +480,14 @@ async function withScaffoldLock<T>(targetRoot: string, task: () => Promise<T>): 
     return await task();
   } catch (error) {
     if (isNodeError(error) && error.code === "EEXIST") {
-      throw new Error("Another ssealed init is already running for this target. Remove .ssealed-init.lock only after confirming it is stale.");
+      if (breakStaleLock && (await removeStaleScaffoldLock(lockPath))) {
+        return acquireScaffoldLock(lockPath, false, task);
+      }
+      throw new Error(
+        breakStaleLock
+          ? "Existing scaffold lock is not stale. Refusing to remove .ssealed-init.lock while another ssealed command may still be running."
+          : "Another ssealed init is already running for this target. Run again with --break-stale-lock only after confirming the lock is stale.",
+      );
     }
     throw error;
   } finally {
@@ -483,5 +497,72 @@ async function withScaffoldLock<T>(targetRoot: string, task: () => Promise<T>): 
     if (acquired) {
       await rm(lockPath, { force: true }).catch(() => undefined);
     }
+  }
+}
+
+async function removeStaleScaffoldLock(lockPath: string): Promise<boolean> {
+  const metadata = await readScaffoldLockMetadata(lockPath);
+  if (!isStaleScaffoldLock(metadata)) {
+    return false;
+  }
+  await rm(lockPath);
+  return true;
+}
+
+interface ScaffoldLockMetadata {
+  readonly pid?: number;
+  readonly hostname?: string;
+  readonly createdAt?: string;
+}
+
+async function readScaffoldLockMetadata(lockPath: string): Promise<ScaffoldLockMetadata | undefined> {
+  const content = await readFile(lockPath, "utf8").catch(() => undefined);
+  if (content === undefined) {
+    return undefined;
+  }
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (typeof parsed !== "object" || parsed === null) {
+      return undefined;
+    }
+    const metadata: { pid?: number; hostname?: string; createdAt?: string } = {};
+    if (typeof (parsed as { readonly pid?: unknown }).pid === "number") {
+      metadata.pid = (parsed as { readonly pid: number }).pid;
+    }
+    if (typeof (parsed as { readonly hostname?: unknown }).hostname === "string") {
+      metadata.hostname = (parsed as { readonly hostname: string }).hostname;
+    }
+    if (typeof (parsed as { readonly createdAt?: unknown }).createdAt === "string") {
+      metadata.createdAt = (parsed as { readonly createdAt: string }).createdAt;
+    }
+    return metadata;
+  } catch {
+    return undefined;
+  }
+}
+
+function isStaleScaffoldLock(metadata: ScaffoldLockMetadata | undefined): boolean {
+  if (metadata?.createdAt === undefined) {
+    return false;
+  }
+  const createdAtMs = Date.parse(metadata.createdAt);
+  if (!Number.isFinite(createdAtMs) || Date.now() - createdAtMs < staleLockAgeMs) {
+    return false;
+  }
+  return !isLockProcessAlive(metadata);
+}
+
+function isLockProcessAlive(metadata: ScaffoldLockMetadata): boolean {
+  if (metadata.hostname !== undefined && metadata.hostname !== hostname()) {
+    return false;
+  }
+  if (metadata.pid === undefined || !Number.isInteger(metadata.pid) || metadata.pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(metadata.pid, 0);
+    return true;
+  } catch (error: unknown) {
+    return isNodeError(error) && error.code === "EPERM";
   }
 }

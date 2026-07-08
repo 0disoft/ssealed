@@ -1,0 +1,23 @@
+{
+  "tool": "ssealed",
+  "version": "0.6.1",
+  "generatedAt": "2026-07-08T00:00:00.000Z",
+  "scope": "backend",
+  "profile": "generic",
+  "addons": [],
+  "density": "standard",
+  "runner": "none",
+  "files": [
+    {
+      "path": "api/openapi.yaml",
+      "checksum": "sha256:accepted-openapi",
+      "kind": "contract",
+      "ownership": "seeded",
+      "presence": "optional",
+      "status": "retired",
+      "initialChecksum": "sha256:generated-openapi",
+      "acceptedChecksum": "sha256:accepted-openapi",
+      "generatedChecksum": "sha256:generated-openapi"
+    }
+  ]
+}

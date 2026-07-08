@@ -208,6 +208,7 @@ export async function writePlannedFiles(targetRoot: string, files: readonly Plan
       createdDirectories.push(...(await missingDirectoryChain(targetRoot, targetDir)));
       await mkdir(targetDir, { recursive: true });
       await assertNoSymlinkInPath(targetRoot, targetPath);
+      await assertExpectedWriteState(targetPath, file);
       await writeTextFileAtomically(targetPath, normalizeText(file.content));
       written.push(file.path);
     }
@@ -256,6 +257,23 @@ function existingPathConflictReason(kind: Exclude<ExistingPath["kind"], "missing
     return "Existing path is a directory, not a regular file.";
   }
   return "Existing path is not a regular file.";
+}
+
+async function assertExpectedWriteState(targetPath: string, file: PlannedFile): Promise<void> {
+  const current = await readExistingPath(targetPath);
+  if (file.existingContent === undefined) {
+    if (current.kind === "missing") {
+      return;
+    }
+    throw new Error(`Refusing to write ${file.path}: file appeared after the scaffold plan was created.`);
+  }
+
+  if (current.kind !== "file") {
+    throw new Error(`Refusing to write ${file.path}: file changed after the scaffold plan was created.`);
+  }
+  if (current.content !== file.existingContent) {
+    throw new Error(`Refusing to write ${file.path}: file content changed after the scaffold plan was created.`);
+  }
 }
 
 function planGitignore(

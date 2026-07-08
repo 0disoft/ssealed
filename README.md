@@ -73,6 +73,7 @@ ssealed init [target] --density minimal|standard|strict
 ssealed init [target] --runner none|make|just|task|npm|pnpm
 ssealed update [target] --dry-run --json
 ssealed upgrade [target] --repo-type api-service --density strict --runner make --force
+ssealed update [target] --break-stale-lock
 ssealed doctor [target] --json
 ssealed doctor [target] --strict --json
 ssealed --help
@@ -159,6 +160,8 @@ Existing files are not overwritten by default. Identical files are marked `uncha
 
 `--force` overwrites conflicting files only when the current file content matches the generated checksum recorded for that path in the previous `.ssealed/manifest.json`. The manifest is a local previous-run record, not a security boundary, and it never authorizes overwriting unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced. Seeded files with project-owned edits stay project-owned even after `update` accepts their current checksum.
 
+Before each write, `ssealed` rechecks that the target file still matches the state used to create the plan. If a file appeared or changed between planning and writing, the run stops instead of committing a stale plan.
+
 ## Manifest Behavior
 
 Every write run refreshes `.ssealed/manifest.json` with tool version, generation timestamp, scope, profile, addons, density, runner, file paths, kinds, ownership, presence, lifecycle status, and SHA-256 checksums of normalized LF content. The `profile` field is retained for manifest compatibility and represents the selected primary repository type.
@@ -180,6 +183,8 @@ The manifest helps identify previously generated files, but it never authorizes 
 Template paths must be relative, normalized, and contained by the selected target directory.
 
 `ssealed` rejects absolute paths, parent traversal, Windows reserved names, unsafe path characters, and `bunfig.toml` generation. Scaffold writes refuse symlinked generated directories and symlinked existing files instead of following them outside the target.
+
+Write commands use `.ssealed-init.lock` to keep concurrent `ssealed` runs from writing the same target. If a previous process crashed and left an old lock, rerun with `--break-stale-lock`; the lock is removed only when its metadata is old enough and its recorded process is not still alive on the current host.
 
 ## Hygiene File Behavior
 

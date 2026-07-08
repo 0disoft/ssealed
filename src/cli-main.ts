@@ -24,6 +24,8 @@ Options:
   --yes        Never prompt.
   --dry-run    Print planned operations without writing files.
   --force      Overwrite conflicts only when current content matches previous generated checksums.
+  --break-stale-lock
+               Remove an old scaffold lock after verifying it is stale.
   --strict     Make doctor fail on any accepted-checksum drift.
   --json       Print machine-readable JSON.
 `;
@@ -100,6 +102,7 @@ interface ParsedScaffoldArgs {
     readonly yes?: boolean;
     readonly "dry-run"?: boolean;
     readonly force?: boolean;
+    readonly "break-stale-lock"?: boolean;
     readonly strict?: boolean;
     readonly json?: boolean;
     readonly help?: boolean;
@@ -169,6 +172,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       yes: parsed.values.yes ?? false,
       dryRun: parsed.values["dry-run"] ?? false,
       force: parsed.values.force ?? false,
+      breakStaleLock: parsed.values["break-stale-lock"] ?? false,
       strict: parsed.values.strict ?? false,
       json: parsed.values.json ?? false,
       ...(parsed.values["repo-type"] === undefined ? {} : { repoType: parsed.values["repo-type"] }),
@@ -200,6 +204,7 @@ function parseScaffoldArgs(args: readonly string[]): ParsedScaffoldArgs | Error 
         yes: { type: "boolean", default: false },
         "dry-run": { type: "boolean", default: false },
         force: { type: "boolean", default: false },
+        "break-stale-lock": { type: "boolean", default: false },
         strict: { type: "boolean", default: false },
         json: { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },

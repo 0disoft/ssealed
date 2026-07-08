@@ -1,0 +1,22 @@
+{
+  "tool": "ssealed",
+  "version": "0.6.0",
+  "generatedAt": "2026-07-08T00:00:00.000Z",
+  "scope": "general",
+  "profile": "generic",
+  "addons": [],
+  "density": "standard",
+  "runner": "none",
+  "files": [
+    {
+      "path": "README.md",
+      "checksum": "sha256:accepted-readme",
+      "kind": "document",
+      "ownership": "seeded",
+      "presence": "optional",
+      "status": "active",
+      "initialChecksum": "sha256:generated-readme",
+      "acceptedChecksum": "sha256:accepted-readme"
+    }
+  ]
+}

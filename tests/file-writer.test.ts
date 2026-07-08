@@ -2,7 +2,8 @@ import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { executeScaffold, planScaffold } from "../src/core/scaffold.js";
+import { executeScaffold, planScaffold, readPreviousManifest } from "../src/core/scaffold.js";
+import { writePlannedFiles } from "../src/core/file-writer.js";
 import { assertSafeTemplatePath } from "../src/core/path-safety.js";
 import { gitignoreBlock } from "../src/templates/index.js";
 
@@ -20,6 +21,12 @@ async function tempDir(): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "ssealed-writer-"));
   workdirs.push(dir);
   return dir;
+}
+
+async function copyManifestFixture(dir: string, fixtureName: string): Promise<void> {
+  await mkdir(path.join(dir, ".ssealed"), { recursive: true });
+  const fixture = await readFile(path.join(process.cwd(), "tests", "fixtures", "manifests", fixtureName), "utf8");
+  await writeFile(path.join(dir, ".ssealed", "manifest.json"), fixture);
 }
 
 describe("file writer behavior", () => {
@@ -164,6 +171,58 @@ describe("file writer behavior", () => {
     expect(agents?.previouslyGenerated).toBe(true);
   });
 
+  it("reads legacy manifest fixtures with generated checksum fallback", async () => {
+    const dir = await tempDir();
+    await copyManifestFixture(dir, "v0_6_0-customized-seeded.json");
+
+    const previous = await readPreviousManifest(dir);
+
+    expect(previous.warnings).toHaveLength(0);
+    expect(previous.settings).toEqual(expect.objectContaining({ scope: "general", runner: "none" }));
+    expect(previous.files.get("README.md")).toEqual(
+      expect.objectContaining({
+        checksum: "sha256:accepted-readme",
+        generatedChecksum: "sha256:generated-readme",
+        initialChecksum: "sha256:generated-readme",
+        ownership: "seeded",
+        presence: "optional",
+        status: "active",
+      }),
+    );
+  });
+
+  it("keeps retired files from manifest fixtures visible during upgrade planning", async () => {
+    const dir = await tempDir();
+    await copyManifestFixture(dir, "v0_6_1-retired-backend-file.json");
+
+    const planned = await planScaffold({ command: "upgrade", target: dir, scope: "general", runner: "none", dryRun: true, force: true });
+
+    expect(planned).toContainEqual(
+      expect.objectContaining({
+        path: "api/openapi.yaml",
+        action: "retired",
+        manifestStatus: "retired",
+        previousGeneratedChecksum: "sha256:generated-openapi",
+      }),
+    );
+  });
+
+  it("reports invalid manifest fixtures as warnings", async () => {
+    const dir = await tempDir();
+    await copyManifestFixture(dir, "invalid-scope.json");
+
+    const previous = await readPreviousManifest(dir);
+
+    expect(previous.settings).toBeUndefined();
+    expect(previous.files.size).toBe(0);
+    expect(previous.warnings).toEqual([
+      expect.objectContaining({
+        code: "INVALID_MANIFEST",
+        path: ".ssealed/manifest.json",
+      }),
+    ]);
+  });
+
   it("refuses init when a valid scaffold manifest already exists", async () => {
     const dir = await tempDir();
     await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
@@ -190,6 +249,31 @@ describe("file writer behavior", () => {
     const after = await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8");
     expect(rerun.written).not.toContain(".ssealed/manifest.json");
     expect(after).toBe(before);
+  });
+
+  it("refuses to write a stale plan when a target file appears after planning", async () => {
+    const dir = await tempDir();
+    const planned = await planScaffold({ target: dir, scope: "general", runner: "none", dryRun: true, force: false });
+
+    await writeFile(path.join(dir, "AGENTS.md"), "late user content\n");
+
+    await expect(writePlannedFiles(dir, planned)).rejects.toThrow(/appeared after the scaffold plan/u);
+    await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
+    await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).resolves.toBe("late user content\n");
+  });
+
+  it("refuses to write a stale plan when existing content changes after planning", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+    await writeFile(path.join(dir, "README.md"), "# Project README\n\nAccepted project-owned content.\n");
+    const planned = await planScaffold({ command: "update", target: dir, scope: "general", runner: "none", dryRun: true, force: false });
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const externalManifest = "{\"external\":true}\n";
+
+    await writeFile(manifestPath, externalManifest);
+
+    await expect(writePlannedFiles(dir, planned)).rejects.toThrow(/content changed after the scaffold plan/u);
+    await expect(readFile(manifestPath, "utf8")).resolves.toBe(externalManifest);
   });
 
   it("keeps planned manifest content aligned with unchanged existing manifest content", async () => {
@@ -406,6 +490,53 @@ describe("file writer behavior", () => {
     );
     await expect(readFile(lockPath, "utf8")).resolves.toBe("existing lock\n");
     await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).rejects.toThrow();
+  });
+
+  it("breaks an old scaffold lock only when explicitly requested", async () => {
+    const dir = await tempDir();
+    const lockPath = path.join(dir, ".ssealed-init.lock");
+    await writeFile(
+      lockPath,
+      JSON.stringify(
+        {
+          tool: "ssealed",
+          pid: 999999999,
+          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+
+    await expect(executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false })).rejects.toThrow(/already running/u);
+    await expect(executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false, breakStaleLock: true })).resolves.toEqual(
+      expect.objectContaining({
+        written: expect.arrayContaining(["AGENTS.md"]),
+      }),
+    );
+    await expect(readFile(lockPath, "utf8")).rejects.toThrow();
+  });
+
+  it("does not break a stale-aged lock whose process is still alive", async () => {
+    const dir = await tempDir();
+    const lockPath = path.join(dir, ".ssealed-init.lock");
+    await writeFile(
+      lockPath,
+      JSON.stringify(
+        {
+          tool: "ssealed",
+          pid: process.pid,
+          createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+
+    await expect(executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false, breakStaleLock: true })).rejects.toThrow(
+      /not stale/u,
+    );
+    await expect(readFile(lockPath, "utf8")).resolves.toContain(`"pid": ${process.pid}`);
   });
 
   it("removes the scaffold lock after a successful write", async () => {

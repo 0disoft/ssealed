@@ -39,6 +39,7 @@ export interface InitCliOptions {
   readonly yes: boolean;
   readonly dryRun: boolean;
   readonly force: boolean;
+  readonly breakStaleLock?: boolean;
   readonly strict?: boolean;
   readonly json: boolean;
 }
@@ -68,6 +69,7 @@ export async function runScaffoldCommand(options: InitCliOptions & { readonly co
     runner: settings.runner,
     dryRun: options.dryRun,
     force: options.force,
+    breakStaleLock: options.breakStaleLock ?? false,
   });
 
   if (options.json) {

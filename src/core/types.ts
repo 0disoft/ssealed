@@ -134,6 +134,7 @@ export interface InitOptions {
   readonly runner: Runner;
   readonly dryRun: boolean;
   readonly force: boolean;
+  readonly breakStaleLock?: boolean;
 }
 
 export function normalizeScope(value: string): Scope | undefined {
