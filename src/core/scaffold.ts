@@ -6,6 +6,7 @@ import { SsealedError } from "./errors.js";
 import { formatManifest, createManifest } from "./manifest.js";
 import { planTemplateFile, writePlannedFiles } from "./file-writer.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
+import { getScaffoldInterruptContext, withScaffoldSignalHandling } from "./signals.js";
 import {
   isAddon,
   isProfile,
@@ -488,7 +489,7 @@ export async function withScaffoldWriteLock<T>(targetRoot: string, breakStaleLoc
   await ensureDirectoryInsideTarget(targetRoot, targetRoot);
   const lockPath = resolveInsideTarget(targetRoot, ".ssealed-init.lock");
   await assertNoSymlinkInPath(targetRoot, lockPath);
-  return acquireScaffoldLock(lockPath, breakStaleLock, task);
+  return withScaffoldSignalHandling(() => acquireScaffoldLock(lockPath, breakStaleLock, task));
 }
 
 async function acquireScaffoldLock<T>(lockPath: string, breakStaleLock: boolean, task: () => Promise<T>): Promise<T> {
@@ -512,6 +513,7 @@ async function acquireScaffoldLock<T>(lockPath: string, breakStaleLock: boolean,
     );
     await handle.close();
     handle = undefined;
+    getScaffoldInterruptContext()?.throwIfInterrupted();
     return await task();
   } catch (error) {
     if (isNodeError(error) && error.code === "EEXIST") {

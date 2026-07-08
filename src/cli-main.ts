@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { runScaffoldCommand, type CliCommand } from "./commands/init.js";
-import { isSsealedError } from "./core/errors.js";
+import { isScaffoldInterruptedError, isSsealedError } from "./core/errors.js";
 import { toolVersion } from "./core/manifest.js";
 
 const commandNames = ["init", "update", "upgrade", "doctor"] as const satisfies readonly CliCommand[];
@@ -185,6 +185,10 @@ export async function main(argv: readonly string[]): Promise<number> {
     if (parsed.values.json) {
       process.stdout.write(`${JSON.stringify({ ok: false, error: classifyRuntimeError(error) }, null, 2)}\n`);
       return 1;
+    }
+    if (isScaffoldInterruptedError(error)) {
+      process.stderr.write(`ssealed: ${error.message}\n`);
+      return error.exitCode;
     }
     throw error;
   }

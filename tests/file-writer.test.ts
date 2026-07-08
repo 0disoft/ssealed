@@ -2,10 +2,11 @@ import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { executeScaffold, planScaffold, readPreviousManifest } from "../src/core/scaffold.js";
+import { executeScaffold, planScaffold, readPreviousManifest, withScaffoldWriteLock } from "../src/core/scaffold.js";
 import { writePlannedFiles } from "../src/core/file-writer.js";
 import { assertSafeTemplatePath } from "../src/core/path-safety.js";
 import { gitignoreBlock } from "../src/templates/index.js";
+import type { PlannedFile } from "../src/core/types.js";
 
 let workdirs: string[] = [];
 
@@ -62,6 +63,43 @@ describe("file writer behavior", () => {
     await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).rejects.toThrow();
     await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
     await expect(lstat(path.join(dir, ".ssealed"))).rejects.toThrow();
+  });
+
+  it("rolls back files written before SIGINT interrupts a write batch", async () => {
+    const dir = await tempDir();
+    const previousListenerCount = process.listenerCount("SIGINT");
+    const planned = [
+      { path: "first.txt", kind: "document", action: "create", content: "first\n" },
+      {
+        path: "second.txt",
+        kind: "document",
+        action: "create",
+        get content() {
+          process.emit("SIGINT", "SIGINT");
+          return "second\n";
+        },
+      },
+      { path: ".ssealed/manifest.json", kind: "manifest", action: "create", content: "{}\n" },
+    ] as unknown as readonly PlannedFile[];
+
+    await expect(writePlannedFiles(dir, planned)).rejects.toMatchObject({ code: "INTERRUPTED", signal: "SIGINT" });
+
+    await expect(readFile(path.join(dir, "first.txt"), "utf8")).rejects.toThrow();
+    await expect(readFile(path.join(dir, "second.txt"), "utf8")).rejects.toThrow();
+    await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
+    expect(process.listenerCount("SIGINT")).toBe(previousListenerCount);
+  });
+
+  it("removes the write lock after SIGTERM interrupts a locked task", async () => {
+    const dir = await tempDir();
+
+    await expect(
+      withScaffoldWriteLock(dir, false, async () => {
+        process.emit("SIGTERM", "SIGTERM");
+      }),
+    ).rejects.toMatchObject({ code: "INTERRUPTED", signal: "SIGTERM" });
+
+    await expect(readFile(path.join(dir, ".ssealed-init.lock"), "utf8")).rejects.toThrow();
   });
 
   it("force does not overwrite files that are not verified as scaffold-managed", async () => {

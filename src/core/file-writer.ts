@@ -4,6 +4,7 @@ import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { SsealedError } from "./errors.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
+import { getScaffoldInterruptContext, withScaffoldSignalHandling, type ScaffoldInterruptContext } from "./signals.js";
 import type { FileOwnership, FilePresence, ManifestFileStatus, PlannedFile, ScaffoldCommand, TemplateFile } from "./types.js";
 import { validationScripts } from "../templates/runners.js";
 
@@ -192,9 +193,15 @@ export async function planTemplateFile(params: {
 }
 
 export async function writePlannedFiles(targetRoot: string, files: readonly PlannedFile[]): Promise<readonly string[]> {
+  return withScaffoldSignalHandling(() => writePlannedFilesInterruptibly(targetRoot, files));
+}
+
+async function writePlannedFilesInterruptibly(targetRoot: string, files: readonly PlannedFile[]): Promise<readonly string[]> {
   const written: string[] = [];
   const createdDirectories: string[] = [];
+  const interrupt = getScaffoldInterruptContext();
   await ensureDirectoryInsideTarget(targetRoot, targetRoot);
+  interrupt?.throwIfInterrupted();
   const writableFiles = files.filter(
     (file) => file.action !== "unchanged" && file.action !== "conflict" && file.action !== "customized" && file.action !== "retired",
   );
@@ -203,12 +210,13 @@ export async function writePlannedFiles(targetRoot: string, files: readonly Plan
     const targetPath = resolveInsideTarget(targetRoot, file.path);
     await assertNoSymlinkInPath(targetRoot, targetPath);
   }
+  interrupt?.throwIfInterrupted();
 
   try {
     const manifestFiles = writableFiles.filter((file) => file.path === ".ssealed/manifest.json");
     const contentFiles = writableFiles.filter((file) => file.path !== ".ssealed/manifest.json");
-    await writeFilesInBatches(targetRoot, contentFiles, written, createdDirectories);
-    await writeFilesInBatches(targetRoot, manifestFiles, written, createdDirectories);
+    await writeFilesInBatches(targetRoot, contentFiles, written, createdDirectories, interrupt);
+    await writeFilesInBatches(targetRoot, manifestFiles, written, createdDirectories, interrupt);
   } catch (error) {
     await rollbackWrittenFiles(targetRoot, writableFiles, written);
     await cleanupCreatedDirectories(createdDirectories);
@@ -223,14 +231,17 @@ async function writeFilesInBatches(
   files: readonly PlannedFile[],
   written: string[],
   createdDirectories: string[],
+  interrupt: ScaffoldInterruptContext | undefined,
 ): Promise<void> {
   for (let start = 0; start < files.length; start += writeConcurrency) {
+    interrupt?.throwIfInterrupted();
     const batch = files.slice(start, start + writeConcurrency);
     const results = await Promise.allSettled(batch.map((file) => writeOnePlannedFile(targetRoot, file, written, createdDirectories)));
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") {
       throw failure.reason;
     }
+    interrupt?.throwIfInterrupted();
   }
 }
 
