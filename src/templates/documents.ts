@@ -427,6 +427,16 @@ ${routes.join("\n")}
 }
 
 export function validationDoc(title: string, scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
+  const repositoryShape = profileList(profile, addons);
+  const repositoryShapeBlock =
+    repositoryShape.length === 0
+      ? ""
+      : `
+## Repository Shape
+
+${repositoryShape.join(", ")} validation must stay repository-shape focused and must not imply generated application source code.
+`;
+
   return `# ${title}
 
 ${documentMetadata([["Status", "Draft"]])}
@@ -465,12 +475,7 @@ tracked secret files, ignored build/cache artifacts, and generated-output drift.
 ## Scope
 
 ${scope} validation routes must stay stack-neutral unless a runner file explicitly defines a command.
-${profileList(profile, addons).length === 0 ? "" : `
-## Repository Shape
-
-${profileList(profile, addons).join(", ")} validation must stay repository-shape focused and must not imply generated application source code.
-`}
-`;
+${repositoryShapeBlock}`;
 }
 
 export function profileDoc(title: string, profile: Profile): string {

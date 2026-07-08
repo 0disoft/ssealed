@@ -437,6 +437,7 @@ function checklistRouter(scope: Scope, profile: Profile, addons: readonly Addon[
     ...(scope === "data" ? ["- Data pipeline changes: .agents/checklists/data-pipeline.md"] : []),
     ...profileChecklistRoutes(profile, addons),
   ];
+  const scopedRoutesBlock = scopedRoutes.length === 0 ? "" : `${scopedRoutes.join("\n")}\n`;
 
   return `# Checklist Router
 
@@ -449,8 +450,7 @@ Use this file as a router. Do not turn it into one giant checklist.
 - Ops changes: .agents/checklists/ops-change.md
 - Dependency changes: .agents/checklists/dependency.md
 - Repository hygiene changes: .agents/checklists/security.md and .agents/checklists/ops-change.md
-${scopedRoutes.join("\n")}
-`;
+${scopedRoutesBlock}`;
 }
 
 function profileChecklistRoutes(profile: Profile, addons: readonly Addon[]): readonly string[] {

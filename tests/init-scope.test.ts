@@ -339,6 +339,21 @@ describe("scope generation", () => {
     }
   });
 
+  it("does not generate files with blank lines at EOF", () => {
+    for (const scope of scopes) {
+      for (const profile of profiles) {
+        for (const runner of runners) {
+          for (const density of densities) {
+            const files = templateFilesFor(scope, runner, profile, density);
+            for (const file of files) {
+              expect(file.content, `${scope}/${profile}/${runner}/${density}:${file.path}`).not.toMatch(/\n\n$/u);
+            }
+          }
+        }
+      }
+    }
+  });
+
   it("keeps generated Markdown metadata out of collapsible plain paragraphs", () => {
     for (const scope of scopes) {
       for (const density of densities) {
