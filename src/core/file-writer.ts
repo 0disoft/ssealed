@@ -17,6 +17,8 @@ export async function planTemplateFile(params: {
   readonly previous:
     | {
         readonly checksum: string;
+        readonly generatedChecksum: string;
+        readonly initialChecksum: string;
         readonly kind: string;
         readonly ownership: FileOwnership;
         readonly presence: FilePresence;
@@ -30,6 +32,8 @@ export async function planTemplateFile(params: {
   const ownership = params.previous?.ownership ?? defaultOwnership(params.template);
   const presence = params.previous?.presence ?? defaultPresence(ownership);
   const previousChecksum = params.previous?.checksum;
+  const previousGeneratedChecksum = params.previous?.generatedChecksum;
+  const previousInitialChecksum = params.previous?.initialChecksum;
   const previousStatus = params.previous?.status ?? "active";
   if (existing.kind !== "missing" && existing.kind !== "file") {
     return {
@@ -45,8 +49,8 @@ export async function planTemplateFile(params: {
 
   const existingContent = existing.kind === "file" ? existing.content : undefined;
   const previouslyGenerated =
-    existingContent !== undefined && previousChecksum !== undefined
-      ? previousChecksum === checksumExisting(existingContent)
+    existingContent !== undefined && previousGeneratedChecksum !== undefined
+      ? previousGeneratedChecksum === checksumExisting(existingContent)
       : undefined;
 
   if (ownership === "seeded" && params.command !== "init") {
@@ -59,6 +63,8 @@ export async function planTemplateFile(params: {
         presence,
         manifestStatus: "retired",
         previousChecksum,
+        previousGeneratedChecksum,
+        previousInitialChecksum,
         reason: "Seeded file is absent and remains retired unless init creates a fresh scaffold.",
       };
     }
@@ -73,6 +79,8 @@ export async function planTemplateFile(params: {
         presence,
         manifestStatus: "active",
         previousChecksum,
+        previousGeneratedChecksum,
+        previousInitialChecksum,
         previouslyGenerated,
         reason: "Previously retired seeded file exists again and is accepted as project-owned content.",
       };
@@ -85,27 +93,65 @@ export async function planTemplateFile(params: {
       ownership,
       presence,
       previousChecksum,
+      previousGeneratedChecksum,
+      previousInitialChecksum,
     );
   }
 
   if (params.template.merge === "package-json") {
-    return withLifecycle(planPackageJson(params.template, existingContent, params.force, previouslyGenerated), ownership, presence, previousChecksum);
+    return withLifecycle(
+      planPackageJson(params.template, existingContent, params.force, previouslyGenerated),
+      ownership,
+      presence,
+      previousChecksum,
+      previousGeneratedChecksum,
+      previousInitialChecksum,
+    );
   }
 
   if (params.template.merge === "manifest") {
-    return withLifecycle(planManifest(params.template, existingContent, generatedContent, params.force, previouslyGenerated), ownership, presence, previousChecksum);
+    return withLifecycle(
+      planManifest(params.template, existingContent, generatedContent, params.force, previouslyGenerated),
+      ownership,
+      presence,
+      previousChecksum,
+      previousGeneratedChecksum,
+      previousInitialChecksum,
+    );
   }
 
   if (existingContent === undefined) {
-    return { ...params.template, action: "create", content: generatedContent, ownership, presence, previousChecksum };
+    return { ...params.template, action: "create", content: generatedContent, ownership, presence, previousChecksum, previousGeneratedChecksum, previousInitialChecksum };
   }
 
   if (normalizeText(existingContent) === generatedContent) {
-    return { ...params.template, action: "unchanged", content: generatedContent, existingContent, previouslyGenerated, ownership, presence, previousChecksum };
+    return {
+      ...params.template,
+      action: "unchanged",
+      content: generatedContent,
+      existingContent,
+      previouslyGenerated,
+      ownership,
+      presence,
+      previousChecksum,
+      previousGeneratedChecksum,
+      previousInitialChecksum,
+    };
   }
 
   if (params.force && previouslyGenerated === true) {
-    return { ...params.template, action: "overwrite", content: generatedContent, existingContent, previouslyGenerated, ownership, presence, previousChecksum };
+    return {
+      ...params.template,
+      action: "overwrite",
+      content: generatedContent,
+      existingContent,
+      previouslyGenerated,
+      ownership,
+      presence,
+      previousChecksum,
+      previousGeneratedChecksum,
+      previousInitialChecksum,
+    };
   }
 
   if (ownership === "seeded" && params.command !== "init") {
@@ -118,6 +164,8 @@ export async function planTemplateFile(params: {
       ownership,
       presence,
       previousChecksum,
+      previousGeneratedChecksum,
+      previousInitialChecksum,
       reason: "Seeded file has project-owned edits and is no longer treated as scaffold drift.",
     };
   }
@@ -131,9 +179,11 @@ export async function planTemplateFile(params: {
     ownership,
     presence,
     previousChecksum,
+    previousGeneratedChecksum,
+    previousInitialChecksum,
     reason:
       params.force && previouslyGenerated !== true
-        ? "Existing file differs from the checksum recorded for this path in .ssealed/manifest.json."
+        ? "Existing file differs from the generated checksum recorded for this path in .ssealed/manifest.json."
         : "Existing file differs from generated scaffold content.",
   };
 }
@@ -272,7 +322,18 @@ function planPackageJson(
     };
   }
 
-  const currentScripts = isRecord(parsed.scripts) ? parsed.scripts : {};
+  if (parsed.scripts !== undefined && !isRecord(parsed.scripts)) {
+    return {
+      ...template,
+      action: "conflict",
+      content: template.content,
+      existingContent,
+      previouslyGenerated,
+      reason: "Existing package.json scripts field is not an object.",
+    };
+  }
+
+  const currentScripts = parsed.scripts ?? {};
   const nextScripts = { ...currentScripts };
   const userOwnedScripts = Object.entries(scripts)
     .filter(([name]) => name in nextScripts && !isGeneratedValidationScript(nextScripts[name]))
@@ -454,6 +515,13 @@ function defaultPresence(ownership: FileOwnership): FilePresence {
   return ownership === "seeded" ? "optional" : "required";
 }
 
-function withLifecycle(file: PlannedFile, ownership: FileOwnership, presence: FilePresence, previousChecksum: string | undefined): PlannedFile {
-  return { ...file, ownership, presence, previousChecksum };
+function withLifecycle(
+  file: PlannedFile,
+  ownership: FileOwnership,
+  presence: FilePresence,
+  previousChecksum: string | undefined,
+  previousGeneratedChecksum: string | undefined,
+  previousInitialChecksum: string | undefined,
+): PlannedFile {
+  return { ...file, ownership, presence, previousChecksum, previousGeneratedChecksum, previousInitialChecksum };
 }

@@ -232,6 +232,30 @@ describe("file writer behavior", () => {
     await expect(readFile(path.join(dir, "docs", "cli", "command-contract.md"), "utf8")).resolves.toContain("Command Contract");
   });
 
+  it("retains previous scaffold files as retired when upgrade narrows the scaffold settings", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "backend", runner: "none", dryRun: false, force: false });
+
+    const result = await executeScaffold({ command: "upgrade", target: dir, scope: "general", runner: "none", dryRun: false, force: true });
+
+    expect(result.conflicts).toHaveLength(0);
+    expect(result.files).toContainEqual(
+      expect.objectContaining({
+        path: "api/openapi.yaml",
+        action: "retired",
+        manifestStatus: "retired",
+      }),
+    );
+    await expect(readFile(path.join(dir, "api", "openapi.yaml"), "utf8")).resolves.toContain("openapi: 3.1.0");
+    const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+    expect(manifest.files).toContainEqual(
+      expect.objectContaining({
+        path: "api/openapi.yaml",
+        status: "retired",
+      }),
+    );
+  });
+
   it("updates the manifest instead of conflicting after user edits outside a managed .gitignore block", async () => {
     const dir = await tempDir();
     await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
@@ -263,6 +287,25 @@ describe("file writer behavior", () => {
         acceptedChecksum: expect.any(String),
       }),
     );
+  });
+
+  it("does not let force overwrite seeded documents after accepting project-owned edits", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+    const readmePath = path.join(dir, "README.md");
+    const projectReadme = "# Project README\n\nThis repository has moved beyond the seed text.\n";
+    await writeFile(readmePath, projectReadme);
+
+    const accepted = await executeScaffold({ command: "update", target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+    expect(accepted.files.find((file) => file.path === "README.md")?.action).toBe("customized");
+
+    const forced = await executeScaffold({ command: "update", target: dir, scope: "general", runner: "none", dryRun: false, force: true });
+
+    expect(forced.files.find((file) => file.path === "README.md")?.action).toBe("customized");
+    await expect(readFile(readmePath, "utf8")).resolves.toBe(projectReadme);
+    const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+    const readmeEntry = manifest.files.find((file: { path: string }) => file.path === "README.md");
+    expect(readmeEntry.acceptedChecksum).not.toBe(readmeEntry.generatedChecksum);
   });
 
   it("keeps deleted seeded documents retired during update", async () => {

@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.6.0`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.6.1`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -44,6 +44,7 @@ The release workflow:
 - runs `bun run check`;
 - verifies the packed package can be installed and executed through the npm bin shim;
 - verifies the npm package contents with `npm pack --dry-run --json`;
+- compares package integrity when the npm version already exists, so a rerun cannot attach a GitHub Release to a different tarball;
 - publishes the package to npm;
 - creates or updates the matching GitHub Release.
 
@@ -156,7 +157,7 @@ Runner files are optional because many repositories already have their own task 
 
 Existing files are not overwritten by default. Identical files are marked `unchanged`. During `init`, different existing files are marked `conflict`. During `update` and `upgrade`, seeded files that already have project-owned edits are marked `customized` and are not overwritten. Seeded files that were deleted after a previous run are marked `retired` and are not recreated.
 
-`--force` overwrites conflicting files only when the current file content matches the checksum recorded for that path in the previous `.ssealed/manifest.json`. The manifest is a local previous-run record, not a security boundary, and it never authorizes overwriting unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced. Seeded files with project-owned edits stay project-owned unless their content still matches the previously accepted generated checksum.
+`--force` overwrites conflicting files only when the current file content matches the generated checksum recorded for that path in the previous `.ssealed/manifest.json`. The manifest is a local previous-run record, not a security boundary, and it never authorizes overwriting unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced. Seeded files with project-owned edits stay project-owned even after `update` accepts their current checksum.
 
 ## Manifest Behavior
 
@@ -168,7 +169,7 @@ Manifest file ownership has three meanings:
 - `block-managed`: ssealed manages a bounded block or script set inside a user-owned file, such as `.gitignore` or generated validation scripts in `package.json`.
 - `managed`: ssealed owns the full file content as tool metadata.
 
-Seeded files use `presence: optional`; missing seeded files can be retained as `status: retired`. Active files keep both `initialChecksum` and `acceptedChecksum` so tooling can distinguish original template content from project-accepted content. The legacy `checksum` field remains as the accepted checksum for compatibility.
+Seeded files use `presence: optional`; missing seeded files can be retained as `status: retired`. Active files keep `initialChecksum`, `generatedChecksum`, and `acceptedChecksum` so tooling can distinguish original template content, the last generated scaffold content, and project-accepted content. The legacy `checksum` field remains as the accepted checksum for compatibility.
 
 The manifest helps identify previously generated files, but it never authorizes silent overwrite of user-modified files. Default `doctor` treats modified seeded files as `customized` and missing optional seeded files as `retired`, both of which are healthy lifecycle states. `doctor --strict` reports accepted-checksum drift for callers that need the old exact-content comparison.
 

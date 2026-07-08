@@ -23,7 +23,7 @@ Options:
   --runner     Optional validation runner entrypoint. Defaults to none for init.
   --yes        Never prompt.
   --dry-run    Print planned operations without writing files.
-  --force      Overwrite conflicts only when current content matches previous manifest checksums.
+  --force      Overwrite conflicts only when current content matches previous generated checksums.
   --strict     Make doctor fail on any accepted-checksum drift.
   --json       Print machine-readable JSON.
 `;

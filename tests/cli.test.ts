@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli-main.js";
+import { gitignoreBlock } from "../src/templates/index.js";
 
 let workdirs: string[] = [];
 
@@ -218,6 +219,129 @@ describe("CLI argument parsing", () => {
       await expect(main(["doctor", dir, "--strict", "--json"])).resolves.toBe(1);
       const strictPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
       expect(strictPayload.checks).toContainEqual(expect.objectContaining({ path: "docs/product/01-roadmap.md", status: "missing" }));
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("returns a consistent JSON error envelope when doctor has no manifest", async () => {
+    const dir = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(1);
+      expect(stderr).not.toHaveBeenCalled();
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload).toEqual(
+        expect.objectContaining({
+          ok: false,
+          command: "doctor",
+          error: {
+            code: "MISSING_MANIFEST",
+            message: "Missing .ssealed/manifest.json. Use ssealed init to create a new scaffold first.",
+          },
+        }),
+      );
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("returns a consistent JSON error envelope when doctor has an invalid manifest", async () => {
+    const dir = await tempDir();
+    await mkdir(path.join(dir, ".ssealed"), { recursive: true });
+    await writeFile(path.join(dir, ".ssealed", "manifest.json"), "{bad json\n");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(1);
+      expect(stderr).not.toHaveBeenCalled();
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload).toEqual(
+        expect.objectContaining({
+          ok: false,
+          command: "doctor",
+          error: {
+            code: "INVALID_MANIFEST",
+            message: "Existing .ssealed/manifest.json is invalid. Repair or remove it before running doctor.",
+          },
+          warnings: [
+            expect.objectContaining({
+              code: "INVALID_MANIFEST",
+              path: ".ssealed/manifest.json",
+            }),
+          ],
+        }),
+      );
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("reports modified .gitignore when an extra valid block hides a changed managed block", async () => {
+    const dir = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["init", dir, "--scope", "general", "--yes", "--json"])).resolves.toBe(0);
+      const gitignorePath = path.join(dir, ".gitignore");
+      await writeFile(
+        gitignorePath,
+        [
+          "# >>> ssealed ignore patterns >>>",
+          "dist/",
+          "# <<< ssealed ignore patterns <<<",
+          "",
+          gitignoreBlock().trimEnd(),
+          "",
+        ].join("\n"),
+      );
+      stdout.mockClear();
+
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(1);
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload.ok).toBe(false);
+      expect(payload.checks).toContainEqual(
+        expect.objectContaining({
+          path: ".gitignore",
+          status: "block-modified",
+        }),
+      );
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("refuses doctor reads through symlinked generated directories", async () => {
+    const dir = await tempDir();
+    const outside = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["init", dir, "--scope", "general", "--yes", "--json"])).resolves.toBe(0);
+      await rm(path.join(dir, "docs"), { recursive: true, force: true });
+      try {
+        await symlink(outside, path.join(dir, "docs"), "dir");
+      } catch {
+        return;
+      }
+      stdout.mockClear();
+
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(1);
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload.ok).toBe(false);
+      expect(payload.checks).toContainEqual(
+        expect.objectContaining({
+          path: "docs/README.md",
+          status: "unreadable",
+        }),
+      );
       expect(stderr).not.toHaveBeenCalled();
     } finally {
       stderr.mockRestore();

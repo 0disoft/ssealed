@@ -1,7 +1,7 @@
 import { sha256 } from "./checksum.js";
 import type { Addon, Density, FileOwnership, FilePresence, Manifest, ManifestFile, PlannedFile, Profile, Runner, Scope } from "./types.js";
 
-export const toolVersion = "0.6.0";
+export const toolVersion = "0.6.1";
 
 export function createManifest(params: {
   readonly scope: Scope;
@@ -16,6 +16,10 @@ export function createManifest(params: {
     .filter((file) => file.path !== ".ssealed/manifest.json")
     .map((file) => {
       const acceptedChecksum = file.action === "retired" ? (file.previousChecksum ?? sha256(file.content)) : sha256(file.content);
+      const generatedChecksum =
+        file.action === "customized" || file.action === "retired"
+          ? (file.previousGeneratedChecksum ?? file.previousInitialChecksum ?? acceptedChecksum)
+          : acceptedChecksum;
       return {
         path: file.path,
         checksum: acceptedChecksum,
@@ -23,8 +27,9 @@ export function createManifest(params: {
         ownership: file.ownership ?? defaultOwnership(file),
         presence: file.presence ?? defaultPresence(file),
         status: file.manifestStatus ?? (file.action === "retired" ? "retired" : "active"),
-        initialChecksum: file.previousChecksum ?? sha256(file.content),
+        initialChecksum: file.previousInitialChecksum ?? generatedChecksum,
         acceptedChecksum,
+        generatedChecksum,
       };
     })
     .sort((left, right) => left.path.localeCompare(right.path));

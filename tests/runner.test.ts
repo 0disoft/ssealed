@@ -158,6 +158,16 @@ describe("runner generation", () => {
     await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
   });
 
+  it("conflicts when package.json scripts is not an object", async () => {
+    const dir = await tempDir();
+    await writeFile(path.join(dir, "package.json"), JSON.stringify({ scripts: ["test"], name: "example" }, null, 2));
+    const result = await executeScaffold({ target: dir, scope: "general", runner: "npm", dryRun: false, force: false });
+    const conflict = result.conflicts.find((file) => file.path === "package.json");
+    expect(conflict?.reason).toBe("Existing package.json scripts field is not an object.");
+    const pkg = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8"));
+    expect(pkg.scripts).toEqual(["test"]);
+  });
+
   it("rejects bun as a runner value", async () => {
     const dir = await tempDir();
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);

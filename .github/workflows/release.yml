@@ -54,7 +54,16 @@ jobs:
         run: bun run check
 
       - name: Verify package contents
-        run: npm pack --dry-run --json
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack_json="$(npm pack --dry-run --json)"
+          echo "$pack_json"
+          pack_integrity="$(
+            PACK_JSON="$pack_json" node -e "const payload = JSON.parse(process.env.PACK_JSON); console.log(payload[0].integrity)"
+          )"
+          echo "integrity=$pack_integrity" >> "$GITHUB_OUTPUT"
 
       - name: Check whether npm version is already published
         id: npm-version
@@ -65,8 +74,21 @@ jobs:
           package_version="$(node -p "require('./package.json').version")"
           if npm view "$package_name@$package_version" version >/dev/null 2>&1; then
             echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "published_integrity=$(npm view "$package_name@$package_version" dist.integrity)" >> "$GITHUB_OUTPUT"
           else
             echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify existing npm package matches current package
+        if: steps.npm-version.outputs.published == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.pack.outputs.integrity }}" != "${{ steps.npm-version.outputs.published_integrity }}" ]]; then
+            echo "npm already has this version, but its integrity differs from the current package." >&2
+            echo "current:   ${{ steps.pack.outputs.integrity }}" >&2
+            echo "published: ${{ steps.npm-version.outputs.published_integrity }}" >&2
+            exit 1
           fi
 
       - name: Publish to npm

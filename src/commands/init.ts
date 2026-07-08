@@ -4,7 +4,7 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { normalizeText, sha256 } from "../core/checksum.js";
 import { executeScaffold, readPreviousManifest, type PreviousManifestSettings } from "../core/scaffold.js";
-import { resolveInsideTarget } from "../core/path-safety.js";
+import { assertNoSymlinkInPath, resolveInsideTarget } from "../core/path-safety.js";
 import { gitignoreBlock } from "../templates/index.js";
 import { validationScripts } from "../templates/runners.js";
 import {
@@ -369,7 +369,7 @@ function formatHumanResult(result: Awaited<ReturnType<typeof executeScaffold>>):
   }
 
   if (result.conflicts.length > 0) {
-    lines.push("Conflicts detected. --force only overwrites files whose current content matches previous manifest checksums.");
+    lines.push("Conflicts detected. --force only overwrites files whose current content matches previous generated checksums.");
   }
 
   return `${lines.join("\n")}\n`;
@@ -402,12 +402,21 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
       command: "doctor",
       target,
       warnings: previous.warnings,
-      error: previous.warnings.length > 0 ? "INVALID_MANIFEST" : "MISSING_MANIFEST",
+      error:
+        previous.warnings.length > 0
+          ? {
+              code: "INVALID_MANIFEST",
+              message: "Existing .ssealed/manifest.json is invalid. Repair or remove it before running doctor.",
+            }
+          : {
+              code: "MISSING_MANIFEST",
+              message: "Missing .ssealed/manifest.json. Use ssealed init to create a new scaffold first.",
+            },
     };
     if (json) {
       output.write(`${JSON.stringify(payload, null, 2)}\n`);
     } else {
-      output.write(`ssealed doctor result\nTarget: ${target}\nStatus: ${payload.error}\n`);
+      output.write(`ssealed doctor result\nTarget: ${target}\nStatus: ${payload.error.code}\n`);
       for (const warning of previous.warnings) {
         output.write(`Warning ${warning.code} ${warning.path}: ${warning.message}\n`);
       }
@@ -420,6 +429,7 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
     [...previous.files.entries()].map(async ([relativePath, file]): Promise<DoctorCheck> => {
       const absolutePath = resolveInsideTarget(target, relativePath);
       try {
+        await assertNoSymlinkInPath(target, absolutePath);
         const stat = await lstat(absolutePath);
         if (!stat.isFile()) {
           return {
@@ -581,7 +591,8 @@ function checkExistingManifestFile(params: {
 
 function checkManagedBlock(pathValue: string, content: string, runner: Runner): boolean | undefined {
   if (pathValue === ".gitignore") {
-    return normalizeText(content).includes(gitignoreBlock().trimEnd());
+    const blocks = extractManagedBlocks(content);
+    return blocks.length === 1 && normalizeText(blocks[0] ?? "") === gitignoreBlock().trimEnd();
   }
   if (pathValue === "package.json") {
     const parsed = parseJsonObject(content);
@@ -593,6 +604,30 @@ function checkManagedBlock(pathValue: string, content: string, runner: Runner): 
     return Object.entries(expectedScripts).every(([name, value]) => scripts[name] === value);
   }
   return undefined;
+}
+
+function extractManagedBlocks(content: string): readonly string[] {
+  const normalized = normalizeText(content);
+  const startMarker = "# >>> ssealed ignore patterns >>>";
+  const endMarker = "# <<< ssealed ignore patterns <<<";
+  const blocks: string[] = [];
+  let offset = 0;
+
+  while (offset < normalized.length) {
+    const start = normalized.indexOf(startMarker, offset);
+    if (start < 0) {
+      break;
+    }
+    const end = normalized.indexOf(endMarker, start + startMarker.length);
+    if (end < 0) {
+      blocks.push(normalized.slice(start));
+      break;
+    }
+    blocks.push(normalized.slice(start, end + endMarker.length));
+    offset = end + endMarker.length;
+  }
+
+  return blocks;
 }
 
 function isFailedDoctorCheck(check: DoctorCheck): boolean {

@@ -52,6 +52,28 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
       }),
     ),
   );
+  const plannedPaths = new Set(planned.map((file) => file.path));
+  const retiredPreviousFiles =
+    command === "init"
+      ? []
+      : [...previousManifest.files.entries()]
+          .filter(([filePath]) => filePath !== ".ssealed/manifest.json" && !plannedPaths.has(filePath))
+          .map(
+            ([filePath, file]): PlannedFile => ({
+              path: filePath,
+              kind: file.kind,
+              action: "retired",
+              content: "",
+              ownership: file.ownership,
+              presence: file.presence,
+              manifestStatus: "retired",
+              previousChecksum: file.checksum,
+              previousGeneratedChecksum: file.generatedChecksum,
+              previousInitialChecksum: file.initialChecksum,
+              reason: "File is outside the current scaffold settings and remains project-owned on disk.",
+            }),
+          );
+  const manifestFiles = [...planned, ...retiredPreviousFiles];
 
   const manifest = createManifest({
     scope: options.scope,
@@ -60,7 +82,7 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
     density,
     runner: options.runner,
     generatedAt: new Date().toISOString(),
-    files: planned,
+    files: manifestFiles,
   });
   const manifestContent = formatManifest(manifest);
   const manifestPlan = await planTemplateFile({
@@ -85,7 +107,7 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
     manifestContent,
   });
 
-  return { files: [...planned, settingsConflict ?? manifestPlan], warnings: previousManifest.warnings };
+  return { files: [...manifestFiles, settingsConflict ?? manifestPlan], warnings: previousManifest.warnings };
 }
 
 export interface PreviousManifestSettings {
@@ -101,6 +123,8 @@ export interface PreviousManifestState {
     string,
     {
       readonly checksum: string;
+      readonly generatedChecksum: string;
+      readonly initialChecksum: string;
       readonly kind: FileKind;
       readonly ownership: FileOwnership;
       readonly presence: FilePresence;
@@ -113,6 +137,7 @@ export interface PreviousManifestState {
 
 export async function readPreviousManifest(targetRoot: string): Promise<PreviousManifestState> {
   const manifestPath = path.join(path.resolve(targetRoot), ".ssealed", "manifest.json");
+  await assertNoSymlinkInPath(targetRoot, manifestPath);
   const content = await readFile(manifestPath, "utf8").catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
       return undefined;
@@ -134,6 +159,8 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
           file.path,
           {
             checksum: file.acceptedChecksum ?? file.checksum,
+            generatedChecksum: file.generatedChecksum ?? file.initialChecksum ?? file.checksum,
+            initialChecksum: file.initialChecksum ?? file.generatedChecksum ?? file.checksum,
             kind: file.kind,
             ownership: normalizeFileOwnership(file.ownership, file.path),
             presence: normalizeFilePresence(file.presence, file.ownership, file.path),
@@ -174,6 +201,8 @@ function isManifestLike(value: unknown): value is {
     readonly path: string;
     readonly checksum: string;
     readonly acceptedChecksum?: string;
+    readonly generatedChecksum?: string;
+    readonly initialChecksum?: string;
     readonly kind: FileKind;
     readonly ownership?: FileOwnership;
     readonly presence?: FilePresence;
@@ -209,6 +238,8 @@ function isManifestFileLike(value: unknown): value is {
   readonly path: string;
   readonly checksum: string;
   readonly acceptedChecksum?: string;
+  readonly generatedChecksum?: string;
+  readonly initialChecksum?: string;
   readonly kind: FileKind;
   readonly ownership?: FileOwnership;
   readonly presence?: FilePresence;
@@ -224,6 +255,10 @@ function isManifestFileLike(value: unknown): value is {
     typeof (value as { readonly checksum: unknown }).checksum === "string" &&
     ((value as { readonly acceptedChecksum?: unknown }).acceptedChecksum === undefined ||
       typeof (value as { readonly acceptedChecksum?: unknown }).acceptedChecksum === "string") &&
+    ((value as { readonly generatedChecksum?: unknown }).generatedChecksum === undefined ||
+      typeof (value as { readonly generatedChecksum?: unknown }).generatedChecksum === "string") &&
+    ((value as { readonly initialChecksum?: unknown }).initialChecksum === undefined ||
+      typeof (value as { readonly initialChecksum?: unknown }).initialChecksum === "string") &&
     isFileKind((value as { readonly kind: unknown }).kind) &&
     ((value as { readonly ownership?: unknown }).ownership === undefined || isFileOwnership((value as { readonly ownership?: unknown }).ownership)) &&
     ((value as { readonly presence?: unknown }).presence === undefined || isFilePresence((value as { readonly presence?: unknown }).presence)) &&

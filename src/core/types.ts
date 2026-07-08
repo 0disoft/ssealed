@@ -70,6 +70,8 @@ export interface PlannedFile {
   readonly presence?: FilePresence;
   readonly manifestStatus?: ManifestFileStatus;
   readonly previousChecksum?: string | undefined;
+  readonly previousGeneratedChecksum?: string | undefined;
+  readonly previousInitialChecksum?: string | undefined;
 }
 
 export interface ManifestFile {
@@ -81,6 +83,7 @@ export interface ManifestFile {
   readonly status: ManifestFileStatus;
   readonly initialChecksum: string;
   readonly acceptedChecksum: string;
+  readonly generatedChecksum: string;
 }
 
 export interface Manifest {
