@@ -316,7 +316,7 @@ function isFileKind(value: unknown): value is FileKind {
 }
 
 function isFileOwnership(value: unknown): value is FileOwnership {
-  return value === "seeded" || value === "managed" || value === "block-managed";
+  return value === "seeded" || value === "managed" || value === "block-managed" || value === "project-owned";
 }
 
 function isFilePresence(value: unknown): value is FilePresence {
@@ -338,7 +338,8 @@ function normalizeFilePresence(value: FilePresence | undefined, ownership: FileO
   if (value !== undefined) {
     return value;
   }
-  return normalizeFileOwnership(ownership, pathValue) === "seeded" ? "optional" : "required";
+  const normalizedOwnership = normalizeFileOwnership(ownership, pathValue);
+  return normalizedOwnership === "seeded" || normalizedOwnership === "project-owned" ? "optional" : "required";
 }
 
 function normalizeManifestFileStatus(value: ManifestFileStatus | undefined): ManifestFileStatus {

@@ -91,6 +91,40 @@ export async function planTemplateFile(params: {
     }
   }
 
+  if (ownership === "project-owned" && params.command !== "init") {
+    if (existingContent === undefined && previousChecksum !== undefined) {
+      return {
+        ...params.template,
+        action: "retired",
+        content: generatedContent,
+        ownership,
+        presence,
+        manifestStatus: "retired",
+        previousChecksum,
+        previousGeneratedChecksum,
+        previousInitialChecksum,
+        reason: "Project-owned file is outside ssealed management.",
+      };
+    }
+
+    if (existingContent !== undefined) {
+      return {
+        ...params.template,
+        action: "customized",
+        content: normalizeText(existingContent),
+        existingContent,
+        ownership,
+        presence,
+        manifestStatus: "active",
+        previousChecksum,
+        previousGeneratedChecksum,
+        previousInitialChecksum,
+        previouslyGenerated,
+        reason: "Project-owned file is outside ssealed management.",
+      };
+    }
+  }
+
   if (params.template.merge === "gitignore") {
     return withLifecycle(
       planGitignore(params.template, existingContent, generatedContent, params.force, previouslyGenerated),
@@ -604,7 +638,7 @@ function defaultOwnership(template: TemplateFile): FileOwnership {
 }
 
 function defaultPresence(ownership: FileOwnership): FilePresence {
-  return ownership === "seeded" ? "optional" : "required";
+  return ownership === "seeded" || ownership === "project-owned" ? "optional" : "required";
 }
 
 function withLifecycle(

@@ -1,7 +1,7 @@
 import { sha256 } from "./checksum.js";
 import type { Addon, Density, FileOwnership, FilePresence, Manifest, ManifestFile, PlannedFile, Profile, Runner, Scope } from "./types.js";
 
-export const toolVersion = "0.6.5";
+export const toolVersion = "0.6.6";
 
 export function createManifest(params: {
   readonly scope: Scope;
@@ -59,5 +59,6 @@ function defaultOwnership(file: PlannedFile): FileOwnership {
 }
 
 function defaultPresence(file: PlannedFile): FilePresence {
-  return defaultOwnership(file) === "seeded" ? "optional" : "required";
+  const ownership = file.ownership ?? defaultOwnership(file);
+  return ownership === "seeded" || ownership === "project-owned" ? "optional" : "required";
 }

@@ -1,8 +1,10 @@
-import { lstat, readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { lstat, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { normalizeText, sha256 } from "../core/checksum.js";
+import { toolVersion } from "../core/manifest.js";
 import { executeScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock, type PreviousManifestSettings, type PreviousManifestState } from "../core/scaffold.js";
 import { assertNoSymlinkInPath, resolveInsideTarget } from "../core/path-safety.js";
 import { gitignoreBlock } from "../templates/index.js";
@@ -25,7 +27,7 @@ import {
   type Scope,
 } from "../core/types.js";
 
-export type CliCommand = ScaffoldCommand | "doctor";
+export type CliCommand = ScaffoldCommand | "doctor" | "eject";
 
 export interface InitCliOptions {
   readonly command?: CliCommand;
@@ -42,6 +44,7 @@ export interface InitCliOptions {
   readonly breakStaleLock?: boolean;
   readonly strict?: boolean;
   readonly json: boolean;
+  readonly eject?: string;
 }
 
 export async function runInit(options: InitCliOptions): Promise<number> {
@@ -52,6 +55,9 @@ export async function runScaffoldCommand(options: InitCliOptions & { readonly co
   const target = path.resolve(options.target ?? process.cwd());
   if (options.command === "doctor") {
     return withScaffoldReadLock(target, () => runDoctor(target, options.json, options.strict ?? false));
+  }
+  if (options.command === "eject") {
+    return withScaffoldWriteLock(target, options.breakStaleLock ?? false, () => runEject(target, options.eject, options.json));
   }
   const scaffoldCommand = options.command;
 
@@ -109,7 +115,9 @@ type InitErrorCode =
   | "CONFLICTING_REPOSITORY_TYPE"
   | "MISSING_SCOPE"
   | "MISSING_MANIFEST"
-  | "SETTINGS_CHANGE_REQUIRES_UPGRADE";
+  | "SETTINGS_CHANGE_REQUIRES_UPGRADE"
+  | "INVALID_EJECT_TARGET"
+  | "RUNNER_NOT_BLOCK_MANAGED";
 
 interface InitError {
   readonly code: InitErrorCode;
@@ -338,6 +346,137 @@ function writeInitError(options: InitCliOptions, error: InitError): number {
   return 1;
 }
 
+async function runEject(target: string, subject: string | undefined, json: boolean): Promise<number> {
+  if (subject !== "runner") {
+    return writeEjectError(json, {
+      code: "INVALID_EJECT_TARGET",
+      message: "Invalid eject target. Use: ssealed eject runner [target]",
+    });
+  }
+
+  const previous = await readPreviousManifest(target);
+  if (previous.settings === undefined) {
+    return writeEjectError(json, {
+      code: "MISSING_MANIFEST",
+      message:
+        previous.warnings.length > 0
+          ? "Existing .ssealed/manifest.json is invalid. Repair or remove it before ejecting runner ownership."
+          : "Missing .ssealed/manifest.json. Use ssealed init to create a new scaffold first.",
+    });
+  }
+
+  if (previous.settings.runner !== "npm" && previous.settings.runner !== "pnpm") {
+    return writeEjectError(json, {
+      code: "RUNNER_NOT_BLOCK_MANAGED",
+      message: "Only npm and pnpm package.json runner blocks can be ejected.",
+    });
+  }
+
+  const previousPackage = previous.files.get("package.json");
+  if (previousPackage === undefined || previousPackage.kind !== "runner") {
+    return writeEjectError(json, {
+      code: "RUNNER_NOT_BLOCK_MANAGED",
+      message: "This scaffold does not record a package.json runner block to eject.",
+    });
+  }
+
+  const manifestPath = resolveInsideTarget(target, ".ssealed/manifest.json");
+  await assertNoSymlinkInPath(target, manifestPath);
+  const manifestContent = await readFile(manifestPath, "utf8");
+  const manifest = parseJsonObject(manifestContent);
+  if (manifest === undefined || !Array.isArray(manifest.files)) {
+    return writeEjectError(json, {
+      code: "MISSING_MANIFEST",
+      message: "Existing .ssealed/manifest.json is invalid. Repair or remove it before ejecting runner ownership.",
+    });
+  }
+
+  const packagePath = resolveInsideTarget(target, "package.json");
+  await assertNoSymlinkInPath(target, packagePath);
+  const packageContent = await readFile(packagePath, "utf8").catch((error: unknown) => {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  });
+  const acceptedChecksum = packageContent === undefined ? previousPackage.checksum : sha256(packageContent);
+  const packageFile = manifest.files.find(isPackageManifestFile);
+  if (packageFile === undefined) {
+    return writeEjectError(json, {
+      code: "RUNNER_NOT_BLOCK_MANAGED",
+      message: "This scaffold does not record a package.json runner block to eject.",
+    });
+  }
+  const generatedChecksum = typeof packageFile.generatedChecksum === "string" ? packageFile.generatedChecksum : previousPackage.generatedChecksum;
+  const initialChecksum = typeof packageFile.initialChecksum === "string" ? packageFile.initialChecksum : previousPackage.initialChecksum;
+  const nextPackageFile = {
+    ...packageFile,
+    checksum: acceptedChecksum,
+    acceptedChecksum,
+    generatedChecksum,
+    initialChecksum,
+    ownership: "project-owned",
+    presence: "optional",
+    status: "active",
+  };
+  const nextManifest = {
+    ...manifest,
+    version: toolVersion,
+    generatedAt: new Date().toISOString(),
+    files: manifest.files.map((file) => (file === packageFile ? nextPackageFile : file)),
+  };
+
+  await writeTextFileAtomically(manifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`);
+
+  const payload = {
+    ok: true,
+    command: "eject",
+    target,
+    subject: "runner",
+    path: "package.json",
+    ownership: "project-owned",
+    status: previousPackage.ownership === "project-owned" ? "unchanged" : "project-owned",
+    reason: "Runner block is explicitly marked as project-owned.",
+  };
+  if (json) {
+    output.write(`${JSON.stringify(payload, null, 2)}\n`);
+  } else {
+    output.write(
+      [
+        "ssealed eject result",
+        `Target: ${target}`,
+        "Subject: runner",
+        "- project-owned: package.json (Runner block is explicitly marked as project-owned.)",
+      ].join("\n") + "\n",
+    );
+  }
+  return 0;
+}
+
+function writeEjectError(json: boolean, error: InitError): number {
+  if (json) {
+    output.write(`${JSON.stringify({ ok: false, command: "eject", error: { code: error.code, message: error.message } }, null, 2)}\n`);
+    return 1;
+  }
+  printError(error.message);
+  return 1;
+}
+
+function isPackageManifestFile(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && value.path === "package.json" && value.kind === "runner";
+}
+
+async function writeTextFileAtomically(targetPath: string, content: string): Promise<void> {
+  const temporaryPath = path.join(path.dirname(targetPath), `.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporaryPath, content, { encoding: "utf8", flag: "wx" });
+    await rename(temporaryPath, targetPath);
+  } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
 function formatJsonResult(result: Awaited<ReturnType<typeof executeScaffold>>): object {
   return {
     ok: result.conflicts.length === 0,
@@ -405,6 +544,7 @@ interface DoctorCheck {
   readonly status:
     | "ok"
     | "customized"
+    | "project-owned"
     | "retired"
     | "missing"
     | "modified"
@@ -480,6 +620,17 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
         });
       } catch (error: unknown) {
         if (isNodeError(error) && error.code === "ENOENT") {
+          if (file.ownership === "project-owned") {
+            return {
+              path: relativePath,
+              kind: file.kind,
+              ownership: file.ownership,
+              presence: file.presence,
+              status: "project-owned",
+              expectedChecksum: file.checksum,
+              reason: "File is explicitly project-owned and is not managed by ssealed.",
+            };
+          }
           return {
             path: relativePath,
             kind: file.kind,
@@ -582,6 +733,10 @@ function checkExistingManifestFile(params: {
     expectedChecksum: params.expectedChecksum,
     actualChecksum: params.actualChecksum,
   };
+
+  if (params.ownership === "project-owned") {
+    return { ...base, status: "project-owned", reason: "File is explicitly project-owned and is not managed by ssealed." };
+  }
 
   if (params.actualChecksum === params.expectedChecksum) {
     return { ...base, status: "ok" };

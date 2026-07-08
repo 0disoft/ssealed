@@ -53,7 +53,7 @@ export interface TemplateFile {
 }
 
 export type PlannedAction = "create" | "unchanged" | "conflict" | "overwrite" | "merge";
-export type FileOwnership = "seeded" | "managed" | "block-managed";
+export type FileOwnership = "seeded" | "managed" | "block-managed" | "project-owned";
 export type FilePresence = "required" | "optional";
 export type ManifestFileStatus = "active" | "retired";
 

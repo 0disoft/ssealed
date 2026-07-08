@@ -364,6 +364,85 @@ describe("CLI argument parsing", () => {
     }
   });
 
+  it("ejects package runner ownership before accepting project-owned package scripts", async () => {
+    const dir = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["init", dir, "--scope", "general", "--runner", "npm", "--yes", "--json"])).resolves.toBe(0);
+      const packagePath = path.join(dir, "package.json");
+      const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+      await writeFile(packagePath, `${JSON.stringify({ ...packageJson, scripts: { ...packageJson.scripts, test: "vitest run" } }, null, 2)}\n`);
+      stdout.mockClear();
+
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(1);
+      const driftPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(driftPayload.ok).toBe(false);
+      expect(driftPayload.checks).toContainEqual(expect.objectContaining({ path: "package.json", status: "block-modified" }));
+      stdout.mockClear();
+
+      await expect(main(["eject", "runner", dir, "--json"])).resolves.toBe(0);
+      const ejectPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(ejectPayload).toEqual(expect.objectContaining({ ok: true, command: "eject", subject: "runner", path: "package.json", ownership: "project-owned" }));
+      const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+      expect(manifest.files).toContainEqual(expect.objectContaining({ path: "package.json", ownership: "project-owned", presence: "optional" }));
+      stdout.mockClear();
+
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(0);
+      const doctorPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(doctorPayload.ok).toBe(true);
+      expect(doctorPayload.checks).toContainEqual(
+        expect.objectContaining({ path: "package.json", ownership: "project-owned", status: "project-owned" }),
+      );
+      stdout.mockClear();
+
+      await expect(main(["doctor", dir, "--strict", "--json"])).resolves.toBe(0);
+      const strictPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(strictPayload.ok).toBe(true);
+      expect(strictPayload.checks).toContainEqual(
+        expect.objectContaining({ path: "package.json", ownership: "project-owned", status: "project-owned" }),
+      );
+      stdout.mockClear();
+
+      await expect(main(["update", dir, "--json"])).resolves.toBe(0);
+      const updatePayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(updatePayload.ok).toBe(true);
+      expect(updatePayload.files).toContainEqual(
+        expect.objectContaining({ path: "package.json", ownership: "project-owned", action: "customized" }),
+      );
+      const updatedPackage = JSON.parse(await readFile(packagePath, "utf8"));
+      expect(updatedPackage.scripts.test).toBe("vitest run");
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
+  it("does not eject non-package runner files", async () => {
+    const dir = await tempDir();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["init", dir, "--scope", "general", "--runner", "make", "--yes", "--json"])).resolves.toBe(0);
+      stdout.mockClear();
+
+      await expect(main(["eject", "runner", dir, "--json"])).resolves.toBe(1);
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload).toEqual(
+        expect.objectContaining({
+          ok: false,
+          command: "eject",
+          error: expect.objectContaining({ code: "RUNNER_NOT_BLOCK_MANAGED" }),
+        }),
+      );
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
   it("still reports legacy .gitignore managed blocks as drift for current manifests", async () => {
     const dir = await tempDir();
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);

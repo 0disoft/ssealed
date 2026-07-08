@@ -3,7 +3,7 @@ import { runScaffoldCommand, type CliCommand } from "./commands/init.js";
 import { isScaffoldInterruptedError, isSsealedError } from "./core/errors.js";
 import { toolVersion } from "./core/manifest.js";
 
-const commandNames = ["init", "update", "upgrade", "doctor"] as const satisfies readonly CliCommand[];
+const commandNames = ["init", "update", "upgrade", "doctor", "eject"] as const satisfies readonly CliCommand[];
 
 const helpText = `ssealed
 
@@ -12,6 +12,7 @@ Usage:
   ssealed update [target]
   ssealed upgrade [target] [--scope backend|frontend|fullstack|general|mobile|infra|data] [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed doctor [target] [--strict]
+  ssealed eject runner [target]
   ssealed --help
   ssealed --version
 
@@ -31,13 +32,14 @@ Options:
   --json       Print machine-readable JSON.
 `;
 
-const commandHelpText = `ssealed init|update|upgrade|doctor [target]
+const commandHelpText = `ssealed init|update|upgrade|doctor|eject [target]
 
 Commands:
   init     Create a new scaffold. Refuses targets with an existing valid manifest.
   update   Reapply the existing manifest settings without changing scope, repo type, addons, density, or runner.
   upgrade  Explicitly change scaffold settings and replan generated files.
   doctor   Check scaffold lifecycle metadata. Use --strict to require accepted checksums.
+  eject    Mark a managed scaffold surface as explicitly project-owned.
 
 Scopes:
   backend
@@ -90,6 +92,7 @@ Examples:
   ssealed upgrade ./my-service --repo-type api-service --density strict --runner make --yes --force
   ssealed doctor ./my-service --json
   ssealed doctor ./my-service --strict
+  ssealed eject runner ./my-service
 `;
 
 interface ParsedScaffoldArgs {
@@ -149,25 +152,37 @@ export async function main(argv: readonly string[]): Promise<number> {
     return 0;
   }
 
-  if (parsed.positionals.length > 1) {
+  const ejectSubject = command === "eject" ? parsed.positionals[0] : undefined;
+  const targetPositionals = command === "eject" ? parsed.positionals.slice(1) : parsed.positionals;
+  if (targetPositionals.length > 1 || (command === "eject" && parsed.positionals.length === 0)) {
     if (parsed.values.json) {
       process.stdout.write(
         `${JSON.stringify(
-          { ok: false, error: { code: "TOO_MANY_TARGETS", message: `${command} accepts at most one target, got ${parsed.positionals.length}` } },
+          {
+            ok: false,
+            error:
+              command === "eject" && parsed.positionals.length === 0
+                ? { code: "INVALID_EJECT_TARGET", message: "Invalid eject target. Use: ssealed eject runner [target]" }
+                : { code: "TOO_MANY_TARGETS", message: `${command} accepts at most one target, got ${targetPositionals.length}` },
+          },
           null,
           2,
         )}\n`,
       );
       return 1;
     }
-    process.stderr.write(`ssealed: ${command} accepts at most one target, got ${parsed.positionals.length}\n`);
+    process.stderr.write(
+      command === "eject" && parsed.positionals.length === 0
+        ? "ssealed: Invalid eject target. Use: ssealed eject runner [target]\n"
+        : `ssealed: ${command} accepts at most one target, got ${targetPositionals.length}\n`,
+    );
     return 1;
   }
 
   try {
     return await runScaffoldCommand({
       command,
-      target: parsed.positionals[0],
+      target: targetPositionals[0],
       scope: parsed.values.scope,
       runner: parsed.values.runner,
       yes: parsed.values.yes ?? false,
@@ -176,6 +191,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       breakStaleLock: parsed.values["break-stale-lock"] ?? false,
       strict: parsed.values.strict ?? false,
       json: parsed.values.json ?? false,
+      ...(ejectSubject === undefined ? {} : { eject: ejectSubject }),
       ...(parsed.values["repo-type"] === undefined ? {} : { repoType: parsed.values["repo-type"] }),
       ...(parsed.values.profile === undefined ? {} : { profile: parsed.values.profile }),
       ...(parsed.values.addon === undefined ? {} : { addon: parsed.values.addon }),
