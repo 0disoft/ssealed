@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.6.1`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.6.2`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -47,6 +47,8 @@ The release workflow:
 - compares package integrity when the npm version already exists, so a rerun cannot attach a GitHub Release to a different tarball;
 - publishes the package to npm;
 - creates or updates the matching GitHub Release.
+
+The CI workflow runs on pull requests and `main` pushes. It installs with Bun, then runs typecheck, tests, and build before release-only smoke and publication steps are needed.
 
 npm publishing uses Trusted Publishing through GitHub Actions. Configure the npm package trusted publisher once with:
 
@@ -185,6 +187,12 @@ Template paths must be relative, normalized, and contained by the selected targe
 `ssealed` rejects absolute paths, parent traversal, Windows reserved names, unsafe path characters, and `bunfig.toml` generation. Scaffold writes refuse symlinked generated directories and symlinked existing files instead of following them outside the target.
 
 Write commands use `.ssealed-init.lock` to keep concurrent `ssealed` runs from writing the same target. If a previous process crashed and left an old lock, rerun with `--break-stale-lock`; the lock is removed only when its metadata is old enough and its recorded process is not still alive on the current host.
+
+`doctor` and `--dry-run` are read-only, but they still refuse to run while an active write lock exists so they do not report a mixed in-progress scaffold state.
+
+Scaffold writes run in bounded parallel batches for regular files, then write `.ssealed/manifest.json` last. If any batched write fails, already written files are rolled back before the lock is released.
+
+The generated `.gitignore` block includes `.ssealed-init.lock` so stale lock metadata is not committed accidentally.
 
 ## Hygiene File Behavior
 

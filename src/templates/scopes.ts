@@ -411,6 +411,7 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+.ssealed-init.lock
 node_modules/
 dist/
 build/

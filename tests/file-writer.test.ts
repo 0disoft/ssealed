@@ -45,6 +45,15 @@ describe("file writer behavior", () => {
     await expect(lstat(target)).rejects.toThrow();
   });
 
+  it("dry-run refuses to read while a write lock exists", async () => {
+    const dir = await tempDir();
+    const lockPath = path.join(dir, ".ssealed-init.lock");
+    await writeFile(lockPath, "active write lock\n");
+
+    await expect(executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: true, force: false })).rejects.toThrow(/write command is already running/u);
+    await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).rejects.toThrow();
+  });
+
   it("conflicting files cause no partial writes without force", async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, "README.md"), "user readme\n");
@@ -223,6 +232,24 @@ describe("file writer behavior", () => {
     ]);
   });
 
+  it("treats oversized manifests as invalid without reading them into ownership state", async () => {
+    const dir = await tempDir();
+    await mkdir(path.join(dir, ".ssealed"), { recursive: true });
+    await writeFile(path.join(dir, ".ssealed", "manifest.json"), `${" ".repeat(1024 * 1024 + 1)}\n`);
+
+    const previous = await readPreviousManifest(dir);
+
+    expect(previous.settings).toBeUndefined();
+    expect(previous.files.size).toBe(0);
+    expect(previous.warnings).toEqual([
+      {
+        code: "INVALID_MANIFEST",
+        path: ".ssealed/manifest.json",
+        message: "Existing .ssealed/manifest.json exceeds the supported 1 MiB size limit.",
+      },
+    ]);
+  });
+
   it("refuses init when a valid scaffold manifest already exists", async () => {
     const dir = await tempDir();
     await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
@@ -249,6 +276,31 @@ describe("file writer behavior", () => {
     const after = await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8");
     expect(rerun.written).not.toContain(".ssealed/manifest.json");
     expect(after).toBe(before);
+  });
+
+  it("does not rewrite the manifest when only key order differs from generated content", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    const reordered = {
+      files: manifest.files,
+      runner: manifest.runner,
+      density: manifest.density,
+      addons: manifest.addons,
+      profile: manifest.profile,
+      scope: manifest.scope,
+      generatedAt: manifest.generatedAt,
+      version: manifest.version,
+      tool: manifest.tool,
+    };
+    const reorderedContent = `${JSON.stringify(reordered, null, 2)}\n`;
+    await writeFile(manifestPath, reorderedContent);
+
+    const rerun = await executeScaffold({ command: "update", target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+
+    expect(rerun.written).not.toContain(".ssealed/manifest.json");
+    await expect(readFile(manifestPath, "utf8")).resolves.toBe(reorderedContent);
   });
 
   it("refuses to write a stale plan when a target file appears after planning", async () => {
@@ -490,6 +542,19 @@ describe("file writer behavior", () => {
     );
     await expect(readFile(lockPath, "utf8")).resolves.toBe("existing lock\n");
     await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).rejects.toThrow();
+  });
+
+  it("allows only one concurrent write run for the same target", async () => {
+    const dir = await tempDir();
+    const results = await Promise.allSettled([
+      executeScaffold({ target: dir, scope: "fullstack", profile: "api-service", addons: ["desktop-app", "docs-site"], density: "strict", runner: "none", dryRun: false, force: false }),
+      executeScaffold({ target: dir, scope: "fullstack", profile: "api-service", addons: ["desktop-app", "docs-site"], density: "strict", runner: "none", dryRun: false, force: false }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const rejected = results.find((result) => result.status === "rejected");
+    expect(String(rejected?.reason)).toContain("already running");
   });
 
   it("breaks an old scaffold lock only when explicitly requested", async () => {

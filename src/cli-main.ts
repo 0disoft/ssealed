@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { runScaffoldCommand, type CliCommand } from "./commands/init.js";
+import { isSsealedError } from "./core/errors.js";
 import { toolVersion } from "./core/manifest.js";
 
 const commandNames = ["init", "update", "upgrade", "doctor"] as const satisfies readonly CliCommand[];
@@ -225,11 +226,8 @@ function wantsJson(argv: readonly string[]): boolean {
 
 function classifyRuntimeError(error: unknown): { readonly code: string; readonly message: string } {
   const message = error instanceof Error ? error.message : String(error);
-  if (/already running|init\.lock/u.test(message)) {
-    return { code: "LOCK_EXISTS", message };
-  }
-  if (/symlink|escapes target|unsafe segment|unsafe path|not a regular file|null byte/u.test(message)) {
-    return { code: "PATH_SAFETY_ERROR", message };
+  if (isSsealedError(error)) {
+    return { code: error.code, message };
   }
   if (isNodeError(error)) {
     return { code: "FILESYSTEM_ERROR", message };

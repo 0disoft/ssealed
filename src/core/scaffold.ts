@@ -1,7 +1,8 @@
 import path from "node:path";
-import { open, readFile, rm } from "node:fs/promises";
+import { open, readFile, rm, stat } from "node:fs/promises";
 import { hostname } from "node:os";
 import { normalizeText } from "./checksum.js";
+import { SsealedError } from "./errors.js";
 import { formatManifest, createManifest } from "./manifest.js";
 import { planTemplateFile, writePlannedFiles } from "./file-writer.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
@@ -28,12 +29,16 @@ import {
 import { templateFilesFor } from "../templates/index.js";
 
 const staleLockAgeMs = 60 * 60 * 1000;
+const maxManifestBytes = 1024 * 1024;
 
-export async function planScaffold(options: InitOptions): Promise<readonly PlannedFile[]> {
-  return (await planScaffoldWithWarnings(options)).files;
+export async function planScaffold(options: InitOptions & { readonly previousManifest?: PreviousManifestState }): Promise<readonly PlannedFile[]> {
+  return withScaffoldReadLock(path.resolve(options.target), async () => (await planScaffoldWithWarnings(options, options.previousManifest)).files);
 }
 
-async function planScaffoldWithWarnings(options: InitOptions): Promise<{
+async function planScaffoldWithWarnings(
+  options: InitOptions,
+  previousManifestOverride?: PreviousManifestState,
+): Promise<{
   readonly files: readonly PlannedFile[];
   readonly warnings: readonly ScaffoldWarning[];
 }> {
@@ -43,7 +48,7 @@ async function planScaffoldWithWarnings(options: InitOptions): Promise<{
   const addons = normalizeAddons(options.addons ?? []);
   const density = options.density ?? "standard";
   const templates = templateFilesFor(options.scope, options.runner, profile, density, addons);
-  const previousManifest = await readPreviousManifest(targetRoot);
+  const previousManifest = previousManifestOverride ?? (await readPreviousManifest(targetRoot));
   const planned = await Promise.all(
     templates.map((template) =>
       planTemplateFile({
@@ -141,6 +146,18 @@ export interface PreviousManifestState {
 export async function readPreviousManifest(targetRoot: string): Promise<PreviousManifestState> {
   const manifestPath = path.join(path.resolve(targetRoot), ".ssealed", "manifest.json");
   await assertNoSymlinkInPath(targetRoot, manifestPath);
+  const manifestStat = await stat(manifestPath).catch((error: unknown) => {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  });
+  if (manifestStat === undefined) {
+    return { files: new Map(), settings: undefined, warnings: [] };
+  }
+  if (manifestStat.size > maxManifestBytes) {
+    return { files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json exceeds the supported 1 MiB size limit.")] };
+  }
   const content = await readFile(manifestPath, "utf8").catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
       return undefined;
@@ -185,11 +202,11 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
   }
 }
 
-function invalidManifestWarning(): ScaffoldWarning {
+function invalidManifestWarning(message = "Existing .ssealed/manifest.json could not be parsed as a valid ssealed manifest and was ignored for ownership checks."): ScaffoldWarning {
   return {
     code: "INVALID_MANIFEST",
     path: ".ssealed/manifest.json",
-    message: "Existing .ssealed/manifest.json could not be parsed as a valid ssealed manifest and was ignored for ownership checks.",
+    message,
   };
 }
 
@@ -384,13 +401,26 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
 
-export async function executeScaffold(options: InitOptions): Promise<ScaffoldResult> {
+export async function executeScaffold(
+  options: InitOptions & {
+    readonly lock?: "auto" | "none";
+    readonly previousManifest?: PreviousManifestState;
+  },
+): Promise<ScaffoldResult> {
   const command = options.command ?? "init";
   const profile = options.profile ?? "generic";
   const addons = normalizeAddons(options.addons ?? []);
   const density = options.density ?? "standard";
+  if (options.lock !== "none") {
+    const targetRoot = path.resolve(options.target);
+    if (options.dryRun) {
+      return withScaffoldReadLock(targetRoot, () => executeScaffold({ ...options, lock: "none" }));
+    }
+    return withScaffoldWriteLock(targetRoot, options.breakStaleLock ?? false, () => executeScaffold({ ...options, lock: "none" }));
+  }
+
   if (options.dryRun) {
-    const plan = await planScaffoldWithWarnings(options);
+    const plan = await planScaffoldWithWarnings(options, options.previousManifest);
     const conflicts = plan.files.filter((file) => file.action === "conflict");
     return {
       target: path.resolve(options.target),
@@ -409,28 +439,9 @@ export async function executeScaffold(options: InitOptions): Promise<ScaffoldRes
     };
   }
 
-  return withScaffoldLock(path.resolve(options.target), options.breakStaleLock ?? false, async () => {
-    const plan = await planScaffoldWithWarnings(options);
-    const conflicts = plan.files.filter((file) => file.action === "conflict");
-    if (conflicts.length > 0) {
-      return {
-        target: path.resolve(options.target),
-        command,
-        scope: options.scope,
-        profile,
-        addons,
-        density,
-        runner: options.runner,
-        dryRun: false,
-        force: options.force,
-        files: plan.files,
-        conflicts,
-        warnings: plan.warnings,
-        written: [],
-      };
-    }
-
-    const written = await writePlannedFiles(path.resolve(options.target), plan.files);
+  const plan = await planScaffoldWithWarnings(options, options.previousManifest);
+  const conflicts = plan.files.filter((file) => file.action === "conflict");
+  if (conflicts.length > 0) {
     return {
       target: path.resolve(options.target),
       command,
@@ -444,12 +455,36 @@ export async function executeScaffold(options: InitOptions): Promise<ScaffoldRes
       files: plan.files,
       conflicts,
       warnings: plan.warnings,
-      written,
+      written: [],
     };
-  });
+  }
+
+  const written = await writePlannedFiles(path.resolve(options.target), plan.files);
+  return {
+    target: path.resolve(options.target),
+    command,
+    scope: options.scope,
+    profile,
+    addons,
+    density,
+    runner: options.runner,
+    dryRun: false,
+    force: options.force,
+    files: plan.files,
+    conflicts,
+    warnings: plan.warnings,
+    written,
+  };
 }
 
-async function withScaffoldLock<T>(targetRoot: string, breakStaleLock: boolean, task: () => Promise<T>): Promise<T> {
+export async function withScaffoldReadLock<T>(targetRoot: string, task: () => Promise<T>): Promise<T> {
+  const lockPath = resolveInsideTarget(targetRoot, ".ssealed-init.lock");
+  await assertNoSymlinkInPath(targetRoot, lockPath);
+  await assertNoActiveScaffoldWriteLock(lockPath);
+  return task();
+}
+
+export async function withScaffoldWriteLock<T>(targetRoot: string, breakStaleLock: boolean, task: () => Promise<T>): Promise<T> {
   await ensureDirectoryInsideTarget(targetRoot, targetRoot);
   const lockPath = resolveInsideTarget(targetRoot, ".ssealed-init.lock");
   await assertNoSymlinkInPath(targetRoot, lockPath);
@@ -483,7 +518,8 @@ async function acquireScaffoldLock<T>(lockPath: string, breakStaleLock: boolean,
       if (breakStaleLock && (await removeStaleScaffoldLock(lockPath))) {
         return acquireScaffoldLock(lockPath, false, task);
       }
-      throw new Error(
+      throw new SsealedError(
+        "LOCK_EXISTS",
         breakStaleLock
           ? "Existing scaffold lock is not stale. Refusing to remove .ssealed-init.lock while another ssealed command may still be running."
           : "Another ssealed init is already running for this target. Run again with --break-stale-lock only after confirming the lock is stale.",
@@ -500,12 +536,24 @@ async function acquireScaffoldLock<T>(lockPath: string, breakStaleLock: boolean,
   }
 }
 
+async function assertNoActiveScaffoldWriteLock(lockPath: string): Promise<void> {
+  const lockStat = await stat(lockPath).catch((error: unknown) => {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  });
+  if (lockStat !== undefined) {
+    throw new SsealedError("LOCK_EXISTS", "Another ssealed write command is already running for this target. Try again after it finishes.");
+  }
+}
+
 async function removeStaleScaffoldLock(lockPath: string): Promise<boolean> {
   const metadata = await readScaffoldLockMetadata(lockPath);
   if (!isStaleScaffoldLock(metadata)) {
     return false;
   }
-  await rm(lockPath);
+  await rm(lockPath, { force: true });
   return true;
 }
 

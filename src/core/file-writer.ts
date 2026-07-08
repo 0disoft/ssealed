@@ -2,12 +2,15 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
+import { SsealedError } from "./errors.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
 import type { FileOwnership, FilePresence, ManifestFileStatus, PlannedFile, ScaffoldCommand, TemplateFile } from "./types.js";
 import { validationScripts } from "../templates/runners.js";
 
 const gitignoreStart = "# >>> ssealed ignore patterns >>>";
 const gitignoreEnd = "# <<< ssealed ignore patterns <<<";
+const generatedValidationScripts = new Set([...Object.values(validationScripts("npm")), ...Object.values(validationScripts("pnpm"))]);
+const writeConcurrency = 8;
 
 export async function planTemplateFile(params: {
   readonly targetRoot: string;
@@ -202,16 +205,10 @@ export async function writePlannedFiles(targetRoot: string, files: readonly Plan
   }
 
   try {
-    for (const file of writableFiles) {
-      const targetPath = resolveInsideTarget(targetRoot, file.path);
-      const targetDir = path.dirname(targetPath);
-      createdDirectories.push(...(await missingDirectoryChain(targetRoot, targetDir)));
-      await mkdir(targetDir, { recursive: true });
-      await assertNoSymlinkInPath(targetRoot, targetPath);
-      await assertExpectedWriteState(targetPath, file);
-      await writeTextFileAtomically(targetPath, normalizeText(file.content));
-      written.push(file.path);
-    }
+    const manifestFiles = writableFiles.filter((file) => file.path === ".ssealed/manifest.json");
+    const contentFiles = writableFiles.filter((file) => file.path !== ".ssealed/manifest.json");
+    await writeFilesInBatches(targetRoot, contentFiles, written, createdDirectories);
+    await writeFilesInBatches(targetRoot, manifestFiles, written, createdDirectories);
   } catch (error) {
     await rollbackWrittenFiles(targetRoot, writableFiles, written);
     await cleanupCreatedDirectories(createdDirectories);
@@ -219,6 +216,38 @@ export async function writePlannedFiles(targetRoot: string, files: readonly Plan
   }
 
   return written;
+}
+
+async function writeFilesInBatches(
+  targetRoot: string,
+  files: readonly PlannedFile[],
+  written: string[],
+  createdDirectories: string[],
+): Promise<void> {
+  for (let start = 0; start < files.length; start += writeConcurrency) {
+    const batch = files.slice(start, start + writeConcurrency);
+    const results = await Promise.allSettled(batch.map((file) => writeOnePlannedFile(targetRoot, file, written, createdDirectories)));
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") {
+      throw failure.reason;
+    }
+  }
+}
+
+async function writeOnePlannedFile(
+  targetRoot: string,
+  file: PlannedFile,
+  written: string[],
+  createdDirectories: string[],
+): Promise<void> {
+  const targetPath = resolveInsideTarget(targetRoot, file.path);
+  const targetDir = path.dirname(targetPath);
+  createdDirectories.push(...(await missingDirectoryChain(targetRoot, targetDir)));
+  await mkdir(targetDir, { recursive: true });
+  await assertNoSymlinkInPath(targetRoot, targetPath);
+  await assertExpectedWriteState(targetPath, file);
+  await writeTextFileAtomically(targetPath, normalizeText(file.content));
+  written.push(file.path);
 }
 
 type ExistingPath =
@@ -265,14 +294,14 @@ async function assertExpectedWriteState(targetPath: string, file: PlannedFile): 
     if (current.kind === "missing") {
       return;
     }
-    throw new Error(`Refusing to write ${file.path}: file appeared after the scaffold plan was created.`);
+    throw new SsealedError("WRITE_FAILED", `Refusing to write ${file.path}: file appeared after the scaffold plan was created.`);
   }
 
   if (current.kind !== "file") {
-    throw new Error(`Refusing to write ${file.path}: file changed after the scaffold plan was created.`);
+    throw new SsealedError("WRITE_FAILED", `Refusing to write ${file.path}: file changed after the scaffold plan was created.`);
   }
   if (current.content !== file.existingContent) {
-    throw new Error(`Refusing to write ${file.path}: file content changed after the scaffold plan was created.`);
+    throw new SsealedError("WRITE_FAILED", `Refusing to write ${file.path}: file content changed after the scaffold plan was created.`);
   }
 }
 
@@ -450,7 +479,42 @@ function sameManifestExceptGeneratedAt(existingContent: string, generatedContent
   }
 
   const existingComparable = { ...existing, generatedAt: generated.generatedAt };
-  return JSON.stringify(existingComparable) === JSON.stringify(generated);
+  return sameJsonValue(existingComparable, generated);
+}
+
+type JsonComparable = null | boolean | number | string | readonly JsonComparable[] | { readonly [key: string]: JsonComparable };
+
+function sameJsonValue(left: unknown, right: unknown): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!isJsonComparable(left) || !isJsonComparable(right)) {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => sameJsonValue(value, right[index]));
+  }
+  if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) {
+    return false;
+  }
+  const leftRecord = left as { readonly [key: string]: JsonComparable };
+  const rightRecord = right as { readonly [key: string]: JsonComparable };
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return leftKeys.length === rightKeys.length && leftKeys.every((key, index) => key === rightKeys[index] && sameJsonValue(leftRecord[key], rightRecord[key]));
+}
+
+function isJsonComparable(value: unknown): value is JsonComparable {
+  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.every(isJsonComparable);
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return Object.values(value).every(isJsonComparable);
 }
 
 async function rollbackWrittenFiles(
@@ -507,8 +571,7 @@ function isGeneratedValidationScript(value: unknown): boolean {
   if (typeof value !== "string") {
     return false;
   }
-  const generatedScripts = new Set([...Object.values(validationScripts("npm")), ...Object.values(validationScripts("pnpm"))]);
-  return generatedScripts.has(value);
+  return generatedValidationScripts.has(value);
 }
 
 async function writeTextFileAtomically(targetPath: string, content: string): Promise<void> {

@@ -152,6 +152,7 @@ describe("scope generation", () => {
     await expect(exists(dir, ".editorconfig")).resolves.toBe(true);
     await expect(exists(dir, ".gitattributes")).resolves.toBe(true);
     await expect(exists(dir, ".gitignore")).resolves.toBe(true);
+    await expect(readFile(path.join(dir, ".gitignore"), "utf8")).resolves.toContain(".ssealed-init.lock");
     const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")) as ManifestForTest;
     expect(manifest.profile).toBe("generic");
     expect(manifest.addons).toEqual([]);

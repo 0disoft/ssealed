@@ -3,7 +3,7 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { normalizeText, sha256 } from "../core/checksum.js";
-import { executeScaffold, readPreviousManifest, type PreviousManifestSettings } from "../core/scaffold.js";
+import { executeScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock, type PreviousManifestSettings, type PreviousManifestState } from "../core/scaffold.js";
 import { assertNoSymlinkInPath, resolveInsideTarget } from "../core/path-safety.js";
 import { gitignoreBlock } from "../templates/index.js";
 import { validationScripts } from "../templates/runners.js";
@@ -51,34 +51,53 @@ export async function runInit(options: InitCliOptions): Promise<number> {
 export async function runScaffoldCommand(options: InitCliOptions & { readonly command: CliCommand }): Promise<number> {
   const target = path.resolve(options.target ?? process.cwd());
   if (options.command === "doctor") {
-    return runDoctor(target, options.json, options.strict ?? false);
+    return withScaffoldReadLock(target, () => runDoctor(target, options.json, options.strict ?? false));
+  }
+  const scaffoldCommand = options.command;
+
+  const runResolvedScaffold = async (previousManifest?: PreviousManifestState): Promise<number> => {
+    const settings = await resolveScaffoldSettings(target, { ...options, command: scaffoldCommand }, previousManifest);
+    if (isInitError(settings)) {
+      return writeInitError(options, settings);
+    }
+
+    const result = await executeScaffold({
+      command: scaffoldCommand,
+      target,
+      scope: settings.scope,
+      profile: settings.profile,
+      addons: settings.addons,
+      density: settings.density,
+      runner: settings.runner,
+      dryRun: options.dryRun,
+      force: options.force,
+      breakStaleLock: options.breakStaleLock ?? false,
+      lock: previousManifest === undefined ? "auto" : "none",
+      ...(previousManifest === undefined ? {} : { previousManifest }),
+    });
+
+    if (options.json) {
+      output.write(`${JSON.stringify(formatJsonResult(result), null, 2)}\n`);
+    } else {
+      output.write(formatHumanResult(result));
+    }
+
+    return result.conflicts.length > 0 ? 1 : 0;
+  };
+
+  if (options.command === "init") {
+    return runResolvedScaffold();
   }
 
-  const settings = await resolveScaffoldSettings(target, { ...options, command: options.command });
-  if (isInitError(settings)) {
-    return writeInitError(options, settings);
+  const runWithManifest = async (): Promise<number> => {
+    const previousManifest = await readPreviousManifest(target);
+    return runResolvedScaffold(previousManifest);
+  };
+
+  if (options.dryRun) {
+    return withScaffoldReadLock(target, runWithManifest);
   }
-
-  const result = await executeScaffold({
-    command: options.command,
-    target,
-    scope: settings.scope,
-    profile: settings.profile,
-    addons: settings.addons,
-    density: settings.density,
-    runner: settings.runner,
-    dryRun: options.dryRun,
-    force: options.force,
-    breakStaleLock: options.breakStaleLock ?? false,
-  });
-
-  if (options.json) {
-    output.write(`${JSON.stringify(formatJsonResult(result), null, 2)}\n`);
-  } else {
-    output.write(formatHumanResult(result));
-  }
-
-  return result.conflicts.length > 0 ? 1 : 0;
+  return withScaffoldWriteLock(target, options.breakStaleLock ?? false, runWithManifest);
 }
 
 type InitErrorCode =
@@ -101,6 +120,7 @@ interface InitError {
 async function resolveScaffoldSettings(
   target: string,
   options: InitCliOptions & { readonly command: ScaffoldCommand },
+  previousManifest?: PreviousManifestState,
 ): Promise<PreviousManifestSettings | InitError> {
   if (options.command === "init") {
     const scope = await resolveInitScope(options);
@@ -128,7 +148,7 @@ async function resolveScaffoldSettings(
     };
   }
 
-  const previous = await readPreviousManifest(target);
+  const previous = previousManifest ?? (await readPreviousManifest(target));
   if (previous.settings === undefined) {
     return {
       code: "MISSING_MANIFEST",

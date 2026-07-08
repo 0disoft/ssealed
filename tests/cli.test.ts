@@ -392,4 +392,26 @@ describe("CLI argument parsing", () => {
       stdout.mockRestore();
     }
   });
+
+  it("returns a lock error when doctor runs during an active write lock", async () => {
+    const dir = await tempDir();
+    await writeFile(path.join(dir, ".ssealed-init.lock"), "active write lock\n");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(["doctor", dir, "--json"])).resolves.toBe(1);
+      expect(stderr).not.toHaveBeenCalled();
+      const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(payload).toEqual({
+        ok: false,
+        error: {
+          code: "LOCK_EXISTS",
+          message: "Another ssealed write command is already running for this target. Try again after it finishes.",
+        },
+      });
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
 });
