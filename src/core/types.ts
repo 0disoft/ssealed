@@ -98,7 +98,7 @@ export interface Manifest {
   readonly files: readonly ManifestFile[];
 }
 
-export type ScaffoldCommand = "init" | "update" | "upgrade";
+export type ScaffoldCommand = "init" | "adopt" | "update" | "upgrade";
 
 export interface ScaffoldResult {
   readonly command: ScaffoldCommand;

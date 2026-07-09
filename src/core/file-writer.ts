@@ -136,6 +136,10 @@ export async function planTemplateFile(params: {
     );
   }
 
+  if (params.command === "adopt" && params.template.merge === "package-json" && existingContent !== undefined) {
+    return planAdoptedProjectOwnedFile(params.template, existingContent, generatedContent, previouslyGenerated);
+  }
+
   if (params.template.merge === "package-json") {
     return withLifecycle(
       planPackageJson(params.template, existingContent, params.force, previouslyGenerated),
@@ -175,6 +179,10 @@ export async function planTemplateFile(params: {
       previousGeneratedChecksum,
       previousInitialChecksum,
     };
+  }
+
+  if (params.command === "adopt") {
+    return planAdoptedProjectOwnedFile(params.template, existingContent, generatedContent, previouslyGenerated);
   }
 
   if (params.force && previouslyGenerated === true) {
@@ -223,6 +231,27 @@ export async function planTemplateFile(params: {
       params.force && previouslyGenerated !== true
         ? "Existing file differs from the generated checksum recorded for this path in .ssealed/manifest.json."
         : "Existing file differs from generated scaffold content.",
+    };
+}
+
+function planAdoptedProjectOwnedFile(
+  template: TemplateFile,
+  existingContent: string,
+  generatedContent: string,
+  previouslyGenerated: boolean | undefined,
+): PlannedFile {
+  const generatedChecksum = sha256(generatedContent);
+  return {
+    ...template,
+    action: "customized",
+    content: normalizeText(existingContent),
+    existingContent,
+    previouslyGenerated,
+    ownership: "project-owned",
+    presence: "optional",
+    previousGeneratedChecksum: generatedChecksum,
+    previousInitialChecksum: generatedChecksum,
+    reason: "Existing file was adopted as project-owned content.",
   };
 }
 

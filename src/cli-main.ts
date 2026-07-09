@@ -3,12 +3,13 @@ import { runScaffoldCommand, type CliCommand } from "./commands/init.js";
 import { isScaffoldInterruptedError, isSsealedError } from "./core/errors.js";
 import { toolVersion } from "./core/manifest.js";
 
-const commandNames = ["init", "update", "upgrade", "doctor", "eject"] as const satisfies readonly CliCommand[];
+const commandNames = ["init", "adopt", "update", "upgrade", "doctor", "eject"] as const satisfies readonly CliCommand[];
 
 const helpText = `ssealed
 
 Usage:
   ssealed init [target] --scope backend|frontend|fullstack|general|mobile|infra|data [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
+  ssealed adopt [target] --scope backend|frontend|fullstack|general|mobile|infra|data [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed update [target]
   ssealed upgrade [target] [--scope backend|frontend|fullstack|general|mobile|infra|data] [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed doctor [target] [--strict]
@@ -32,10 +33,11 @@ Options:
   --json       Print machine-readable JSON.
 `;
 
-const commandHelpText = `ssealed init|update|upgrade|doctor|eject [target]
+const commandHelpText = `ssealed init|adopt|update|upgrade|doctor|eject [target]
 
 Commands:
   init     Create a new scaffold. Refuses targets with an existing valid manifest.
+  adopt    Add scaffold metadata to an existing repository without taking over differing project files.
   update   Reapply the existing manifest settings without changing scope, repo type, addons, density, or runner.
   upgrade  Explicitly change scaffold settings and replan generated files.
   doctor   Check scaffold lifecycle metadata. Use --strict to require accepted checksums.
@@ -86,6 +88,7 @@ Runners:
 
 Examples:
   ssealed init --scope backend --runner none
+  ssealed adopt ./existing-repo --scope general --repo-type library --density minimal --runner none
   ssealed init --scope frontend --repo-type generic --density minimal --runner just
   ssealed init --scope general --repo-type cli-tool --addon github-action --dry-run
   ssealed update ./my-service --yes

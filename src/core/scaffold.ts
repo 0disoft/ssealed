@@ -63,7 +63,7 @@ async function planScaffoldWithWarnings(
   );
   const plannedPaths = new Set(planned.map((file) => file.path));
   const retiredPreviousFiles =
-    command === "init"
+    isFreshScaffoldCommand(command)
       ? []
       : [...previousManifest.files.entries()]
           .filter(([filePath]) => filePath !== ".ssealed/manifest.json" && !plannedPaths.has(filePath))
@@ -354,7 +354,7 @@ function planManifestSettingsConflict(
   if (previous === undefined) {
     return undefined;
   }
-  if (command === "init") {
+  if (isFreshScaffoldCommand(command)) {
     return {
       path: ".ssealed/manifest.json",
       kind: "manifest",
@@ -402,6 +402,10 @@ function sameAddons(left: readonly Addon[], right: readonly Addon[]): boolean {
 
 function formatAddons(addons: readonly Addon[]): string {
   return addons.length === 0 ? "none" : addons.join("+");
+}
+
+function isFreshScaffoldCommand(command: ScaffoldCommand): boolean {
+  return command === "init" || command === "adopt";
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

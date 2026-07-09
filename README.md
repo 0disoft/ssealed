@@ -65,6 +65,7 @@ Do not store an npm token in the repository unless Trusted Publishing is unavail
 
 ```sh
 ssealed init [target] --scope backend|frontend|fullstack|general|mobile|infra|data
+ssealed adopt [target] --scope backend|frontend|fullstack|general|mobile|infra|data
 ssealed update [target]
 ssealed upgrade [target]
 ssealed doctor [target]
@@ -74,6 +75,7 @@ ssealed init [target] --repo-type generic|cli-tool|api-service|desktop-app|libra
 ssealed init [target] --addon github-action --addon docs-site
 ssealed init [target] --density minimal|standard|strict
 ssealed init [target] --runner none|make|just|task|npm|pnpm
+ssealed adopt [target] --repo-type library --density minimal --runner none
 ssealed update [target] --dry-run --json
 ssealed upgrade [target] --repo-type api-service --density strict --runner make --force
 ssealed update [target] --break-stale-lock
@@ -85,6 +87,7 @@ ssealed init --help
 ```
 
 `init` creates a new scaffold and refuses targets with an existing valid `.ssealed/manifest.json`.
+`adopt` initializes `.ssealed/manifest.json` for an existing repository while preserving differing regular files as `project-owned`; missing scaffold files are created, and `.gitignore` still receives the managed ignore block.
 `update` reapplies the existing manifest settings, accepts project-owned edits to seeded documents, keeps deleted seeded documents retired, and refreshes manifest metadata without changing `scope`, repository type, addons, `density`, or `runner`.
 `upgrade` is the explicit path for changing scaffold settings.
 `doctor` checks scaffold lifecycle metadata. It accepts normal project evolution for seeded documents by default. Use `doctor --strict` when you intentionally want checksum drift detection against accepted manifest content.
@@ -160,7 +163,7 @@ Runner files are optional because many repositories already have their own task 
 
 ## Overwrite Policy
 
-Existing files are not overwritten by default. Identical files are marked `unchanged`. During `init`, different existing files are marked `conflict`. During `update` and `upgrade`, seeded files that already have project-owned edits are marked `customized` and are not overwritten. Seeded files that were deleted after a previous run are marked `retired` and are not recreated.
+Existing files are not overwritten by default. Identical files are marked `unchanged`. During `init`, different existing files are marked `conflict`. During `adopt`, different existing regular files are marked `customized` with `ownership: project-owned` and are not overwritten, even with `--force`. During `update` and `upgrade`, seeded files that already have project-owned edits are marked `customized` and are not overwritten. Seeded files that were deleted after a previous run are marked `retired` and are not recreated.
 
 `--force` overwrites conflicting files only when the current file content matches the generated checksum recorded for that path in the previous `.ssealed/manifest.json`. The manifest is a local previous-run record, not a security boundary, and it never authorizes overwriting unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced. Seeded files with project-owned edits stay project-owned even after `update` accepts their current checksum.
 
@@ -174,14 +177,14 @@ Manifest file ownership has four meanings:
 
 - `seeded`: ssealed created an initial document or repository file, but the project is expected to edit, move, or delete it over time.
 - `block-managed`: ssealed manages a bounded block or script set inside a user-owned file, such as `.gitignore` or generated validation scripts in `package.json`.
-- `project-owned`: the project has explicitly taken ownership of a previously managed surface, such as an ejected package runner block.
+- `project-owned`: the project explicitly owns the file or surface, such as an adopted existing file or an ejected package runner block.
 - `managed`: ssealed owns the full file content as tool metadata.
 
 Seeded files use `presence: optional`; missing seeded files can be retained as `status: retired`. Active files keep `initialChecksum`, `generatedChecksum`, and `acceptedChecksum` so tooling can distinguish original template content, the last generated scaffold content, and project-accepted content. The legacy `checksum` field remains as the accepted checksum for compatibility.
 
 The manifest helps identify previously generated files, but it never authorizes silent overwrite of user-modified files. Default `doctor` treats modified seeded files as `customized`, missing optional seeded files as `retired`, and explicitly ejected files as `project-owned`; these are healthy lifecycle states. `doctor --strict` still accepts `project-owned` files because ssealed no longer owns that surface.
 
-`init` is intentionally conservative and refuses a target that already has a valid `.ssealed/manifest.json`. Use `update` to reapply the recorded scaffold settings, or use `upgrade` to explicitly change `scope`, repository type, addons, `density`, or `runner`. `update` rejects setting changes so old generated files do not silently become untracked scaffold leftovers, but it does not force project documents back to their seed text.
+`init` and `adopt` are intentionally conservative and refuse a target that already has a valid `.ssealed/manifest.json`. Use `adopt` for an existing repository that should gain scaffold metadata without handing existing files to ssealed. Use `update` to reapply the recorded scaffold settings, or use `upgrade` to explicitly change `scope`, repository type, addons, `density`, or `runner`. `update` rejects setting changes so old generated files do not silently become untracked scaffold leftovers, but it does not force project documents back to their seed text.
 
 ## Path Safety
 
@@ -227,6 +230,7 @@ If a managed block exists and differs from the current generated block, the file
 
 ```sh
 ssealed init --scope backend --runner none
+ssealed adopt ./existing-lib --scope general --repo-type library --density minimal --runner none
 ssealed init --scope frontend --density minimal --runner just
 ssealed init ./my-service --scope backend --repo-type api-service --runner make --yes
 ssealed init --scope general --repo-type cli-tool --addon github-action --dry-run

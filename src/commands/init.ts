@@ -91,7 +91,7 @@ export async function runScaffoldCommand(options: InitCliOptions & { readonly co
     return result.conflicts.length > 0 ? 1 : 0;
   };
 
-  if (options.command === "init") {
+  if (options.command === "init" || options.command === "adopt") {
     return runResolvedScaffold();
   }
 
@@ -130,7 +130,7 @@ async function resolveScaffoldSettings(
   options: InitCliOptions & { readonly command: ScaffoldCommand },
   previousManifest?: PreviousManifestState,
 ): Promise<PreviousManifestSettings | InitError> {
-  if (options.command === "init") {
+  if (options.command === "init" || options.command === "adopt") {
     const scope = await resolveInitScope(options);
     if (isInitError(scope)) {
       return scope;

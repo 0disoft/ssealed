@@ -142,6 +142,56 @@ describe("CLI argument parsing", () => {
     }
   });
 
+  it("adopts an existing repository without treating differing files as conflicts", async () => {
+    const dir = await tempDir();
+    await writeFile(path.join(dir, "README.md"), "# Existing Project\n\nKeep this content.\n");
+    await writeFile(path.join(dir, ".gitattributes"), "* text=auto\n");
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(
+        main(["adopt", dir, "--scope", "general", "--repo-type", "library", "--density", "minimal", "--runner", "none", "--json"]),
+      ).resolves.toBe(0);
+      expect(stderr).not.toHaveBeenCalled();
+      const adoptPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(adoptPayload).toEqual(
+        expect.objectContaining({
+          ok: true,
+          command: "adopt",
+          profile: "library",
+          density: "minimal",
+          runner: "none",
+        }),
+      );
+      expect(adoptPayload.conflicts).toEqual([]);
+      expect(adoptPayload.files).toContainEqual(
+        expect.objectContaining({
+          path: "README.md",
+          action: "customized",
+          ownership: "project-owned",
+          reason: "Existing file was adopted as project-owned content.",
+        }),
+      );
+      expect(adoptPayload.files).toContainEqual(expect.objectContaining({ path: "AGENTS.md", action: "create", ownership: "seeded" }));
+      await expect(readFile(path.join(dir, "README.md"), "utf8")).resolves.toBe("# Existing Project\n\nKeep this content.\n");
+
+      stdout.mockClear();
+      await expect(main(["doctor", dir, "--strict", "--json"])).resolves.toBe(0);
+      const doctorPayload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+      expect(doctorPayload.ok).toBe(true);
+      expect(doctorPayload.checks).toContainEqual(
+        expect.objectContaining({
+          path: "README.md",
+          ownership: "project-owned",
+          status: "project-owned",
+        }),
+      );
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
   it("normalizes the legacy design scope alias to general", async () => {
     const dir = await tempDir();
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);

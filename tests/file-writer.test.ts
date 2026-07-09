@@ -463,6 +463,77 @@ describe("file writer behavior", () => {
     );
   });
 
+  it("adopts existing regular files as project-owned without overwriting them", async () => {
+    const dir = await tempDir();
+    const readmePath = path.join(dir, "README.md");
+    const projectReadme = "# Existing Project\n\nThis README belongs to the repository.\n";
+    await writeFile(readmePath, projectReadme);
+    await writeFile(path.join(dir, ".editorconfig"), "root = true\n\n[*]\nindent_style = tab\n");
+
+    const result = await executeScaffold({
+      command: "adopt",
+      target: dir,
+      scope: "general",
+      profile: "library",
+      runner: "none",
+      density: "minimal",
+      dryRun: false,
+      force: true,
+    });
+
+    expect(result.conflicts).toHaveLength(0);
+    expect(result.files).toContainEqual(
+      expect.objectContaining({
+        path: "README.md",
+        action: "customized",
+        ownership: "project-owned",
+        presence: "optional",
+      }),
+    );
+    expect(result.files).toContainEqual(
+      expect.objectContaining({
+        path: ".editorconfig",
+        action: "customized",
+        ownership: "project-owned",
+      }),
+    );
+    expect(result.files).toContainEqual(expect.objectContaining({ path: "AGENTS.md", action: "create", ownership: "seeded" }));
+    await expect(readFile(readmePath, "utf8")).resolves.toBe(projectReadme);
+
+    const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+    const readmeEntry = manifest.files.find((file: { path: string }) => file.path === "README.md");
+    expect(readmeEntry).toEqual(
+      expect.objectContaining({
+        ownership: "project-owned",
+        presence: "optional",
+        status: "active",
+        acceptedChecksum: expect.any(String),
+        generatedChecksum: expect.any(String),
+      }),
+    );
+    expect(readmeEntry.acceptedChecksum).not.toBe(readmeEntry.generatedChecksum);
+  });
+
+  it("adopt refuses a target that already has a valid scaffold manifest", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+
+    const result = await executeScaffold({
+      command: "adopt",
+      target: dir,
+      scope: "general",
+      profile: "library",
+      runner: "none",
+      density: "minimal",
+      dryRun: false,
+      force: false,
+    });
+
+    const manifestConflict = result.conflicts.find((file) => file.path === ".ssealed/manifest.json");
+    expect(manifestConflict?.reason).toContain("Existing scaffold already has a valid .ssealed/manifest.json");
+    await expect(readFile(path.join(dir, "docs", "library", "public-api.md"), "utf8")).rejects.toThrow();
+  });
+
   it("does not let force overwrite seeded documents after accepting project-owned edits", async () => {
     const dir = await tempDir();
     await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
