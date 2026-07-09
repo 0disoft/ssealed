@@ -1,6 +1,6 @@
 {
   "name": "ssealed",
-  "version": "0.6.7",
+  "version": "0.6.8",
   "type": "module",
   "description": "LLM-friendly design scaffold CLI for repository documentation, agent instructions, contracts, validations, and hygiene files.",
   "repository": {

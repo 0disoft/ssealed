@@ -58,6 +58,8 @@ async function exists(root: string, relativePath: string): Promise<boolean> {
 }
 
 const markdownLabelLinePattern = /^[A-Za-z][A-Za-z0-9 /()_-]*: .+$/u;
+const controlDocumentPaths = new Set(["AGENTS.md", "README.md", "CHECKLIST.md", "VALIDATION.md", ".agents/context-map.md", "docs/README.md"]);
+const generatedPathReferencePattern = /(?:\.agents\/(?:skills\/[A-Za-z0-9-]+\/SKILL|checklists\/[A-Za-z0-9-]+|validations\/[A-Za-z0-9-]+|context-map)\.md|docs\/[A-Za-z0-9._/-]+\.(?:md|yaml|yml|json|dbml)|api\/[A-Za-z0-9._/-]+\.(?:yaml|yml|json)|db\/[A-Za-z0-9._/-]+\.dbml|contracts\/[A-Za-z0-9._/-]+\.(?:yaml|yml|json|md))/gu;
 
 function stripMarkdownFrontmatter(content: string): string {
   if (!content.startsWith("---\n")) {
@@ -105,6 +107,10 @@ function adjacentPlainMetadataBlocks(content: string): string[] {
   return markdownParagraphBlocks(content)
     .filter((block) => block.length >= 2 && block.every((line) => markdownLabelLinePattern.test(line)))
     .map((block) => block.join("\n"));
+}
+
+function referencedGeneratedPaths(content: string): string[] {
+  return [...content.matchAll(generatedPathReferencePattern)].map((match) => match[0]);
 }
 
 describe("scope generation", () => {
@@ -333,6 +339,31 @@ describe("scope generation", () => {
             const files = templateFilesFor(scope, runner, profile, density);
             const paths = files.map((file) => file.path);
             expect(new Set(paths).size, `${scope}/${profile}/${runner}/${density}`).toBe(paths.length);
+          }
+        }
+      }
+    }
+  });
+
+  it("keeps control-document route references inside the generated file set", () => {
+    for (const scope of scopes) {
+      for (const density of densities) {
+        const cases: Array<{ readonly profile: Profile; readonly addons: readonly Addon[]; readonly label: string }> = [
+          ...profiles.map((profile) => ({ profile, addons: [], label: `${scope}/${profile}/${density}` })),
+          ...supportedAddons.map((addon) => ({ profile: "generic" as const, addons: [addon], label: `${scope}/generic/${density}+${addon}` })),
+        ];
+
+        for (const testCase of cases) {
+          const files = templateFilesFor(scope, "none", testCase.profile, density, testCase.addons);
+          const generatedPaths = new Set(files.map((file) => file.path));
+
+          for (const file of files) {
+            if (!controlDocumentPaths.has(file.path)) {
+              continue;
+            }
+            for (const referencedPath of referencedGeneratedPaths(file.content)) {
+              expect(generatedPaths.has(referencedPath), `${testCase.label}:${file.path} -> ${referencedPath}`).toBe(true);
+            }
           }
         }
       }

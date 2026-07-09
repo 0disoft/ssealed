@@ -246,7 +246,7 @@ export function templateFilesFor(
     ...(scope === "data" ? dataFiles : []),
   ].filter((file) => includesDensity(file, density));
 
-  const renderedScopedFiles = scopedFiles.map((file) => renderFile(file, scope, profile, addons));
+  const renderedScopedFiles = scopedFiles.map((file) => renderFile(file, scope, profile, addons, density));
   const scopedPaths = new Set(renderedScopedFiles.map((file) => file.path));
   const files = [...renderedScopedFiles, ...profileFilesFor(profile, scope, density, addons).filter((file) => !scopedPaths.has(file.path)), ...runnerFiles(runner)];
   assertUniqueTemplatePaths(files);
@@ -278,7 +278,7 @@ function assertUniqueTemplatePaths(files: readonly TemplateFile[]): void {
   }
 }
 
-function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: readonly Addon[]): TemplateFile {
+function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: readonly Addon[], density: Density): TemplateFile {
   switch (file.renderer) {
     case "editorconfig":
       return { ...file, content: editorconfig() };
@@ -287,17 +287,17 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "gitignore":
       return { ...file, content: gitignoreBlock(), merge: "gitignore" };
     case "root-agents":
-      return { ...file, content: rootAgents(scope, profile, addons) };
+      return { ...file, content: rootAgents(scope, profile, addons, density) };
     case "root-readme":
       return { ...file, content: rootReadme(scope, profile, addons) };
     case "validation":
       return { ...file, content: validationDoc(file.title ?? "Validation", scope, profile, addons) };
     case "checklist-router":
-      return { ...file, content: checklistRouter(scope, profile, addons) };
+      return { ...file, content: checklistRouter(scope, profile, addons, density) };
     case "docs-readme":
-      return { ...file, content: docsReadme(scope, profile, addons) };
+      return { ...file, content: docsReadme(scope, profile, addons, density) };
     case "context-map":
-      return { ...file, content: contextMap(scope, profile, addons) };
+      return { ...file, content: contextMap(scope, profile, addons, density) };
     case "agent-skill":
       return { ...file, content: agentSkill(file.title ?? "agent-skill") };
     case "checklist":
@@ -424,13 +424,14 @@ tmp/
 `;
 }
 
-function checklistRouter(scope: Scope, profile: Profile, addons: readonly Addon[]): string {
+function checklistRouter(scope: Scope, profile: Profile, addons: readonly Addon[], density: Density): string {
+  const isMinimal = density === "minimal";
   const scopedRoutes = [
     ...(scope === "backend" || scope === "fullstack"
-      ? ["- Backend API changes: .agents/checklists/backend-api.md", "- DB migration changes: .agents/checklists/db-migration.md"]
+      ? ["- Backend API changes: .agents/checklists/backend-api.md", ...(isMinimal ? [] : ["- DB migration changes: .agents/checklists/db-migration.md"])]
       : []),
     ...(scope === "frontend" || scope === "fullstack"
-      ? ["- Frontend UI changes: .agents/checklists/frontend-ui.md", "- Accessibility changes: .agents/checklists/accessibility.md"]
+      ? ["- Frontend UI changes: .agents/checklists/frontend-ui.md", ...(isMinimal ? [] : ["- Accessibility changes: .agents/checklists/accessibility.md"])]
       : []),
     ...(scope === "mobile" ? ["- Mobile app changes: .agents/checklists/mobile-app.md"] : []),
     ...(scope === "infra" ? ["- Infrastructure changes: .agents/checklists/infra-change.md"] : []),
@@ -445,10 +446,10 @@ ${documentMetadata([["Status", "Draft"]])}
 
 Use this file as a router. Do not turn it into one giant checklist.
 
-- Feature work: .agents/checklists/security.md, .agents/checklists/performance.md
-- Bug fixes: .agents/checklists/security.md when data or access is touched
-- Ops changes: .agents/checklists/ops-change.md
-- Dependency changes: .agents/checklists/dependency.md
+- Feature work: .agents/skills/feature/SKILL.md and .agents/checklists/security.md${isMinimal ? "" : ", plus .agents/checklists/performance.md when performance is touched"}
+- Bug fixes: .agents/skills/bugfix/SKILL.md and .agents/checklists/security.md when data or access is touched
+- Ops changes: .agents/checklists/ops-change.md${isMinimal ? "" : " and .agents/skills/ops-change/SKILL.md"}
+- Dependency changes: ${isMinimal ? "record the dependency risk here unless a project-owned dependency checklist exists" : ".agents/checklists/dependency.md and .agents/skills/dependency-upgrade/SKILL.md"}
 - Repository hygiene changes: .agents/checklists/security.md and .agents/checklists/ops-change.md
 ${scopedRoutesBlock}`;
 }

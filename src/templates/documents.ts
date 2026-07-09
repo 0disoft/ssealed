@@ -1,4 +1,4 @@
-import type { Addon, Profile, Scope } from "../core/types.js";
+import type { Addon, Density, Profile, Scope } from "../core/types.js";
 
 export function documentMetadata(entries: ReadonlyArray<readonly [string, string]>): string {
   return entries.map(([label, value]) => `- ${label}: ${value}`).join("\n");
@@ -213,7 +213,16 @@ function opsBody(lowerTitle: string): string {
   return "Define severity, roles, first 10 minutes, communication, timeline, postmortem, follow-up policy, and evidence preservation.";
 }
 
-export function rootAgents(scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
+export function rootAgents(scope: Scope, profile: Profile, addons: readonly Addon[] = [], density: Density = "standard"): string {
+  const backendFacingContracts =
+    density === "minimal"
+      ? "`api/openapi.yaml`, `docs/backend/README.md`, and `docs/backend/00-api-server-boundary.md`"
+      : "`api/openapi.yaml`, `api/examples/*.json`, `docs/backend/04-http-api-policy.md`, and `docs/backend/05-error-response.md`";
+  const architectureSource = density === "minimal" ? "Architecture boundary: docs/architecture/00-system-boundary.md" : "Architecture decisions: docs/adr/*.md";
+  const fullstackDbSource =
+    density === "minimal"
+      ? "DB structure is not generated at minimal density; record project-owned persistence decisions before treating DB files as source."
+      : "DB structure is sourced from `db/schema.dbml`.";
   const scopeText = {
     backend: `Scope: backend
 
@@ -223,8 +232,7 @@ authorization, persistence, migrations, observability, and backend security.
 This repository does not own frontend routing, visual design, component hierarchy,
 design tokens, or browser interaction policy.
 
-Frontend-facing behavior is contracted through \`api/openapi.yaml\`, \`api/examples/*.json\`,
-\`docs/backend/04-http-api-policy.md\`, and \`docs/backend/05-error-response.md\`.`,
+Frontend-facing behavior is contracted through ${backendFacingContracts}.`,
     frontend: `Scope: frontend
 
 This repository owns routing, page model, state ownership, component boundaries,
@@ -242,12 +250,12 @@ engineering standards, and operational standards.
 
 API request and response shapes are sourced from \`api/openapi.yaml\`.
 
-DB structure is sourced from \`db/schema.dbml\`.`,
+${fullstackDbSource}`,
     general: `Scope: general
 
 This repository owns product, architecture, ADR, engineering, and operational design scaffolds.
 
-It does not own implementation source code.`,
+This scaffold does not generate implementation source code; any existing source remains project-owned.`,
     mobile: `Scope: mobile
 
 This repository owns mobile product surface behavior, platform support decisions, app lifecycle,
@@ -282,7 +290,7 @@ ${repositoryShapeBlock(profile, addons)}
 ## Source of Truth
 
 - Product scope: docs/product/02-spec.md
-- Architecture decisions: docs/adr/*.md
+- ${architectureSource}
 - Validation: VALIDATION.md
 - Agent routing: .agents/context-map.md
 - Repository hygiene: .editorconfig, .gitattributes, .gitignore
@@ -355,13 +363,15 @@ Project-specific implementation choices remain UNDECIDED until the repository ow
 `;
 }
 
-export function docsReadme(scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
+export function docsReadme(scope: Scope, profile: Profile, addons: readonly Addon[] = [], density: Density = "standard"): string {
+  const architectureSource =
+    density === "minimal" ? "- Architecture boundary source: docs/architecture/00-system-boundary.md" : "- Architecture decisions source: docs/adr/*.md";
   const sourceLines = [
     "- Product scope source: docs/product/02-spec.md",
     ...(scope === "backend" || scope === "fullstack" ? ["- API source for backend/fullstack: api/openapi.yaml"] : []),
     ...(scope === "frontend" ? ["- API consumed contract for frontend: contracts/backend-api/openapi.yaml"] : []),
-    ...(scope === "backend" || scope === "fullstack" ? ["- DB source for backend/fullstack: db/schema.dbml"] : []),
-    "- Architecture decisions source: docs/adr/*.md",
+    ...(density !== "minimal" && (scope === "backend" || scope === "fullstack") ? ["- DB source for backend/fullstack: db/schema.dbml"] : []),
+    architectureSource,
     ...(scope === "frontend" || scope === "fullstack"
       ? ["- Frontend design source: docs/frontend/FRONTEND_DESIGN.md when generated"]
       : []),
@@ -372,7 +382,7 @@ export function docsReadme(scope: Scope, profile: Profile, addons: readonly Addo
     "- Validation source: VALIDATION.md",
     "- Agent routing source: .agents/context-map.md",
     "- Repository hygiene source: .editorconfig, .gitattributes, .gitignore",
-    ...profileList(profile, addons).flatMap((value) => profileSourceLines(value, scope)),
+    ...profileList(profile, addons).flatMap((value) => profileSourceLines(value, scope, density)),
   ];
 
   return `# Documentation
@@ -385,10 +395,11 @@ ${sourceLines.join("\n")}
 `;
 }
 
-export function contextMap(scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
+export function contextMap(scope: Scope, profile: Profile, addons: readonly Addon[] = [], density: Density = "standard"): string {
+  const isMinimal = density === "minimal";
   const routes = [
     ...(scope === "backend" || scope === "fullstack"
-      ? ["- Backend API route: .agents/skills/backend-api/SKILL.md", "- DB migration route: .agents/skills/db-migration/SKILL.md"]
+      ? ["- Backend API route: .agents/skills/backend-api/SKILL.md", ...(isMinimal ? [] : ["- DB migration route: .agents/skills/db-migration/SKILL.md"])]
       : []),
     ...(scope === "frontend" || scope === "fullstack"
       ? ["- Frontend UI route: .agents/skills/frontend-ui/SKILL.md", "- Backend API contract consumption: docs/integrations/backend-api.md"]
@@ -396,7 +407,7 @@ export function contextMap(scope: Scope, profile: Profile, addons: readonly Addo
     ...(scope === "general"
       ? [
           "- Product scope route: docs/product/02-spec.md",
-          "- Architecture route: docs/architecture/ and docs/adr/",
+          isMinimal ? "- Architecture route: docs/architecture/00-system-boundary.md" : "- Architecture route: docs/architecture/ and docs/adr/",
           "- Documentation update route: docs/README.md",
         ]
       : []),
@@ -404,11 +415,19 @@ export function contextMap(scope: Scope, profile: Profile, addons: readonly Addo
     ...(scope === "infra" ? ["- Infrastructure route: .agents/skills/infra-change/SKILL.md"] : []),
     ...(scope === "data" ? ["- Data pipeline route: .agents/skills/data-pipeline/SKILL.md"] : []),
     ...profileList(profile, addons).flatMap((value) => profileRoutes(value)),
-    "- Ops route: .agents/skills/ops-change/SKILL.md",
-    "- Dependency route: .agents/skills/dependency-upgrade/SKILL.md",
+    "- Feature route: .agents/skills/feature/SKILL.md",
     "- Bugfix route: .agents/skills/bugfix/SKILL.md",
-    "- Refactor route: .agents/skills/refactor/SKILL.md",
-    "- Test hardening route: .agents/skills/test-hardening/SKILL.md",
+    "- Security checklist route: .agents/checklists/security.md",
+    "- Ops checklist route: .agents/checklists/ops-change.md",
+    ...(isMinimal
+      ? []
+      : [
+          "- Ops route: .agents/skills/ops-change/SKILL.md",
+          "- Dependency route: .agents/skills/dependency-upgrade/SKILL.md",
+          "- Dependency checklist route: .agents/checklists/dependency.md",
+          "- Refactor route: .agents/skills/refactor/SKILL.md",
+          "- Test hardening route: .agents/skills/test-hardening/SKILL.md",
+        ]),
   ];
 
   return `# Agent Context Map
@@ -654,8 +673,36 @@ function profileContract(profile: Profile): string {
   return profileMetadata[profile].contract;
 }
 
-function profileSourceLines(profile: Addon, scope: Scope): readonly string[] {
+function profileSourceLines(profile: Addon, scope: Scope, density: Density): readonly string[] {
   const apiSource = profile === "api-service" && scope !== "backend" && scope !== "fullstack" ? ["- API source for api-service repository type: api/openapi.yaml"] : [];
+  if (profile === "cli-tool") {
+    return [
+      "- CLI command contract source: docs/cli/command-contract.md",
+      ...(density === "minimal" ? [] : ["- CLI config source: docs/cli/configuration.md", "- CLI output and exit-code source: docs/cli/output-and-exit-codes.md"]),
+    ];
+  }
+  if (profile === "api-service") {
+    return [
+      ...apiSource,
+      "- API lifecycle source: docs/api-service/api-lifecycle.md",
+      ...(density === "minimal" ? [] : ["- API idempotency source: docs/api-service/idempotency.md"]),
+      ...(density === "strict" ? ["- API rate-limit source: docs/api-service/rate-limits.md", "- API service SLO source: docs/api-service/slo.md"] : []),
+    ];
+  }
+  if (profile === "desktop-app") {
+    return [
+      "- Desktop installer source: docs/desktop/installers.md",
+      ...(density === "minimal" ? [] : ["- Desktop auto-update source: docs/desktop/auto-update.md", "- Desktop local data source: docs/desktop/local-data.md"]),
+      ...(density === "strict" ? ["- Desktop OS support source: docs/desktop/os-support.md"] : []),
+    ];
+  }
+  if (profile === "library") {
+    return [
+      "- Library public API source: docs/library/public-api.md",
+      ...(density === "minimal" ? [] : ["- Library semver source: docs/library/semver.md", "- Library compatibility source: docs/library/compatibility.md"]),
+      ...(density === "strict" ? ["- Library migration source: docs/library/migration-guide.md"] : []),
+    ];
+  }
   return [...apiSource, ...profileMetadata[profile].sources];
 }
 

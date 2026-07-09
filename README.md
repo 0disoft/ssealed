@@ -150,6 +150,8 @@ Addons may be any repository type except `generic`. They are recorded in `.sseal
 
 Use `minimal` for small repos that need a compact starting point, `standard` for normal teams, and `strict` when the repository needs stronger operational, security, or release review coverage.
 
+Generated agent route maps, checklist routers, and source-of-truth summaries only reference files included by the selected scope, repository type, addons, and density.
+
 ## Runner Matrix
 
 - `none`: generates no executable runner file.
