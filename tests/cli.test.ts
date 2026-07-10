@@ -300,10 +300,28 @@ describe("CLI argument parsing", () => {
     }
   });
 
-  it("returns a consistent JSON error envelope when doctor has an invalid manifest", async () => {
+  it("returns an INVALID_MANIFEST envelope before doctor resolves unsafe manifest paths", async () => {
     const dir = await tempDir();
     await mkdir(path.join(dir, ".ssealed"), { recursive: true });
-    await writeFile(path.join(dir, ".ssealed", "manifest.json"), "{bad json\n");
+    const checksum = `sha256:${"a".repeat(64)}`;
+    await writeFile(
+      path.join(dir, ".ssealed", "manifest.json"),
+      `${JSON.stringify(
+        {
+          tool: "ssealed",
+          version: "0.6.9",
+          generatedAt: "2026-07-10T00:00:00.000Z",
+          scope: "general",
+          profile: "generic",
+          addons: [],
+          density: "standard",
+          runner: "none",
+          files: [{ path: "../escape", checksum, kind: "document" }],
+        },
+        null,
+        2,
+      )}\n`,
+    );
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {

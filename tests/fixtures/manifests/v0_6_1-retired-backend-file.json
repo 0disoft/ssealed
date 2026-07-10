@@ -10,14 +10,14 @@
   "files": [
     {
       "path": "api/openapi.yaml",
-      "checksum": "sha256:accepted-openapi",
+      "checksum": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "kind": "contract",
       "ownership": "seeded",
       "presence": "optional",
       "status": "retired",
-      "initialChecksum": "sha256:generated-openapi",
-      "acceptedChecksum": "sha256:accepted-openapi",
-      "generatedChecksum": "sha256:generated-openapi"
+      "initialChecksum": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "acceptedChecksum": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "generatedChecksum": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
     }
   ]
 }

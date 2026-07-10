@@ -5,7 +5,7 @@ import { normalizeText } from "./checksum.js";
 import { SsealedError } from "./errors.js";
 import { formatManifest, createManifest } from "./manifest.js";
 import { planTemplateFile, writePlannedFiles } from "./file-writer.js";
-import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
+import { assertNoSymlinkInPath, assertSafeTemplatePath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
 import { getScaffoldInterruptContext, withScaffoldSignalHandling } from "./signals.js";
 import {
   isAddon,
@@ -213,6 +213,18 @@ function invalidManifestWarning(message = "Existing .ssealed/manifest.json could
   };
 }
 
+interface ManifestFileLike {
+  readonly path: string;
+  readonly checksum: string;
+  readonly acceptedChecksum?: string;
+  readonly generatedChecksum?: string;
+  readonly initialChecksum?: string;
+  readonly kind: FileKind;
+  readonly ownership?: FileOwnership;
+  readonly presence?: FilePresence;
+  readonly status?: ManifestFileStatus;
+}
+
 function isManifestLike(value: unknown): value is {
   readonly tool: "ssealed";
   readonly version?: string;
@@ -221,17 +233,7 @@ function isManifestLike(value: unknown): value is {
   readonly addons?: readonly Addon[];
   readonly density?: Density;
   readonly runner: Runner;
-  readonly files: ReadonlyArray<{
-    readonly path: string;
-    readonly checksum: string;
-    readonly acceptedChecksum?: string;
-    readonly generatedChecksum?: string;
-    readonly initialChecksum?: string;
-    readonly kind: FileKind;
-    readonly ownership?: FileOwnership;
-    readonly presence?: FilePresence;
-    readonly status?: ManifestFileStatus;
-  }>;
+  readonly files: readonly ManifestFileLike[];
 } {
   if (typeof value !== "object" || value === null || !("files" in value)) {
     return false;
@@ -256,40 +258,51 @@ function isManifestLike(value: unknown): value is {
     (candidate.density === undefined || isDensity(candidate.density)) &&
     isRunner(candidate.runner) &&
     Array.isArray(candidate.files) &&
-    candidate.files.every((file) => isManifestFileLike(file))
+    candidate.files.every((file) => isManifestFileLike(file)) &&
+    hasUniqueManifestPaths(candidate.files)
   );
 }
 
-function isManifestFileLike(value: unknown): value is {
-  readonly path: string;
-  readonly checksum: string;
-  readonly acceptedChecksum?: string;
-  readonly generatedChecksum?: string;
-  readonly initialChecksum?: string;
-  readonly kind: FileKind;
-  readonly ownership?: FileOwnership;
-  readonly presence?: FilePresence;
-  readonly status?: ManifestFileStatus;
-} {
+function isManifestFileLike(value: unknown): value is ManifestFileLike {
   return (
     typeof value === "object" &&
     value !== null &&
     "path" in value &&
     "checksum" in value &&
     "kind" in value &&
-    typeof (value as { readonly path: unknown }).path === "string" &&
-    typeof (value as { readonly checksum: unknown }).checksum === "string" &&
+    isSafeManifestFilePath((value as { readonly path: unknown }).path) &&
+    isManifestChecksum((value as { readonly checksum: unknown }).checksum) &&
     ((value as { readonly acceptedChecksum?: unknown }).acceptedChecksum === undefined ||
-      typeof (value as { readonly acceptedChecksum?: unknown }).acceptedChecksum === "string") &&
+      isManifestChecksum((value as { readonly acceptedChecksum?: unknown }).acceptedChecksum)) &&
     ((value as { readonly generatedChecksum?: unknown }).generatedChecksum === undefined ||
-      typeof (value as { readonly generatedChecksum?: unknown }).generatedChecksum === "string") &&
+      isManifestChecksum((value as { readonly generatedChecksum?: unknown }).generatedChecksum)) &&
     ((value as { readonly initialChecksum?: unknown }).initialChecksum === undefined ||
-      typeof (value as { readonly initialChecksum?: unknown }).initialChecksum === "string") &&
+      isManifestChecksum((value as { readonly initialChecksum?: unknown }).initialChecksum)) &&
     isFileKind((value as { readonly kind: unknown }).kind) &&
     ((value as { readonly ownership?: unknown }).ownership === undefined || isFileOwnership((value as { readonly ownership?: unknown }).ownership)) &&
     ((value as { readonly presence?: unknown }).presence === undefined || isFilePresence((value as { readonly presence?: unknown }).presence)) &&
     ((value as { readonly status?: unknown }).status === undefined || isManifestFileStatus((value as { readonly status?: unknown }).status))
   );
+}
+
+function isSafeManifestFilePath(value: unknown): value is string {
+  if (typeof value !== "string" || value === ".ssealed/manifest.json" || value === ".ssealed-init.lock") {
+    return false;
+  }
+  try {
+    assertSafeTemplatePath(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isManifestChecksum(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/u.test(value);
+}
+
+function hasUniqueManifestPaths(files: readonly ManifestFileLike[]): boolean {
+  return new Set(files.map((file) => file.path)).size === files.length;
 }
 
 function isDensity(value: unknown): value is Density {

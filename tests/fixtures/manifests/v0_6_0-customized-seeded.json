@@ -10,13 +10,13 @@
   "files": [
     {
       "path": "README.md",
-      "checksum": "sha256:accepted-readme",
+      "checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "kind": "document",
       "ownership": "seeded",
       "presence": "optional",
       "status": "active",
-      "initialChecksum": "sha256:generated-readme",
-      "acceptedChecksum": "sha256:accepted-readme"
+      "initialChecksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "acceptedChecksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
   ]
 }

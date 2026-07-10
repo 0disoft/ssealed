@@ -30,6 +30,51 @@ async function copyManifestFixture(dir: string, fixtureName: string): Promise<vo
   await writeFile(path.join(dir, ".ssealed", "manifest.json"), fixture);
 }
 
+async function writeManifestFiles(dir: string, files: readonly Record<string, unknown>[]): Promise<void> {
+  await mkdir(path.join(dir, ".ssealed"), { recursive: true });
+  await writeFile(
+    path.join(dir, ".ssealed", "manifest.json"),
+    `${JSON.stringify(
+      {
+        tool: "ssealed",
+        version: "0.6.9",
+        generatedAt: "2026-07-10T00:00:00.000Z",
+        scope: "general",
+        profile: "generic",
+        addons: [],
+        density: "standard",
+        runner: "none",
+        files,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
+function manifestFile(overrides: Readonly<Record<string, unknown>> = {}): Record<string, unknown> {
+  const checksum = `sha256:${"a".repeat(64)}`;
+  return {
+    path: "README.md",
+    checksum,
+    acceptedChecksum: checksum,
+    generatedChecksum: checksum,
+    initialChecksum: checksum,
+    kind: "document",
+    ownership: "seeded",
+    presence: "optional",
+    status: "active",
+    ...overrides,
+  };
+}
+
+async function expectInvalidManifest(dir: string): Promise<void> {
+  const previous = await readPreviousManifest(dir);
+  expect(previous.settings).toBeUndefined();
+  expect(previous.files.size).toBe(0);
+  expect(previous.warnings).toEqual([expect.objectContaining({ code: "INVALID_MANIFEST", path: ".ssealed/manifest.json" })]);
+}
+
 describe("file writer behavior", () => {
   it("dry-run writes no files", async () => {
     const dir = await tempDir();
@@ -276,9 +321,9 @@ describe("file writer behavior", () => {
     expect(previous.settings).toEqual(expect.objectContaining({ scope: "general", runner: "none" }));
     expect(previous.files.get("README.md")).toEqual(
       expect.objectContaining({
-        checksum: "sha256:accepted-readme",
-        generatedChecksum: "sha256:generated-readme",
-        initialChecksum: "sha256:generated-readme",
+        checksum: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        generatedChecksum: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        initialChecksum: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         ownership: "seeded",
         presence: "optional",
         status: "active",
@@ -297,7 +342,7 @@ describe("file writer behavior", () => {
         path: "api/openapi.yaml",
         action: "retired",
         manifestStatus: "retired",
-        previousGeneratedChecksum: "sha256:generated-openapi",
+        previousGeneratedChecksum: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
       }),
     );
   });
@@ -316,6 +361,28 @@ describe("file writer behavior", () => {
         path: ".ssealed/manifest.json",
       }),
     ]);
+  });
+
+  it("rejects unsafe and reserved manifest file paths", async () => {
+    const unsafeDir = await tempDir();
+    await writeManifestFiles(unsafeDir, [manifestFile({ path: "../escape" })]);
+    await expectInvalidManifest(unsafeDir);
+
+    const reservedDir = await tempDir();
+    await writeManifestFiles(reservedDir, [manifestFile({ path: ".ssealed/manifest.json" })]);
+    await expectInvalidManifest(reservedDir);
+  });
+
+  it("rejects duplicate manifest file paths", async () => {
+    const dir = await tempDir();
+    await writeManifestFiles(dir, [manifestFile(), manifestFile({ checksum: `sha256:${"b".repeat(64)}` })]);
+    await expectInvalidManifest(dir);
+  });
+
+  it("rejects malformed manifest checksums", async () => {
+    const dir = await tempDir();
+    await writeManifestFiles(dir, [manifestFile({ generatedChecksum: "sha256:not-a-digest" })]);
+    await expectInvalidManifest(dir);
   });
 
   it("treats oversized manifests as invalid without reading them into ownership state", async () => {

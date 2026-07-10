@@ -175,6 +175,8 @@ Before each write, `ssealed` rechecks that the target file still matches the sta
 
 Every write run refreshes `.ssealed/manifest.json` with tool version, generation timestamp, scope, profile, addons, density, runner, file paths, kinds, ownership, presence, lifecycle status, and SHA-256 checksums of normalized LF content. The `profile` field is retained for manifest compatibility and represents the selected primary repository type.
 
+Manifest loading rejects unsafe or reserved file paths, duplicate file paths, and checksum fields that are not lowercase `sha256:` values with 64 hexadecimal digits. Invalid manifests are reported as `INVALID_MANIFEST` before their entries reach planning or doctor checks.
+
 Manifest file ownership has four meanings:
 
 - `seeded`: ssealed created an initial document or repository file, but the project is expected to edit, move, or delete it over time.
