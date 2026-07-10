@@ -194,9 +194,9 @@ Template paths must be relative, normalized, and contained by the selected targe
 
 `ssealed` rejects absolute paths, parent traversal, Windows reserved names, unsafe path characters, and `bunfig.toml` generation. Scaffold writes refuse symlinked generated directories and symlinked existing files instead of following them outside the target.
 
-Write commands use `.ssealed-init.lock` to keep concurrent `ssealed` runs from writing the same target. If a previous process crashed and left an old lock, rerun with `--break-stale-lock`; the lock is removed only when its metadata is old enough and its recorded process is not still alive on the current host.
+Commands use `.ssealed-init.lock` to keep reads and writes for the same existing target mutually exclusive. If a previous process crashed and left an old lock, rerun a write command with `--break-stale-lock`; the lock is removed only when its metadata is old enough and its recorded process is not still alive on the current host.
 
-`doctor` and `--dry-run` are read-only, but they still refuse to run while an active write lock exists so they do not report a mixed in-progress scaffold state.
+`doctor` and `--dry-run` hold the same target lock for their full read so a writer cannot create a mixed in-progress scaffold state. A dry run against a missing target still creates no directory; if that target appears concurrently, the stale read is discarded and the command asks the caller to retry.
 
 Scaffold writes run in bounded parallel batches for regular files, then write `.ssealed/manifest.json` last. If any batched write fails, already written files are rolled back before the lock is released. During write commands, `SIGINT` and `SIGTERM` are handled the same way: ssealed stops starting new batches, rolls back already written files, and releases `.ssealed-init.lock`.
 

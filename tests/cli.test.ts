@@ -602,7 +602,7 @@ describe("CLI argument parsing", () => {
         ok: false,
         error: {
           code: "LOCK_EXISTS",
-          message: "Another ssealed write command is already running for this target. Try again after it finishes.",
+          message: "Another ssealed command is already running for this target. Try again after it finishes.",
         },
       });
     } finally {

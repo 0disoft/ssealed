@@ -2,7 +2,7 @@ import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { executeScaffold, planScaffold, readPreviousManifest, withScaffoldWriteLock } from "../src/core/scaffold.js";
+import { executeScaffold, planScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock } from "../src/core/scaffold.js";
 import { writePlannedFiles } from "../src/core/file-writer.js";
 import { assertSafeTemplatePath } from "../src/core/path-safety.js";
 import { gitignoreBlock } from "../src/templates/index.js";
@@ -51,8 +51,56 @@ describe("file writer behavior", () => {
     const lockPath = path.join(dir, ".ssealed-init.lock");
     await writeFile(lockPath, "active write lock\n");
 
-    await expect(executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: true, force: false })).rejects.toThrow(/write command is already running/u);
+    await expect(executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: true, force: false })).rejects.toThrow(/command is already running/u);
     await expect(readFile(path.join(dir, "AGENTS.md"), "utf8")).rejects.toThrow();
+  });
+
+  it("keeps a writer out for the full duration of a read-only task", async () => {
+    const dir = await tempDir();
+    let signalReaderStarted: (() => void) | undefined;
+    let releaseReader: (() => void) | undefined;
+    const readerStarted = new Promise<void>((resolve) => {
+      signalReaderStarted = resolve;
+    });
+    const readerRelease = new Promise<void>((resolve) => {
+      releaseReader = resolve;
+    });
+
+    const reader = withScaffoldReadLock(dir, async () => {
+      signalReaderStarted?.();
+      await readerRelease;
+      return "read-complete";
+    });
+    await readerStarted;
+
+    await expect(withScaffoldWriteLock(dir, false, async () => "write-complete")).rejects.toMatchObject({ code: "LOCK_EXISTS" });
+    releaseReader?.();
+    await expect(reader).resolves.toBe("read-complete");
+    await expect(readFile(path.join(dir, ".ssealed-init.lock"), "utf8")).rejects.toThrow();
+  });
+
+  it("discards a missing-target read when the target appears concurrently", async () => {
+    const parent = await tempDir();
+    const target = path.join(parent, "concurrent-target");
+    let signalReaderStarted: (() => void) | undefined;
+    let releaseReader: (() => void) | undefined;
+    const readerStarted = new Promise<void>((resolve) => {
+      signalReaderStarted = resolve;
+    });
+    const readerRelease = new Promise<void>((resolve) => {
+      releaseReader = resolve;
+    });
+
+    const reader = withScaffoldReadLock(target, async () => {
+      signalReaderStarted?.();
+      await readerRelease;
+      return "stale-read";
+    });
+    await readerStarted;
+    await mkdir(target);
+    releaseReader?.();
+
+    await expect(reader).rejects.toMatchObject({ code: "LOCK_EXISTS" });
   });
 
   it("conflicting files cause no partial writes without force", async () => {

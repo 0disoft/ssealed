@@ -1,5 +1,5 @@
 import path from "node:path";
-import { open, readFile, rm, stat } from "node:fs/promises";
+import { lstat, open, readFile, rm, stat } from "node:fs/promises";
 import { hostname } from "node:os";
 import { normalizeText } from "./checksum.js";
 import { SsealedError } from "./errors.js";
@@ -489,10 +489,28 @@ export async function executeScaffold(
 }
 
 export async function withScaffoldReadLock<T>(targetRoot: string, task: () => Promise<T>): Promise<T> {
-  const lockPath = resolveInsideTarget(targetRoot, ".ssealed-init.lock");
-  await assertNoSymlinkInPath(targetRoot, lockPath);
-  await assertNoActiveScaffoldWriteLock(lockPath);
-  return task();
+  const resolvedTarget = path.resolve(targetRoot);
+  if (!(await pathExists(resolvedTarget))) {
+    const result = await task();
+    if (await pathExists(resolvedTarget)) {
+      throw new SsealedError(
+        "LOCK_EXISTS",
+        "Target changed while the read-only ssealed command was running. Try again after the concurrent write finishes.",
+      );
+    }
+    return result;
+  }
+
+  const lockPath = resolveInsideTarget(resolvedTarget, ".ssealed-init.lock");
+  await assertNoSymlinkInPath(resolvedTarget, lockPath);
+  return withScaffoldSignalHandling(() =>
+    acquireScaffoldLock(
+      lockPath,
+      false,
+      task,
+      "Another ssealed command is already running for this target. Try again after it finishes.",
+    ),
+  );
 }
 
 export async function withScaffoldWriteLock<T>(targetRoot: string, breakStaleLock: boolean, task: () => Promise<T>): Promise<T> {
@@ -502,7 +520,12 @@ export async function withScaffoldWriteLock<T>(targetRoot: string, breakStaleLoc
   return withScaffoldSignalHandling(() => acquireScaffoldLock(lockPath, breakStaleLock, task));
 }
 
-async function acquireScaffoldLock<T>(lockPath: string, breakStaleLock: boolean, task: () => Promise<T>): Promise<T> {
+async function acquireScaffoldLock<T>(
+  lockPath: string,
+  breakStaleLock: boolean,
+  task: () => Promise<T>,
+  lockExistsMessage = "Another ssealed init is already running for this target. Run again with --break-stale-lock only after confirming the lock is stale.",
+): Promise<T> {
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let acquired = false;
   try {
@@ -528,13 +551,13 @@ async function acquireScaffoldLock<T>(lockPath: string, breakStaleLock: boolean,
   } catch (error) {
     if (isNodeError(error) && error.code === "EEXIST") {
       if (breakStaleLock && (await removeStaleScaffoldLock(lockPath))) {
-        return acquireScaffoldLock(lockPath, false, task);
+        return acquireScaffoldLock(lockPath, false, task, lockExistsMessage);
       }
       throw new SsealedError(
         "LOCK_EXISTS",
         breakStaleLock
           ? "Existing scaffold lock is not stale. Refusing to remove .ssealed-init.lock while another ssealed command may still be running."
-          : "Another ssealed init is already running for this target. Run again with --break-stale-lock only after confirming the lock is stale.",
+          : lockExistsMessage,
       );
     }
     throw error;
@@ -548,16 +571,14 @@ async function acquireScaffoldLock<T>(lockPath: string, breakStaleLock: boolean,
   }
 }
 
-async function assertNoActiveScaffoldWriteLock(lockPath: string): Promise<void> {
-  const lockStat = await stat(lockPath).catch((error: unknown) => {
+async function pathExists(targetPath: string): Promise<boolean> {
+  const targetStat = await lstat(targetPath).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
       return undefined;
     }
     throw error;
   });
-  if (lockStat !== undefined) {
-    throw new SsealedError("LOCK_EXISTS", "Another ssealed write command is already running for this target. Try again after it finishes.");
-  }
+  return targetStat !== undefined;
 }
 
 async function removeStaleScaffoldLock(lockPath: string): Promise<boolean> {
