@@ -4,14 +4,12 @@
 
 Do not report security vulnerabilities through a public issue.
 
-Use the private security contact for this project when one is configured:
+Report vulnerabilities through GitHub's private vulnerability reporting:
 
-`REPLACE_WITH_SECURITY_CONTACT`
+[Open a private vulnerability report](https://github.com/0disoft/ssealed/security/advisories/new)
 
-If no private contact is configured, open a public issue only to ask for the
-preferred private reporting channel. Do not include exploit details, secrets,
-tokens, private repository paths, or personally identifiable information in the
-public issue.
+Do not include exploit details, secrets, tokens, private repository paths, or
+personally identifiable information in a public issue.
 
 ## Scope
 
