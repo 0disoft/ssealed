@@ -59,9 +59,18 @@ export async function ensureDirectoryInsideTarget(targetRoot: string, directoryP
   const rootStat = await lstatIfExists(resolvedRoot);
   let rootReal: string;
   if (rootStat === undefined) {
-    await assertNoSymlinkInExistingPath(resolvedRoot);
-    await mkdir(resolvedRoot, { recursive: true });
-    rootReal = await realpath(resolvedRoot);
+    const existingAncestor = await nearestExistingAncestor(resolvedRoot);
+    if (existingAncestor.stat.isSymbolicLink()) {
+      throw new SsealedError(
+        "PATH_SAFETY_ERROR",
+        `Refusing to create target under symlinked path: ${toDisplayPath(existingAncestor.path)}`,
+      );
+    }
+    const ancestorReal = await realpath(existingAncestor.path);
+    const missingPath = path.relative(existingAncestor.path, resolvedRoot);
+    const canonicalRoot = path.resolve(ancestorReal, missingPath);
+    await mkdir(canonicalRoot, { recursive: true });
+    rootReal = await realpath(canonicalRoot);
   } else {
     if (rootStat.isSymbolicLink()) {
       throw new SsealedError("PATH_SAFETY_ERROR", `Refusing to use symlinked target directory: ${toDisplayPath(resolvedRoot)}`);
@@ -70,30 +79,6 @@ export async function ensureDirectoryInsideTarget(targetRoot: string, directoryP
   }
 
   await mkdir(path.resolve(rootReal, relative), { recursive: true });
-}
-
-async function assertNoSymlinkInExistingPath(directoryPath: string): Promise<void> {
-  const resolved = path.resolve(directoryPath);
-  const parsed = path.parse(resolved);
-  const relative = path.relative(parsed.root, resolved);
-  const parts = relative === "" ? [] : relative.split(path.sep).filter(Boolean);
-  let current = parsed.root;
-
-  for (const part of parts) {
-    current = path.join(current, part);
-    const stat = await lstat(current).catch((error: unknown) => {
-      if (isNodeError(error) && error.code === "ENOENT") {
-        return undefined;
-      }
-      throw error;
-    });
-    if (stat === undefined) {
-      return;
-    }
-    if (stat.isSymbolicLink()) {
-      throw new SsealedError("PATH_SAFETY_ERROR", `Refusing to create target under symlinked path: ${toDisplayPath(current)}`);
-    }
-  }
 }
 
 export async function assertNoSymlinkInPath(targetRoot: string, filePath: string): Promise<void> {
@@ -138,4 +123,21 @@ async function lstatIfExists(filePath: string): Promise<Awaited<ReturnType<typeo
     }
     throw error;
   });
+}
+
+async function nearestExistingAncestor(
+  filePath: string,
+): Promise<{ readonly path: string; readonly stat: Awaited<ReturnType<typeof lstat>> }> {
+  let current = path.resolve(filePath);
+  while (true) {
+    const stat = await lstatIfExists(current);
+    if (stat !== undefined) {
+      return { path: current, stat };
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      throw new SsealedError("PATH_SAFETY_ERROR", `Cannot locate an existing parent directory for target: ${toDisplayPath(filePath)}`);
+    }
+    current = parent;
+  }
 }
