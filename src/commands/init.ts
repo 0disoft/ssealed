@@ -57,7 +57,8 @@ export async function runScaffoldCommand(options: InitCliOptions & { readonly co
     return withScaffoldReadLock(target, () => runDoctor(target, options.json, options.strict ?? false));
   }
   if (options.command === "eject") {
-    return withScaffoldWriteLock(target, options.breakStaleLock ?? false, () => runEject(target, options.eject, options.json));
+    const run = (): Promise<number> => runEject(target, options.eject, options.json, options.dryRun);
+    return options.dryRun ? withScaffoldReadLock(target, run) : withScaffoldWriteLock(target, options.breakStaleLock ?? false, run);
   }
   const scaffoldCommand = options.command;
 
@@ -346,7 +347,7 @@ function writeInitError(options: InitCliOptions, error: InitError): number {
   return 1;
 }
 
-async function runEject(target: string, subject: string | undefined, json: boolean): Promise<number> {
+async function runEject(target: string, subject: string | undefined, json: boolean, dryRun: boolean): Promise<number> {
   if (subject !== "runner") {
     return writeEjectError(json, {
       code: "INVALID_EJECT_TARGET",
@@ -426,16 +427,19 @@ async function runEject(target: string, subject: string | undefined, json: boole
     files: manifest.files.map((file) => (file === packageFile ? nextPackageFile : file)),
   };
 
-  await writeTextFileAtomically(manifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`);
+  if (!dryRun) {
+    await writeTextFileAtomically(manifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`);
+  }
 
   const payload = {
     ok: true,
     command: "eject",
     target,
     subject: "runner",
+    dryRun,
     path: "package.json",
     ownership: "project-owned",
-    status: previousPackage.ownership === "project-owned" ? "unchanged" : "project-owned",
+    status: previousPackage.ownership === "project-owned" ? "unchanged" : dryRun ? "planned" : "project-owned",
     reason: "Runner block is explicitly marked as project-owned.",
   };
   if (json) {
@@ -446,7 +450,8 @@ async function runEject(target: string, subject: string | undefined, json: boole
         "ssealed eject result",
         `Target: ${target}`,
         "Subject: runner",
-        "- project-owned: package.json (Runner block is explicitly marked as project-owned.)",
+        `Dry run: ${dryRun ? "yes" : "no"}`,
+        `- ${dryRun ? "planned" : "project-owned"}: package.json (Runner block is explicitly marked as project-owned.)`,
       ].join("\n") + "\n",
     );
   }
@@ -738,6 +743,17 @@ function checkExistingManifestFile(params: {
     return { ...base, status: "project-owned", reason: "File is explicitly project-owned and is not managed by ssealed." };
   }
 
+  if (params.ownership === "block-managed") {
+    const blockStatus = checkManagedBlock(params.path, params.content, params.runner, params.manifestVersion);
+    if (blockStatus === undefined || !blockStatus) {
+      return { ...base, status: "block-modified", reason: "Managed block no longer matches the scaffold contract." };
+    }
+    if (params.strict && params.actualChecksum !== params.expectedChecksum) {
+      return { ...base, status: "modified", reason: "Current content differs from the accepted manifest checksum." };
+    }
+    return { ...base, status: "ok" };
+  }
+
   if (params.actualChecksum === params.expectedChecksum) {
     return { ...base, status: "ok" };
   }
@@ -755,14 +771,6 @@ function checkExistingManifestFile(params: {
           ? "Previously retired seeded file exists again as project-owned content."
           : "Seeded file has project-owned edits.",
     };
-  }
-
-  if (params.ownership === "block-managed") {
-    const blockStatus = checkManagedBlock(params.path, params.content, params.runner, params.manifestVersion);
-    if (blockStatus === undefined) {
-      return { ...base, status: "block-modified", reason: "Managed block no longer matches the scaffold contract." };
-    }
-    return blockStatus ? { ...base, status: "ok" } : { ...base, status: "block-modified", reason: "Managed block no longer matches the scaffold contract." };
   }
 
   return { ...base, status: "modified", reason: "Managed file differs from the accepted manifest checksum." };

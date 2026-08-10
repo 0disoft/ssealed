@@ -13,7 +13,7 @@ Usage:
   ssealed update [target]
   ssealed upgrade [target] [--scope backend|frontend|fullstack|general|mobile|infra|data] [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed doctor [target] [--strict]
-  ssealed eject runner [target]
+  ssealed eject runner [target] [--dry-run]
   ssealed --help
   ssealed --version
 
@@ -155,6 +155,17 @@ export async function main(argv: readonly string[]): Promise<number> {
     return 0;
   }
 
+  const unsupportedOption = findUnsupportedOption(command, parsed.values);
+  if (unsupportedOption !== undefined) {
+    const message = `${command} does not support --${unsupportedOption}.`;
+    if (parsed.values.json) {
+      process.stdout.write(`${JSON.stringify({ ok: false, error: { code: "UNSUPPORTED_OPTION", message } }, null, 2)}\n`);
+      return 1;
+    }
+    process.stderr.write(`ssealed: ${message}\n`);
+    return 1;
+  }
+
   const ejectSubject = command === "eject" ? parsed.positionals[0] : undefined;
   const targetPositionals = command === "eject" ? parsed.positionals.slice(1) : parsed.positionals;
   if (targetPositionals.length > 1 || (command === "eject" && parsed.positionals.length === 0)) {
@@ -225,18 +236,31 @@ function parseScaffoldArgs(args: readonly string[]): ParsedScaffoldArgs | Error 
         addon: { type: "string", multiple: true },
         density: { type: "string" },
         runner: { type: "string" },
-        yes: { type: "boolean", default: false },
-        "dry-run": { type: "boolean", default: false },
-        force: { type: "boolean", default: false },
-        "break-stale-lock": { type: "boolean", default: false },
-        strict: { type: "boolean", default: false },
-        json: { type: "boolean", default: false },
-        help: { type: "boolean", short: "h", default: false },
+        yes: { type: "boolean" },
+        "dry-run": { type: "boolean" },
+        force: { type: "boolean" },
+        "break-stale-lock": { type: "boolean" },
+        strict: { type: "boolean" },
+        json: { type: "boolean" },
+        help: { type: "boolean", short: "h" },
       },
     }) as ParsedScaffoldArgs;
   } catch (error: unknown) {
     return error instanceof Error ? error : new Error(String(error));
   }
+}
+
+function findUnsupportedOption(command: CliCommand, values: ParsedScaffoldArgs["values"]): string | undefined {
+  const common = ["json", "help"] as const;
+  const allowedByCommand: Readonly<Record<CliCommand, ReadonlySet<string>>> = {
+    init: new Set([...common, "scope", "repo-type", "profile", "addon", "density", "runner", "yes", "dry-run", "force", "break-stale-lock"]),
+    adopt: new Set([...common, "scope", "repo-type", "profile", "addon", "density", "runner", "yes", "dry-run", "force", "break-stale-lock"]),
+    update: new Set([...common, "yes", "dry-run", "force", "break-stale-lock"]),
+    upgrade: new Set([...common, "scope", "repo-type", "profile", "addon", "density", "runner", "yes", "dry-run", "force", "break-stale-lock"]),
+    doctor: new Set([...common, "strict"]),
+    eject: new Set([...common, "dry-run", "break-stale-lock"]),
+  };
+  return Object.entries(values).find(([name, value]) => value !== undefined && !allowedByCommand[command].has(name))?.[0];
 }
 
 function isCliCommand(value: string): value is CliCommand {

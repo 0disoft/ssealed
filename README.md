@@ -70,7 +70,7 @@ ssealed update [target]
 ssealed upgrade [target]
 ssealed doctor [target]
 ssealed doctor [target] --strict
-ssealed eject runner [target]
+ssealed eject runner [target] [--dry-run]
 ssealed init [target] --repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo
 ssealed init [target] --addon github-action --addon docs-site
 ssealed init [target] --density minimal|standard|strict
@@ -91,7 +91,7 @@ ssealed init --help
 `update` reapplies the existing manifest settings, accepts project-owned edits to seeded documents, keeps deleted seeded documents retired, and refreshes manifest metadata without changing `scope`, repository type, addons, `density`, or `runner`.
 `upgrade` is the explicit path for changing scaffold settings.
 `doctor` checks scaffold lifecycle metadata. It accepts normal project evolution for seeded documents by default. Use `doctor --strict` when you intentionally want checksum drift detection against accepted manifest content.
-`eject runner` marks an npm or pnpm `package.json` runner block as explicitly project-owned in `.ssealed/manifest.json`.
+`eject runner` marks an npm or pnpm `package.json` runner block as explicitly project-owned in `.ssealed/manifest.json`. Use `--dry-run` to inspect that ownership transfer without changing the manifest.
 
 `--profile` remains accepted as an alias for `--repo-type`.
 
@@ -204,7 +204,7 @@ Scaffold writes run in bounded parallel batches for regular files, then write `.
 
 The generated `.gitignore` block includes `.ssealed-init.lock` so stale lock metadata is not committed accidentally.
 
-`doctor` validates only the managed `.gitignore` block for `.gitignore`, so project-owned ignore rules may live outside the ssealed markers. Manifests generated before `.ssealed-init.lock` was added to the managed block remain accepted for compatibility. For npm and pnpm runners, use `ssealed eject runner [target]` before replacing generated validation scripts with project-owned package scripts; doctor then reports `package.json` as `project-owned` instead of `block-modified`.
+`doctor` validates block-managed surfaces even when the whole-file checksum matches the manifest, so an `update` cannot accept modified package scripts or malformed `.gitignore` blocks as healthy state. Project-owned ignore rules may live outside the single ssealed block. Manifests generated before `.ssealed-init.lock` was added to the managed block remain accepted for compatibility. For npm and pnpm runners, use `ssealed eject runner [target]` before replacing generated validation scripts with project-owned package scripts; doctor then reports `package.json` as `project-owned` instead of `block-modified`.
 
 ## Hygiene File Behavior
 
@@ -247,6 +247,7 @@ ssealed upgrade ./my-service --repo-type api-service --density strict --runner m
 ssealed doctor ./my-service --json
 ssealed doctor ./my-service --strict --json
 ssealed eject runner ./my-service --json
+ssealed eject runner ./my-service --dry-run --json
 ```
 
 `--json` prints a public result shape with command, target, scope, profile, repoType, addons, density, runner, file paths, kinds, ownership, presence, actions, lifecycle statuses, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.

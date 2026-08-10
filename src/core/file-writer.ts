@@ -390,7 +390,18 @@ function planGitignore(
     return { ...template, action: "create", content: generatedBlock };
   }
 
-  const blockRange = findManagedBlock(existingContent);
+  const blockRanges = findManagedBlocks(existingContent);
+  if (blockRanges === undefined || blockRanges.length > 1) {
+    return {
+      ...template,
+      action: "conflict",
+      content: generatedBlock,
+      existingContent,
+      previouslyGenerated,
+      reason: "Existing .gitignore must contain exactly one complete ssealed managed block.",
+    };
+  }
+  const blockRange = blockRanges[0];
   if (blockRange !== undefined) {
     const currentBlock = normalizeText(existingContent.slice(blockRange.start, blockRange.end));
     if (currentBlock === generatedBlock) {
@@ -460,7 +471,7 @@ function planPackageJson(
     .filter(([name]) => name in nextScripts && !isGeneratedValidationScript(nextScripts[name]))
     .map(([name]) => name);
   if (userOwnedScripts.length > 0) {
-    if (force) {
+    if (force || previouslyGenerated !== undefined) {
       return {
         ...template,
         action: "conflict",
@@ -511,16 +522,27 @@ function checksumExisting(content: string): string {
   return sha256(content);
 }
 
-function findManagedBlock(content: string): { readonly start: number; readonly end: number } | undefined {
-  const start = content.indexOf(gitignoreStart);
-  if (start < 0) {
-    return undefined;
+function findManagedBlocks(content: string): readonly { readonly start: number; readonly end: number }[] | undefined {
+  const blocks: Array<{ readonly start: number; readonly end: number }> = [];
+  let offset = 0;
+  while (offset < content.length) {
+    const start = content.indexOf(gitignoreStart, offset);
+    const nextEnd = content.indexOf(gitignoreEnd, offset);
+    if (start < 0) {
+      return nextEnd < 0 ? blocks : undefined;
+    }
+    if (nextEnd >= 0 && nextEnd < start) {
+      return undefined;
+    }
+    const endMarker = content.indexOf(gitignoreEnd, start + gitignoreStart.length);
+    if (endMarker < 0) {
+      return undefined;
+    }
+    const end = endMarker + gitignoreEnd.length;
+    blocks.push({ start, end });
+    offset = end;
   }
-  const endMarker = content.indexOf(gitignoreEnd, start);
-  if (endMarker < 0) {
-    return undefined;
-  }
-  return { start, end: endMarker + gitignoreEnd.length };
+  return blocks;
 }
 
 function parseJsonObject(content: string): Record<string, unknown> | undefined {
