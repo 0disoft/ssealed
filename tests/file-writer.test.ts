@@ -758,6 +758,40 @@ describe("file writer behavior", () => {
     await expect(lstat(path.join(real, "new-target"))).rejects.toThrow();
   });
 
+  it("accepts an existing target reached through a canonicalized parent path", async () => {
+    const parent = await tempDir();
+    const real = await tempDir();
+    const target = path.join(real, "existing-target");
+    const link = path.join(parent, "link");
+    await mkdir(target);
+    try {
+      await symlink(real, link, "dir");
+    } catch {
+      return;
+    }
+
+    await expect(
+      executeScaffold({ target: path.join(link, "existing-target"), scope: "general", runner: "none", dryRun: false, force: false }),
+    ).resolves.toEqual(expect.objectContaining({ written: expect.arrayContaining(["AGENTS.md"]) }));
+    await expect(readFile(path.join(target, "AGENTS.md"), "utf8")).resolves.toContain("# AGENTS.md");
+  });
+
+  it("still refuses when the selected target directory is itself a symlink", async () => {
+    const parent = await tempDir();
+    const real = await tempDir();
+    const link = path.join(parent, "target-link");
+    try {
+      await symlink(real, link, "dir");
+    } catch {
+      return;
+    }
+
+    await expect(executeScaffold({ target: link, scope: "general", runner: "none", dryRun: false, force: false })).rejects.toThrow(
+      /symlinked target directory/u,
+    );
+    await expect(readFile(path.join(real, "AGENTS.md"), "utf8")).rejects.toThrow();
+  });
+
   it("refuses to run when another scaffold lock exists and preserves that lock", async () => {
     const dir = await tempDir();
     const lockPath = path.join(dir, ".ssealed-init.lock");

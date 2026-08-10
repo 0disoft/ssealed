@@ -49,19 +49,27 @@ export function resolveInsideTarget(targetRoot: string, templatePath: string): s
 }
 
 export async function ensureDirectoryInsideTarget(targetRoot: string, directoryPath: string): Promise<void> {
-  await assertNoSymlinkInExistingPath(targetRoot);
-  const rootReal = await realpath(targetRoot).catch(async () => {
-    await mkdir(targetRoot, { recursive: true });
-    return realpath(targetRoot);
-  });
-
+  const resolvedRoot = path.resolve(targetRoot);
   const resolvedDirectory = path.resolve(directoryPath);
-  const relative = path.relative(rootReal, resolvedDirectory);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  const relative = path.relative(resolvedRoot, resolvedDirectory);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new SsealedError("PATH_SAFETY_ERROR", `Directory escapes target root: ${directoryPath}`);
   }
 
-  await mkdir(resolvedDirectory, { recursive: true });
+  const rootStat = await lstatIfExists(resolvedRoot);
+  let rootReal: string;
+  if (rootStat === undefined) {
+    await assertNoSymlinkInExistingPath(resolvedRoot);
+    await mkdir(resolvedRoot, { recursive: true });
+    rootReal = await realpath(resolvedRoot);
+  } else {
+    if (rootStat.isSymbolicLink()) {
+      throw new SsealedError("PATH_SAFETY_ERROR", `Refusing to use symlinked target directory: ${toDisplayPath(resolvedRoot)}`);
+    }
+    rootReal = await realpath(resolvedRoot);
+  }
+
+  await mkdir(path.resolve(rootReal, relative), { recursive: true });
 }
 
 async function assertNoSymlinkInExistingPath(directoryPath: string): Promise<void> {
@@ -121,4 +129,13 @@ export async function assertNoSymlinkInPath(targetRoot: string, filePath: string
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
+}
+
+async function lstatIfExists(filePath: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
+  return lstat(filePath).catch((error: unknown) => {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  });
 }
