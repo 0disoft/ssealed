@@ -114,6 +114,25 @@ describe("managed surface integrity", () => {
     );
     expect((await runJson(["doctor", dir])).code).toBe(0);
   });
+
+  it("rejects unknown future manifest schemas instead of guessing compatibility", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--yes"])).code).toBe(0);
+
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+    await writeFile(manifestPath, `${JSON.stringify({ ...manifest, schemaVersion: 2 }, null, 2)}\n`);
+
+    const doctor = await runJson(["doctor", dir]);
+    expect(doctor).toEqual({
+      code: 1,
+      payload: expect.objectContaining({
+        ok: false,
+        command: "doctor",
+        error: expect.objectContaining({ code: "INVALID_MANIFEST" }),
+      }),
+    });
+  });
 });
 
 describe("bounded filesystem work", () => {

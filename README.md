@@ -177,6 +177,11 @@ Every write run refreshes `.ssealed/manifest.json` with a schema version, genera
 
 Manifest loading rejects unsafe or reserved file paths, duplicate file paths, and checksum fields that are not lowercase `sha256:` values with 64 hexadecimal digits. Invalid manifests are reported as `INVALID_MANIFEST` before their entries reach planning or doctor checks.
 
+- Missing `schemaVersion` is treated as the legacy schema. `schemaVersion: 1` is the current schema.
+- Unknown future schema versions fail closed as `INVALID_MANIFEST`; ssealed never guesses how to interpret them.
+- `generatorVersion` controls generator-specific compatibility behavior. Legacy manifests fall back to `version`.
+- `eject` changes only the selected ownership record and preserves schema and generator compatibility metadata.
+
 Manifest file ownership has four meanings:
 
 - `seeded`: ssealed created an initial document or repository file, but the project is expected to edit, move, or delete it over time.
