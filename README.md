@@ -169,7 +169,7 @@ Existing files are not overwritten by default. Identical files are marked `uncha
 
 `--force` overwrites conflicting files only when the current file content matches the generated checksum recorded for that path in the previous `.ssealed/manifest.json`. The manifest is a local previous-run record, not a security boundary, and it never authorizes overwriting unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced. Seeded files with project-owned edits stay project-owned even after `update` accepts their current checksum.
 
-Before each write, `ssealed` rechecks that the target file still matches the state used to create the plan. If a file appeared or changed between planning and writing, the run stops instead of committing a stale plan.
+Before each write, `ssealed` rechecks that the target file still matches the state used to create the plan. New files are published with an exclusive same-directory link, so a file that appears after planning is not replaced. Existing files are rechecked after staging and retain their POSIX mode, but Node's path-based replacement APIs cannot provide strict compare-and-swap semantics against a non-cooperating writer or a hostile parent-directory swap on every platform.
 
 ## Manifest Behavior
 

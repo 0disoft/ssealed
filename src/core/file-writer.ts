@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { SsealedError } from "./errors.js";
@@ -12,6 +12,10 @@ const gitignoreStart = "# >>> ssealed ignore patterns >>>";
 const gitignoreEnd = "# <<< ssealed ignore patterns <<<";
 const generatedValidationScripts = new Set([...Object.values(validationScripts("npm")), ...Object.values(validationScripts("pnpm"))]);
 const writeConcurrency = 8;
+
+export interface FileWriterHooks {
+  readonly beforeCommit?: (relativePath: string, targetPath: string) => Promise<void>;
+}
 
 export async function planTemplateFile(params: {
   readonly targetRoot: string;
@@ -255,11 +259,19 @@ function planAdoptedProjectOwnedFile(
   };
 }
 
-export async function writePlannedFiles(targetRoot: string, files: readonly PlannedFile[]): Promise<readonly string[]> {
-  return withScaffoldSignalHandling(() => writePlannedFilesInterruptibly(targetRoot, files));
+export async function writePlannedFiles(
+  targetRoot: string,
+  files: readonly PlannedFile[],
+  hooks: FileWriterHooks = {},
+): Promise<readonly string[]> {
+  return withScaffoldSignalHandling(() => writePlannedFilesInterruptibly(targetRoot, files, hooks));
 }
 
-async function writePlannedFilesInterruptibly(targetRoot: string, files: readonly PlannedFile[]): Promise<readonly string[]> {
+async function writePlannedFilesInterruptibly(
+  targetRoot: string,
+  files: readonly PlannedFile[],
+  hooks: FileWriterHooks,
+): Promise<readonly string[]> {
   const written: string[] = [];
   const createdDirectories: string[] = [];
   const interrupt = getScaffoldInterruptContext();
@@ -278,8 +290,8 @@ async function writePlannedFilesInterruptibly(targetRoot: string, files: readonl
   try {
     const manifestFiles = writableFiles.filter((file) => file.path === ".ssealed/manifest.json");
     const contentFiles = writableFiles.filter((file) => file.path !== ".ssealed/manifest.json");
-    await writeFilesInBatches(targetRoot, contentFiles, written, createdDirectories, interrupt);
-    await writeFilesInBatches(targetRoot, manifestFiles, written, createdDirectories, interrupt);
+    await writeFilesInBatches(targetRoot, contentFiles, written, createdDirectories, interrupt, hooks);
+    await writeFilesInBatches(targetRoot, manifestFiles, written, createdDirectories, interrupt, hooks);
   } catch (error) {
     await rollbackWrittenFiles(targetRoot, writableFiles, written);
     await cleanupCreatedDirectories(createdDirectories);
@@ -295,11 +307,12 @@ async function writeFilesInBatches(
   written: string[],
   createdDirectories: string[],
   interrupt: ScaffoldInterruptContext | undefined,
+  hooks: FileWriterHooks,
 ): Promise<void> {
   for (let start = 0; start < files.length; start += writeConcurrency) {
     interrupt?.throwIfInterrupted();
     const batch = files.slice(start, start + writeConcurrency);
-    const results = await Promise.allSettled(batch.map((file) => writeOnePlannedFile(targetRoot, file, written, createdDirectories)));
+    const results = await Promise.allSettled(batch.map((file) => writeOnePlannedFile(targetRoot, file, written, createdDirectories, hooks)));
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") {
       throw failure.reason;
@@ -313,20 +326,30 @@ async function writeOnePlannedFile(
   file: PlannedFile,
   written: string[],
   createdDirectories: string[],
+  hooks: FileWriterHooks,
 ): Promise<void> {
   const targetPath = resolveInsideTarget(targetRoot, file.path);
   const targetDir = path.dirname(targetPath);
   createdDirectories.push(...(await missingDirectoryChain(targetRoot, targetDir)));
   await mkdir(targetDir, { recursive: true });
   await assertNoSymlinkInPath(targetRoot, targetPath);
-  await assertExpectedWriteState(targetPath, file);
-  await writeTextFileAtomically(targetPath, normalizeText(file.content));
-  written.push(file.path);
+  const expectedState = await assertExpectedWriteState(targetPath, file);
+  await writeTextFileAtomically(targetPath, normalizeText(file.content), {
+    createOnly: file.existingContent === undefined,
+    ...(expectedState.kind === "file" ? { mode: expectedState.mode } : {}),
+    beforeCommit: async () => {
+      await hooks.beforeCommit?.(file.path, targetPath);
+      await assertExpectedWriteState(targetPath, file);
+    },
+    onCommit: () => {
+      written.push(file.path);
+    },
+  });
 }
 
 type ExistingPath =
   | { readonly kind: "missing" }
-  | { readonly kind: "file"; readonly content: string }
+  | { readonly kind: "file"; readonly content: string; readonly mode: number }
   | { readonly kind: "symlink" | "directory" | "other" };
 
 async function readExistingPath(filePath: string): Promise<ExistingPath> {
@@ -349,7 +372,7 @@ async function readExistingPath(filePath: string): Promise<ExistingPath> {
   if (!stat.isFile()) {
     return { kind: "other" };
   }
-  return { kind: "file", content: await readFile(filePath, "utf8") };
+  return { kind: "file", content: await readFile(filePath, "utf8"), mode: stat.mode };
 }
 
 function existingPathConflictReason(kind: Exclude<ExistingPath["kind"], "missing" | "file">): string {
@@ -362,11 +385,11 @@ function existingPathConflictReason(kind: Exclude<ExistingPath["kind"], "missing
   return "Existing path is not a regular file.";
 }
 
-async function assertExpectedWriteState(targetPath: string, file: PlannedFile): Promise<void> {
+async function assertExpectedWriteState(targetPath: string, file: PlannedFile): Promise<ExistingPath> {
   const current = await readExistingPath(targetPath);
   if (file.existingContent === undefined) {
     if (current.kind === "missing") {
-      return;
+      return current;
     }
     throw new SsealedError("WRITE_FAILED", `Refusing to write ${file.path}: file appeared after the scaffold plan was created.`);
   }
@@ -377,6 +400,7 @@ async function assertExpectedWriteState(targetPath: string, file: PlannedFile): 
   if (current.content !== file.existingContent) {
     throw new SsealedError("WRITE_FAILED", `Refusing to write ${file.path}: file content changed after the scaffold plan was created.`);
   }
+  return current;
 }
 
 function planGitignore(
@@ -670,11 +694,31 @@ function isGeneratedValidationScript(value: unknown): boolean {
   return generatedValidationScripts.has(value);
 }
 
-async function writeTextFileAtomically(targetPath: string, content: string): Promise<void> {
+export async function writeTextFileAtomically(
+  targetPath: string,
+  content: string,
+  options: {
+    readonly createOnly?: boolean;
+    readonly mode?: number;
+    readonly beforeCommit?: () => Promise<void>;
+    readonly onCommit?: () => void;
+  } = {},
+): Promise<void> {
   const temporaryPath = path.join(path.dirname(targetPath), `.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`);
   try {
-    await writeFile(temporaryPath, content, { encoding: "utf8", flag: "wx" });
-    await rename(temporaryPath, targetPath);
+    await writeFile(temporaryPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    if (options.mode !== undefined) {
+      await chmod(temporaryPath, options.mode & 0o7777);
+    }
+    await options.beforeCommit?.();
+    if (options.createOnly) {
+      await link(temporaryPath, targetPath);
+      options.onCommit?.();
+      await rm(temporaryPath);
+    } else {
+      await rename(temporaryPath, targetPath);
+      options.onCommit?.();
+    }
   } catch (error) {
     await rm(temporaryPath, { force: true }).catch(() => undefined);
     throw error;

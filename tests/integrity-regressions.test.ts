@@ -1,9 +1,11 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli-main.js";
+import { writePlannedFiles } from "../src/core/file-writer.js";
 import { gitignoreBlock } from "../src/templates/index.js";
+import type { PlannedFile } from "../src/core/types.js";
 
 let workdirs: string[] = [];
 
@@ -90,5 +92,35 @@ describe("managed surface integrity", () => {
         error: { code: "UNSUPPORTED_OPTION", message: "doctor does not support --force." },
       },
     });
+  });
+});
+
+describe("file publication integrity", () => {
+  it("does not overwrite a file that appears after the temporary file is staged", async () => {
+    const dir = await tempDir();
+    const planned: PlannedFile = { path: "victim.txt", kind: "document", action: "create", content: "GENERATED\n" };
+
+    await expect(
+      writePlannedFiles(dir, [planned], {
+        beforeCommit: async (_relativePath, targetPath) => {
+          await writeFile(targetPath, "USER_APPEARED\n", { flag: "wx" });
+        },
+      }),
+    ).rejects.toThrow("file appeared after the scaffold plan was created");
+    await expect(readFile(path.join(dir, "victim.txt"), "utf8")).resolves.toBe("USER_APPEARED\n");
+  });
+
+  it.skipIf(process.platform === "win32")("preserves POSIX mode when replacing an existing runner file", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);
+    const packagePath = path.join(dir, "package.json");
+    await chmod(packagePath, 0o600);
+
+    const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as { scripts: Record<string, string> };
+    delete packageJson.scripts.lint;
+    await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`, { mode: 0o600 });
+    expect((await runJson(["update", dir, "--yes"])).code).toBe(0);
+
+    expect((await lstat(packagePath)).mode & 0o777).toBe(0o600);
   });
 });

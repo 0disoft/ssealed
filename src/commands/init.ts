@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
-import { lstat, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { normalizeText, sha256 } from "../core/checksum.js";
+import { SsealedError } from "../core/errors.js";
+import { writeTextFileAtomically } from "../core/file-writer.js";
 import { toolVersion } from "../core/manifest.js";
 import { executeScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock, type PreviousManifestSettings, type PreviousManifestState } from "../core/scaffold.js";
 import { assertNoSymlinkInPath, resolveInsideTarget } from "../core/path-safety.js";
@@ -428,7 +429,15 @@ async function runEject(target: string, subject: string | undefined, json: boole
   };
 
   if (!dryRun) {
-    await writeTextFileAtomically(manifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`);
+    const manifestMode = (await lstat(manifestPath)).mode;
+    await writeTextFileAtomically(manifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`, {
+      mode: manifestMode,
+      beforeCommit: async () => {
+        if ((await readFile(manifestPath, "utf8")) !== manifestContent) {
+          throw new SsealedError("WRITE_FAILED", "Refusing to eject runner ownership because the manifest changed while the command was running.");
+        }
+      },
+    });
   }
 
   const payload = {
@@ -469,17 +478,6 @@ function writeEjectError(json: boolean, error: InitError): number {
 
 function isPackageManifestFile(value: unknown): value is Record<string, unknown> {
   return isRecord(value) && value.path === "package.json" && value.kind === "runner";
-}
-
-async function writeTextFileAtomically(targetPath: string, content: string): Promise<void> {
-  const temporaryPath = path.join(path.dirname(targetPath), `.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`);
-  try {
-    await writeFile(temporaryPath, content, { encoding: "utf8", flag: "wx" });
-    await rename(temporaryPath, targetPath);
-  } catch (error) {
-    await rm(temporaryPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
 }
 
 function formatJsonResult(result: Awaited<ReturnType<typeof executeScaffold>>): object {
