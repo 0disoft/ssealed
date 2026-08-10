@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { lstat, open, readFile, rm, stat } from "node:fs/promises";
 import { hostname } from "node:os";
@@ -539,8 +540,11 @@ async function acquireScaffoldLock<T>(
   task: () => Promise<T>,
   lockExistsMessage = "Another ssealed init is already running for this target. Run again with --break-stale-lock only after confirming the lock is stale.",
 ): Promise<T> {
+  const lockId = randomUUID();
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let acquired = false;
+  let result: T | undefined;
+  let taskError: unknown;
   try {
     handle = await open(lockPath, "wx");
     acquired = true;
@@ -548,6 +552,7 @@ async function acquireScaffoldLock<T>(
       JSON.stringify(
         {
           tool: "ssealed",
+          lockId,
           pid: process.pid,
           hostname: hostname(),
           createdAt: new Date().toISOString(),
@@ -560,7 +565,7 @@ async function acquireScaffoldLock<T>(
     await handle.close();
     handle = undefined;
     getScaffoldInterruptContext()?.throwIfInterrupted();
-    return await task();
+    result = await task();
   } catch (error) {
     if (isNodeError(error) && error.code === "EEXIST") {
       if (breakStaleLock && (await removeStaleScaffoldLock(lockPath))) {
@@ -573,15 +578,41 @@ async function acquireScaffoldLock<T>(
           : lockExistsMessage,
       );
     }
-    throw error;
-  } finally {
-    if (handle !== undefined) {
-      await handle.close().catch(() => undefined);
-    }
-    if (acquired) {
-      await rm(lockPath, { force: true }).catch(() => undefined);
-    }
+    taskError = error;
   }
+
+  const cleanupErrors: Error[] = [];
+  try {
+    if (handle !== undefined) {
+      await handle.close();
+    }
+  } catch (error) {
+    cleanupErrors.push(asError(error));
+  }
+  try {
+    if (acquired) {
+      await releaseScaffoldLock(lockPath, lockId);
+    }
+  } catch (error) {
+    cleanupErrors.push(asError(error));
+  }
+
+  if (cleanupErrors.length > 0) {
+    const failures = taskError === undefined ? cleanupErrors : [taskError, ...cleanupErrors];
+    throw new AggregateError(failures, `Scaffold lock cleanup failed: ${cleanupErrors.map((error) => error.message).join("; ")}`);
+  }
+  if (taskError !== undefined) {
+    throw taskError;
+  }
+  return result as T;
+}
+
+async function releaseScaffoldLock(lockPath: string, lockId: string): Promise<void> {
+  const metadata = await readScaffoldLockMetadata(lockPath);
+  if (metadata?.lockId !== lockId) {
+    throw new SsealedError("LOCK_EXISTS", "Scaffold lock ownership changed while the command was running; the replacement lock was preserved.");
+  }
+  await rm(lockPath);
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {
@@ -604,6 +635,7 @@ async function removeStaleScaffoldLock(lockPath: string): Promise<boolean> {
 }
 
 interface ScaffoldLockMetadata {
+  readonly lockId?: string;
   readonly pid?: number;
   readonly hostname?: string;
   readonly createdAt?: string;
@@ -619,7 +651,10 @@ async function readScaffoldLockMetadata(lockPath: string): Promise<ScaffoldLockM
     if (typeof parsed !== "object" || parsed === null) {
       return undefined;
     }
-    const metadata: { pid?: number; hostname?: string; createdAt?: string } = {};
+    const metadata: { lockId?: string; pid?: number; hostname?: string; createdAt?: string } = {};
+    if (typeof (parsed as { readonly lockId?: unknown }).lockId === "string") {
+      metadata.lockId = (parsed as { readonly lockId: string }).lockId;
+    }
     if (typeof (parsed as { readonly pid?: unknown }).pid === "number") {
       metadata.pid = (parsed as { readonly pid: number }).pid;
     }
@@ -633,6 +668,10 @@ async function readScaffoldLockMetadata(lockPath: string): Promise<ScaffoldLockM
   } catch {
     return undefined;
   }
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function isStaleScaffoldLock(metadata: ScaffoldLockMetadata | undefined): boolean {

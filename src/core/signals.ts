@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ScaffoldInterruptedError, type ScaffoldSignalName } from "./errors.js";
 
 const scaffoldSignals = ["SIGINT", "SIGTERM"] as const satisfies readonly ScaffoldSignalName[];
@@ -30,35 +31,53 @@ class ActiveScaffoldInterruptContext implements ScaffoldInterruptContext {
   }
 }
 
-let activeContext: ActiveScaffoldInterruptContext | undefined;
+const interruptStorage = new AsyncLocalStorage<ActiveScaffoldInterruptContext>();
+const activeContexts = new Set<ActiveScaffoldInterruptContext>();
+const signalHandlers = new Map<ScaffoldSignalName, () => void>();
 
 export function getScaffoldInterruptContext(): ScaffoldInterruptContext | undefined {
-  return activeContext;
+  return interruptStorage.getStore();
 }
 
 export async function withScaffoldSignalHandling<T>(task: () => Promise<T>): Promise<T> {
-  if (activeContext !== undefined) {
+  if (interruptStorage.getStore() !== undefined) {
     return task();
   }
 
   const context = new ActiveScaffoldInterruptContext();
-  const handlers = scaffoldSignals.map((signal) => {
-    const handler = (): void => {
-      context.interrupt(signal);
-    };
-    process.once(signal, handler);
-    return { signal, handler };
-  });
-
-  activeContext = context;
+  activeContexts.add(context);
+  installSignalHandlers();
   try {
-    const result = await task();
+    const result = await interruptStorage.run(context, task);
     context.throwIfInterrupted();
     return result;
   } finally {
-    for (const { signal, handler } of handlers) {
-      process.removeListener(signal, handler);
-    }
-    activeContext = undefined;
+    activeContexts.delete(context);
+    removeSignalHandlersWhenIdle();
   }
+}
+
+function installSignalHandlers(): void {
+  if (signalHandlers.size > 0) {
+    return;
+  }
+  for (const signal of scaffoldSignals) {
+    const handler = (): void => {
+      for (const context of activeContexts) {
+        context.interrupt(signal);
+      }
+    };
+    signalHandlers.set(signal, handler);
+    process.on(signal, handler);
+  }
+}
+
+function removeSignalHandlersWhenIdle(): void {
+  if (activeContexts.size > 0) {
+    return;
+  }
+  for (const [signal, handler] of signalHandlers) {
+    process.removeListener(signal, handler);
+  }
+  signalHandlers.clear();
 }

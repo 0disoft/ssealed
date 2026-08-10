@@ -4,6 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli-main.js";
 import { writePlannedFiles } from "../src/core/file-writer.js";
+import { withScaffoldWriteLock } from "../src/core/scaffold.js";
+import { getScaffoldInterruptContext, withScaffoldSignalHandling } from "../src/core/signals.js";
 import { gitignoreBlock } from "../src/templates/index.js";
 import type { PlannedFile } from "../src/core/types.js";
 
@@ -122,5 +124,61 @@ describe("file publication integrity", () => {
     expect((await runJson(["update", dir, "--yes"])).code).toBe(0);
 
     expect((await lstat(packagePath)).mode & 0o777).toBe(0o600);
+  });
+
+  it("does not delete a user replacement while rolling back a later failure", async () => {
+    const dir = await tempDir();
+    const files: readonly PlannedFile[] = [
+      { path: "first.txt", kind: "document", action: "create", content: "FIRST_GENERATED\n" },
+      { path: "second.txt", kind: "document", action: "create", content: "SECOND_GENERATED\n" },
+    ];
+
+    await expect(
+      writePlannedFiles(dir, files, {
+        beforeCommit: async (relativePath) => {
+          if (relativePath === "second.txt") {
+            await writeFile(path.join(dir, "first.txt"), "USER_REPLACEMENT\n");
+            throw new Error("injected second write failure");
+          }
+        },
+      }),
+    ).rejects.toThrow(/rollback.*first\.txt/iu);
+    await expect(readFile(path.join(dir, "first.txt"), "utf8")).resolves.toBe("USER_REPLACEMENT\n");
+  });
+});
+
+describe("lock and interrupt ownership", () => {
+  it("does not remove a lock file that was replaced while the task was running", async () => {
+    const dir = await tempDir();
+    const lockPath = path.join(dir, ".ssealed-init.lock");
+
+    await expect(
+      withScaffoldWriteLock(dir, false, async () => {
+        await rm(lockPath);
+        await writeFile(lockPath, '{"lockId":"replacement"}\n');
+      }),
+    ).rejects.toThrow(/lock.*ownership/iu);
+    await expect(readFile(lockPath, "utf8")).resolves.toContain('"replacement"');
+  });
+
+  it("keeps concurrent interrupt contexts isolated", async () => {
+    let release: (() => void) | undefined;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const contexts: unknown[] = [];
+
+    const first = withScaffoldSignalHandling(async () => {
+      contexts.push(getScaffoldInterruptContext());
+      await barrier;
+    });
+    const second = withScaffoldSignalHandling(async () => {
+      contexts.push(getScaffoldInterruptContext());
+      release?.();
+    });
+    await Promise.all([first, second]);
+
+    expect(contexts).toHaveLength(2);
+    expect(contexts[0]).not.toBe(contexts[1]);
   });
 });

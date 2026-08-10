@@ -293,8 +293,16 @@ async function writePlannedFilesInterruptibly(
     await writeFilesInBatches(targetRoot, contentFiles, written, createdDirectories, interrupt, hooks);
     await writeFilesInBatches(targetRoot, manifestFiles, written, createdDirectories, interrupt, hooks);
   } catch (error) {
-    await rollbackWrittenFiles(targetRoot, writableFiles, written);
-    await cleanupCreatedDirectories(createdDirectories);
+    const recoveryErrors = [
+      ...(await rollbackWrittenFiles(targetRoot, writableFiles, written)),
+      ...(await cleanupCreatedDirectories(createdDirectories)),
+    ];
+    if (recoveryErrors.length > 0) {
+      throw new AggregateError(
+        [error, ...recoveryErrors],
+        `Scaffold write failed and recovery was incomplete: ${recoveryErrors.map((failure) => failure.message).join("; ")}`,
+      );
+    }
     throw error;
   }
 
@@ -641,19 +649,32 @@ async function rollbackWrittenFiles(
   targetRoot: string,
   files: readonly PlannedFile[],
   writtenPaths: readonly string[],
-): Promise<void> {
+): Promise<Error[]> {
+  const failures: Error[] = [];
   for (const relativePath of [...writtenPaths].reverse()) {
     const file = files.find((candidate) => candidate.path === relativePath);
     if (file === undefined) {
       continue;
     }
     const targetPath = resolveInsideTarget(targetRoot, relativePath);
-    if (file.existingContent === undefined) {
-      await rm(targetPath, { force: true }).catch(() => undefined);
-    } else {
-      await writeTextFileAtomically(targetPath, file.existingContent).catch(() => undefined);
+    try {
+      const current = await readExistingPath(targetPath);
+      if (current.kind === "missing") {
+        continue;
+      }
+      if (current.kind !== "file" || current.content !== normalizeText(file.content)) {
+        throw new Error(`Rollback skipped ${relativePath} because it changed after ssealed wrote it.`);
+      }
+      if (file.existingContent === undefined) {
+        await rm(targetPath);
+      } else {
+        await writeTextFileAtomically(targetPath, file.existingContent, { mode: current.mode });
+      }
+    } catch (error) {
+      failures.push(asError(error));
     }
   }
+  return failures;
 }
 
 async function missingDirectoryChain(targetRoot: string, targetDir: string): Promise<string[]> {
@@ -680,11 +701,19 @@ async function missingDirectoryChain(targetRoot: string, targetDir: string): Pro
   return missing;
 }
 
-async function cleanupCreatedDirectories(directories: readonly string[]): Promise<void> {
+async function cleanupCreatedDirectories(directories: readonly string[]): Promise<Error[]> {
+  const failures: Error[] = [];
   const unique = [...new Set(directories)];
   for (const directory of unique.reverse()) {
-    await rmdir(directory).catch(() => undefined);
+    try {
+      await rmdir(directory);
+    } catch (error) {
+      if (!isNodeError(error) || (error.code !== "ENOENT" && error.code !== "ENOTEMPTY" && error.code !== "EEXIST")) {
+        failures.push(asError(error));
+      }
+    }
   }
+  return failures;
 }
 
 function isGeneratedValidationScript(value: unknown): boolean {
@@ -720,9 +749,17 @@ export async function writeTextFileAtomically(
       options.onCommit?.();
     }
   } catch (error) {
-    await rm(temporaryPath, { force: true }).catch(() => undefined);
+    try {
+      await rm(temporaryPath, { force: true });
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], `Atomic write failed and temporary-file cleanup also failed for ${targetPath}.`);
+    }
     throw error;
   }
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function defaultOwnership(template: TemplateFile): FileOwnership {
