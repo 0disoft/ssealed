@@ -192,6 +192,18 @@ describe("file publication integrity", () => {
       writePlannedFiles(dir, files, {
         beforeCommit: async (relativePath) => {
           if (relativePath === "second.txt") {
+            let firstCommitted = false;
+            for (let attempt = 0; attempt < 100; attempt += 1) {
+              const content = await readFile(path.join(dir, "first.txt"), "utf8").catch(() => undefined);
+              if (content === "FIRST_GENERATED\n") {
+                firstCommitted = true;
+                break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 1));
+            }
+            if (!firstCommitted) {
+              throw new Error("first write did not commit before the rollback fixture deadline");
+            }
             await writeFile(path.join(dir, "first.txt"), "USER_REPLACEMENT\n");
             throw new Error("injected second write failure");
           }
