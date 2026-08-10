@@ -131,6 +131,25 @@ describe("bounded filesystem work", () => {
     expect(peak).toBe(2);
     expect(results).toEqual([0, 2, 4, 6, 8, 10]);
   });
+
+  it("waits for started operations to settle before reporting a failure", async () => {
+    let slowOperationFinished = false;
+
+    await expect(
+      mapWithConcurrency(["slow", "fail", "never-start"], 2, async (value) => {
+        if (value === "slow") {
+          await new Promise((resolve) => setTimeout(resolve, 15));
+          slowOperationFinished = true;
+        }
+        if (value === "fail") {
+          throw new Error("injected mapper failure");
+        }
+        return value;
+      }),
+    ).rejects.toThrow("injected mapper failure");
+
+    expect(slowOperationFinished).toBe(true);
+  });
 });
 
 describe("file publication integrity", () => {
