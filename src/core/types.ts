@@ -88,6 +88,9 @@ export interface ManifestFile {
 
 export interface Manifest {
   readonly tool: "ssealed";
+  readonly schemaVersion: 1;
+  readonly generatorVersion: string;
+  /** Legacy generator-version alias retained for older ssealed releases. */
   readonly version: string;
   readonly generatedAt: string;
   readonly scope: Scope;

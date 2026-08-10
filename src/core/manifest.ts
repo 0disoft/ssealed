@@ -2,6 +2,7 @@ import { sha256 } from "./checksum.js";
 import type { Addon, Density, FileOwnership, FilePresence, Manifest, ManifestFile, PlannedFile, Profile, Runner, Scope } from "./types.js";
 
 export const toolVersion = "0.6.12";
+export const manifestSchemaVersion = 1;
 
 export function createManifest(params: {
   readonly scope: Scope;
@@ -36,6 +37,8 @@ export function createManifest(params: {
 
   return {
     tool: "ssealed",
+    schemaVersion: manifestSchemaVersion,
+    generatorVersion: toolVersion,
     version: toolVersion,
     generatedAt: params.generatedAt,
     scope: params.scope,

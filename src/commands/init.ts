@@ -3,9 +3,9 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { normalizeText, sha256 } from "../core/checksum.js";
+import { filesystemReadConcurrency, mapWithConcurrency } from "../core/concurrency.js";
 import { SsealedError } from "../core/errors.js";
 import { writeTextFileAtomically } from "../core/file-writer.js";
-import { toolVersion } from "../core/manifest.js";
 import { executeScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock, type PreviousManifestSettings, type PreviousManifestState } from "../core/scaffold.js";
 import { assertNoSymlinkInPath, resolveInsideTarget } from "../core/path-safety.js";
 import { gitignoreBlock } from "../templates/index.js";
@@ -423,7 +423,6 @@ async function runEject(target: string, subject: string | undefined, json: boole
   };
   const nextManifest = {
     ...manifest,
-    version: toolVersion,
     generatedAt: new Date().toISOString(),
     files: manifest.files.map((file) => (file === packageFile ? nextPackageFile : file)),
   };
@@ -590,8 +589,10 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
   }
   const settings = previous.settings;
 
-  const checks = await Promise.all(
-    [...previous.files.entries()].map(async ([relativePath, file]): Promise<DoctorCheck> => {
+  const checks = await mapWithConcurrency(
+    [...previous.files.entries()],
+    filesystemReadConcurrency,
+    async ([relativePath, file]): Promise<DoctorCheck> => {
       const absolutePath = resolveInsideTarget(target, relativePath);
       try {
         await assertNoSymlinkInPath(target, absolutePath);
@@ -658,7 +659,7 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
           expectedChecksum: file.checksum,
         };
       }
-    }),
+    },
   );
 
   const failed = checks.filter((check) => isFailedDoctorCheck(check));

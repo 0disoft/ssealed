@@ -3,6 +3,7 @@ import path from "node:path";
 import { lstat, open, readFile, rm, stat } from "node:fs/promises";
 import { hostname } from "node:os";
 import { normalizeText } from "./checksum.js";
+import { filesystemReadConcurrency, mapWithConcurrency } from "./concurrency.js";
 import { SsealedError } from "./errors.js";
 import { formatManifest, createManifest } from "./manifest.js";
 import { planTemplateFile, writePlannedFiles } from "./file-writer.js";
@@ -51,8 +52,10 @@ async function planScaffoldWithWarnings(
   const density = options.density ?? "standard";
   const templates = templateFilesFor(options.scope, options.runner, profile, density, addons);
   const previousManifest = previousManifestOverride ?? (await readPreviousManifest(targetRoot));
-  const planned = await Promise.all(
-    templates.map((template) =>
+  const planned = await mapWithConcurrency(
+    templates,
+    filesystemReadConcurrency,
+    (template) =>
       planTemplateFile({
         targetRoot,
         template,
@@ -60,7 +63,6 @@ async function planScaffoldWithWarnings(
         command,
         previous: previousManifest.files.get(template.path)?.kind === template.kind ? previousManifest.files.get(template.path) : undefined,
       }),
-    ),
   );
   const plannedPaths = new Set(planned.map((file) => file.path));
   const retiredPreviousFiles =
@@ -177,7 +179,7 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
       return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
     }
     return {
-      version: typeof parsed.version === "string" ? parsed.version : undefined,
+      version: parsed.generatorVersion ?? parsed.version,
       files: new Map(
         parsed.files.map((file) => [
           file.path,
@@ -228,6 +230,8 @@ interface ManifestFileLike {
 
 function isManifestLike(value: unknown): value is {
   readonly tool: "ssealed";
+  readonly schemaVersion?: number;
+  readonly generatorVersion?: string;
   readonly version?: string;
   readonly scope: string;
   readonly profile?: Profile;
@@ -241,6 +245,8 @@ function isManifestLike(value: unknown): value is {
   }
   const candidate = value as {
     readonly tool?: unknown;
+    readonly schemaVersion?: unknown;
+    readonly generatorVersion?: unknown;
     readonly version?: unknown;
     readonly scope?: unknown;
     readonly profile?: unknown;
@@ -251,6 +257,8 @@ function isManifestLike(value: unknown): value is {
   };
   return (
     candidate.tool === "ssealed" &&
+    (candidate.schemaVersion === undefined || candidate.schemaVersion === 1) &&
+    (candidate.generatorVersion === undefined || typeof candidate.generatorVersion === "string") &&
     (candidate.version === undefined || typeof candidate.version === "string") &&
     typeof candidate.scope === "string" &&
     normalizeScope(candidate.scope) !== undefined &&

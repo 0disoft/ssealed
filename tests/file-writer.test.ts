@@ -445,6 +445,8 @@ describe("file writer behavior", () => {
       scope: manifest.scope,
       generatedAt: manifest.generatedAt,
       version: manifest.version,
+      generatorVersion: manifest.generatorVersion,
+      schemaVersion: manifest.schemaVersion,
       tool: manifest.tool,
     };
     const reorderedContent = `${JSON.stringify(reordered, null, 2)}\n`;

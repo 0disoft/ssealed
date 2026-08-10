@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli-main.js";
+import { mapWithConcurrency } from "../src/core/concurrency.js";
 import { writePlannedFiles } from "../src/core/file-writer.js";
 import { withScaffoldWriteLock } from "../src/core/scaffold.js";
 import { getScaffoldInterruptContext, withScaffoldSignalHandling } from "../src/core/signals.js";
@@ -94,6 +95,41 @@ describe("managed surface integrity", () => {
         error: { code: "UNSUPPORTED_OPTION", message: "doctor does not support --force." },
       },
     });
+  });
+
+  it("preserves legacy compatibility metadata when ejecting runner ownership", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);
+
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+    await writeFile(manifestPath, `${JSON.stringify({ ...manifest, generatorVersion: "0.6.1", version: "0.6.1" }, null, 2)}\n`);
+    const gitignorePath = path.join(dir, ".gitignore");
+    await writeFile(gitignorePath, (await readFile(gitignorePath, "utf8")).replace(".ssealed-init.lock\n", ""));
+
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+    expect((await runJson(["eject", "runner", dir])).code).toBe(0);
+    expect(JSON.parse(await readFile(manifestPath, "utf8"))).toEqual(
+      expect.objectContaining({ schemaVersion: 1, generatorVersion: "0.6.1", version: "0.6.1" }),
+    );
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+  });
+});
+
+describe("bounded filesystem work", () => {
+  it("limits concurrent operations while preserving result order", async () => {
+    let active = 0;
+    let peak = 0;
+    const results = await mapWithConcurrency([0, 1, 2, 3, 4, 5], 2, async (value) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return value * 2;
+    });
+
+    expect(peak).toBe(2);
+    expect(results).toEqual([0, 2, 4, 6, 8, 10]);
   });
 });
 
