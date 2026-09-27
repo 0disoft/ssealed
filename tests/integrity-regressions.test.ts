@@ -198,6 +198,17 @@ describe("managed surface integrity", () => {
     }
   });
 
+  it("accepts CR-only managed-block line endings", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--yes"])).code).toBe(0);
+    const ignorePath = path.join(dir, ".gitignore");
+    await writeFile(ignorePath, (await readFile(ignorePath, "utf8")).replace(/\n/gu, "\r"));
+
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+    expect((await runJson(["update", dir, "--yes"])).code).toBe(0);
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+  });
+
   it("keeps eject runner dry-run side-effect free", async () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);

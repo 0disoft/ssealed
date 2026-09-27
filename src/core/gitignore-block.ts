@@ -12,9 +12,10 @@ export function findGitignoreManagedBlocks(content: string): readonly GitignoreM
   let offset = 0;
 
   while (offset < content.length) {
-    const newline = content.indexOf("\n", offset);
-    const lineEnd = newline < 0 ? content.length : newline;
-    const line = content.slice(offset, lineEnd).replace(/\r$/u, "");
+    const nextLf = content.indexOf("\n", offset);
+    const nextCr = content.indexOf("\r", offset);
+    const lineEnd = Math.min(nextLf < 0 ? content.length : nextLf, nextCr < 0 ? content.length : nextCr);
+    const line = content.slice(offset, lineEnd);
     if (line.includes(startMarker) || line.includes(endMarker)) {
       if (line === startMarker) {
         if (openStart !== undefined) {
@@ -31,7 +32,7 @@ export function findGitignoreManagedBlocks(content: string): readonly GitignoreM
         return undefined;
       }
     }
-    offset = newline < 0 ? content.length : newline + 1;
+    offset = lineEnd === content.length ? content.length : lineEnd + (content[lineEnd] === "\r" && content[lineEnd + 1] === "\n" ? 2 : 1);
   }
 
   return openStart === undefined ? blocks : undefined;
