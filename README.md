@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.6.4`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.0`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -189,6 +189,8 @@ Manifest file ownership has four meanings:
 - `block-managed`: ssealed manages a bounded block or script set inside a user-owned file, such as `.gitignore` or generated validation scripts in `package.json`.
 - `project-owned`: the project explicitly owns the file or surface, such as an adopted existing file or an ejected package runner block.
 - `managed`: ssealed owns the full file content as tool metadata.
+
+For npm and pnpm runners, each `package.json` manifest entry also records `managedScripts`: only the validation scripts actually supplied by ssealed. Pre-existing user scripts remain outside that set. `update` restores a deleted managed script but refuses to replace one whose value was edited. Legacy entries without `managedScripts` remain readable and gain the field on an accepted update.
 
 Seeded files use `presence: optional`; missing seeded files can be retained as `status: retired`. Active files keep `initialChecksum`, `generatedChecksum`, and `acceptedChecksum` so tooling can distinguish original template content, the last generated scaffold content, and project-accepted content. The legacy `checksum` field remains as the accepted checksum for compatibility.
 
