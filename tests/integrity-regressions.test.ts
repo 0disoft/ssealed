@@ -248,6 +248,16 @@ describe("file publication integrity", () => {
 });
 
 describe("lock and interrupt ownership", () => {
+  it("releases its lock after an EEXIST error inside the task", async () => {
+    const dir = await tempDir();
+    const lockPath = path.join(dir, ".ssealed-init.lock");
+    const taskError = Object.assign(new Error("target appeared during write"), { code: "EEXIST" });
+
+    await expect(withScaffoldWriteLock(dir, false, async () => { throw taskError; })).rejects.toBe(taskError);
+    await expect(lstat(lockPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(withScaffoldWriteLock(dir, false, async () => "retried")).resolves.toBe("retried");
+  });
+
   it("does not remove a lock file that was replaced while the task was running", async () => {
     const dir = await tempDir();
     const lockPath = path.join(dir, ".ssealed-init.lock");

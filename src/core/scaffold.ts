@@ -568,6 +568,22 @@ async function acquireScaffoldLock<T>(
   try {
     handle = await open(lockPath, "wx");
     acquired = true;
+  } catch (error) {
+    if (isNodeError(error) && error.code === "EEXIST") {
+      if (breakStaleLock && (await removeStaleScaffoldLock(lockPath))) {
+        return acquireScaffoldLock(lockPath, false, task, lockExistsMessage);
+      }
+      throw new SsealedError(
+        "LOCK_EXISTS",
+        breakStaleLock
+          ? "Existing scaffold lock is not stale. Refusing to remove .ssealed-init.lock while another ssealed command may still be running."
+          : lockExistsMessage,
+      );
+    }
+    throw error;
+  }
+
+  try {
     await handle.writeFile(
       JSON.stringify(
         {
@@ -587,17 +603,6 @@ async function acquireScaffoldLock<T>(
     getScaffoldInterruptContext()?.throwIfInterrupted();
     result = await task();
   } catch (error) {
-    if (isNodeError(error) && error.code === "EEXIST") {
-      if (breakStaleLock && (await removeStaleScaffoldLock(lockPath))) {
-        return acquireScaffoldLock(lockPath, false, task, lockExistsMessage);
-      }
-      throw new SsealedError(
-        "LOCK_EXISTS",
-        breakStaleLock
-          ? "Existing scaffold lock is not stale. Refusing to remove .ssealed-init.lock while another ssealed command may still be running."
-          : lockExistsMessage,
-      );
-    }
     taskError = error;
   }
 
