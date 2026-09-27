@@ -216,11 +216,12 @@ export async function main(argv: readonly string[]): Promise<number> {
       ...(parsed.values.density === undefined ? {} : { density: parsed.values.density }),
     });
   } catch (error: unknown) {
+    const interrupted = isScaffoldInterruptedError(error);
     if (parsed.values.json) {
       process.stdout.write(`${JSON.stringify({ ok: false, error: classifyRuntimeError(error) }, null, 2)}\n`);
-      return 1;
+      return interrupted ? error.exitCode : 1;
     }
-    if (isScaffoldInterruptedError(error)) {
+    if (interrupted) {
       process.stderr.write(`ssealed: ${error.message}\n`);
       return error.exitCode;
     }
@@ -276,8 +277,16 @@ function wantsJson(argv: readonly string[]): boolean {
   return argv.includes("--json");
 }
 
-function classifyRuntimeError(error: unknown): { readonly code: string; readonly message: string } {
+function classifyRuntimeError(error: unknown): {
+  readonly code: string;
+  readonly message: string;
+  readonly signal?: string;
+  readonly exitCode?: number;
+} {
   const message = error instanceof Error ? error.message : String(error);
+  if (isScaffoldInterruptedError(error)) {
+    return { code: error.code, message, signal: error.signal, exitCode: error.exitCode };
+  }
   if (isSsealedError(error)) {
     return { code: error.code, message };
   }

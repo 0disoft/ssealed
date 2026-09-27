@@ -376,6 +376,25 @@ describe("file publication integrity", () => {
 });
 
 describe("lock and interrupt ownership", () => {
+  it("keeps signal exit codes in JSON mode", async () => {
+    for (const [signal, exitCode] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
+      const dir = await tempDir();
+      const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      let code: number | undefined;
+      try {
+        await expect(withScaffoldSignalHandling(async () => {
+          process.emit(signal, signal);
+          code = await main(["doctor", dir, "--json"]);
+        })).rejects.toMatchObject({ code: "INTERRUPTED", signal });
+        expect(code).toBe(exitCode);
+        const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
+        expect(payload.error).toMatchObject({ code: "INTERRUPTED", signal, exitCode });
+      } finally {
+        stdout.mockRestore();
+      }
+    }
+  });
+
   it("releases its lock after an EEXIST error inside the task", async () => {
     const dir = await tempDir();
     const lockPath = path.join(dir, ".ssealed-init.lock");
