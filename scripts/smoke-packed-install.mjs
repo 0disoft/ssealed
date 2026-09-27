@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -45,14 +45,21 @@ try {
   await mkdir(installRoot, { recursive: true });
   await writeFile(path.join(installRoot, "package.json"), '{\n  "private": true,\n  "type": "module"\n}\n', "utf8");
 
-  const pack = await runNpm(["pack", "--json", "--pack-destination", temp]);
-  const packed = JSON.parse(pack.stdout);
-  const filename = packed?.[0]?.filename;
-  if (typeof filename !== "string" || !filename.endsWith(".tgz")) {
-    throw new Error(`npm pack returned unexpected output: ${pack.stdout}`);
+  let tarball;
+  if (process.argv[2] !== undefined) {
+    tarball = path.resolve(process.argv[2]);
+  } else {
+    const pack = await runNpm(["pack", "--json", "--pack-destination", temp]);
+    const packed = JSON.parse(pack.stdout);
+    const filename = packed?.[0]?.filename;
+    if (typeof filename !== "string" || !/^[a-z0-9][a-z0-9._-]*\.tgz$/iu.test(filename)) {
+      throw new Error(`npm pack returned unexpected output: ${pack.stdout}`);
+    }
+    tarball = path.join(temp, filename);
   }
-
-  const tarball = path.join(temp, filename);
+  if (!tarball.endsWith(".tgz") || !(await stat(tarball)).isFile()) {
+    throw new Error(`Expected a packed npm tarball: ${tarball}`);
+  }
   await runNpm(["install", tarball, "--ignore-scripts", "--no-audit", "--no-fund"], installRoot);
 
   const bin = path.join(installRoot, "node_modules", ".bin", process.platform === "win32" ? "ssealed.cmd" : "ssealed");

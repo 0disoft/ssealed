@@ -42,10 +42,9 @@ The release workflow:
 
 - installs dependencies with Bun;
 - runs `bun run check`;
-- verifies the packed package can be installed and executed through the npm bin shim;
-- verifies the npm package contents with `npm pack --dry-run --json`;
+- packs a release tarball and verifies that exact file can be installed and executed through the npm bin shim;
 - compares package integrity when the npm version already exists, so a rerun cannot attach a GitHub Release to a different tarball;
-- publishes the package to npm;
+- publishes the verified tarball to npm;
 - creates or updates the matching GitHub Release.
 
 The CI workflow runs on pull requests and `main` pushes. It installs with Bun, then runs typecheck, tests, and build before release-only smoke and publication steps are needed.

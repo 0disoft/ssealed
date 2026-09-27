@@ -53,17 +53,28 @@ jobs:
       - name: Check
         run: bun run check
 
-      - name: Verify package contents
+      - name: Pack release candidate
         id: pack
         shell: bash
         run: |
           set -euo pipefail
-          pack_json="$(npm pack --dry-run --json)"
+          pack_json="$(npm pack --json --pack-destination "$RUNNER_TEMP")"
           echo "$pack_json"
-          pack_integrity="$(
-            PACK_JSON="$pack_json" node -e "const payload = JSON.parse(process.env.PACK_JSON); console.log(payload[0].integrity)"
-          )"
-          echo "integrity=$pack_integrity" >> "$GITHUB_OUTPUT"
+          PACK_JSON="$pack_json" node -e '
+            const packed = JSON.parse(process.env.PACK_JSON)[0];
+            if (!packed || typeof packed.filename !== "string" || !/^[a-z0-9][a-z0-9._-]*\.tgz$/iu.test(packed.filename) ||
+                typeof packed.integrity !== "string" || !/^sha512-[A-Za-z0-9+/]+=*$/u.test(packed.integrity)) {
+              throw new Error("npm pack returned an invalid release artifact");
+            }
+            const path = require("node:path");
+            console.log("tarball=" + path.join(process.env.RUNNER_TEMP, packed.filename));
+            console.log("integrity=" + packed.integrity);
+          ' >> "$GITHUB_OUTPUT"
+
+      - name: Verify packed release candidate
+        env:
+          TARBALL_PATH: ${{ steps.pack.outputs.tarball }}
+        run: node scripts/smoke-packed-install.mjs "$TARBALL_PATH"
 
       - name: Check whether npm version is already published
         id: npm-version
@@ -93,7 +104,9 @@ jobs:
 
       - name: Publish to npm
         if: steps.npm-version.outputs.published == 'false'
-        run: npm publish --access public --provenance
+        env:
+          TARBALL_PATH: ${{ steps.pack.outputs.tarball }}
+        run: npm publish "$TARBALL_PATH" --access public --provenance
 
       - name: Create GitHub release
         env:
