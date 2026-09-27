@@ -411,7 +411,7 @@ async function runEject(target: string, subject: string | undefined, json: boole
   }
   const generatedChecksum = typeof packageFile.generatedChecksum === "string" ? packageFile.generatedChecksum : previousPackage.generatedChecksum;
   const initialChecksum = typeof packageFile.initialChecksum === "string" ? packageFile.initialChecksum : previousPackage.initialChecksum;
-  const nextPackageFile = {
+  const nextPackageFile: Record<string, unknown> = {
     ...packageFile,
     checksum: acceptedChecksum,
     acceptedChecksum,
@@ -421,6 +421,7 @@ async function runEject(target: string, subject: string | undefined, json: boole
     presence: "optional",
     status: "active",
   };
+  delete nextPackageFile.managedScripts;
   const nextManifest = {
     ...manifest,
     generatedAt: new Date().toISOString(),
@@ -621,6 +622,7 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
           content,
           expectedChecksum: file.checksum,
           actualChecksum,
+          ...(file.managedScripts === undefined ? {} : { managedScripts: file.managedScripts }),
         });
       } catch (error: unknown) {
         if (isNodeError(error) && error.code === "ENOENT") {
@@ -728,6 +730,7 @@ function checkExistingManifestFile(params: {
   readonly content: string;
   readonly expectedChecksum: string;
   readonly actualChecksum: string;
+  readonly managedScripts?: Readonly<Record<string, string>>;
 }): DoctorCheck {
   const base = {
     path: params.path,
@@ -743,7 +746,10 @@ function checkExistingManifestFile(params: {
   }
 
   if (params.ownership === "block-managed") {
-    const blockStatus = checkManagedBlock(params.path, params.content, params.runner, params.manifestVersion);
+    if (params.path === "package.json" && params.managedScripts === undefined && params.actualChecksum === params.expectedChecksum) {
+      return { ...base, status: "ok" };
+    }
+    const blockStatus = checkManagedBlock(params.path, params.content, params.runner, params.manifestVersion, params.managedScripts);
     if (blockStatus === undefined || !blockStatus) {
       return { ...base, status: "block-modified", reason: "Managed block no longer matches the scaffold contract." };
     }
@@ -775,18 +781,30 @@ function checkExistingManifestFile(params: {
   return { ...base, status: "modified", reason: "Managed file differs from the accepted manifest checksum." };
 }
 
-function checkManagedBlock(pathValue: string, content: string, runner: Runner, manifestVersion: string | undefined): boolean | undefined {
+function checkManagedBlock(
+  pathValue: string,
+  content: string,
+  runner: Runner,
+  manifestVersion: string | undefined,
+  managedScripts?: Readonly<Record<string, string>>,
+): boolean | undefined {
   if (pathValue === ".gitignore") {
     const blocks = extractManagedBlocks(content);
     return blocks.length === 1 && gitignoreBlocksAcceptedForManifest(manifestVersion).includes(normalizeText(blocks[0] ?? ""));
   }
   if (pathValue === "package.json") {
     const parsed = parseJsonObject(content);
-    if (parsed === undefined || !isRecord(parsed.scripts)) {
+    if (parsed === undefined) {
+      return false;
+    }
+    if (managedScripts !== undefined && Object.keys(managedScripts).length === 0) {
+      return parsed.scripts === undefined || isRecord(parsed.scripts);
+    }
+    if (!isRecord(parsed.scripts)) {
       return false;
     }
     const scripts = parsed.scripts;
-    const expectedScripts = validationScripts(runner === "pnpm" ? "pnpm" : "npm");
+    const expectedScripts = managedScripts ?? validationScripts(runner === "pnpm" ? "pnpm" : "npm");
     return Object.entries(expectedScripts).every(([name, value]) => scripts[name] === value);
   }
   return undefined;

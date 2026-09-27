@@ -30,6 +30,7 @@ import {
   type Scope,
 } from "./types.js";
 import { templateFilesFor } from "../templates/index.js";
+import { validationScripts } from "../templates/runners.js";
 
 const staleLockAgeMs = 60 * 60 * 1000;
 const maxManifestBytes = 1024 * 1024;
@@ -154,6 +155,7 @@ export interface PreviousManifestState {
       readonly ownership: FileOwnership;
       readonly presence: FilePresence;
       readonly status: ManifestFileStatus;
+      readonly managedScripts?: Readonly<Record<string, string>>;
     }
   >;
   readonly settings: PreviousManifestSettings | undefined;
@@ -203,6 +205,7 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
             ownership: normalizeFileOwnership(file.ownership, file.path),
             presence: normalizeFilePresence(file.presence, file.ownership, file.path),
             status: normalizeManifestFileStatus(file.status),
+            ...(file.managedScripts === undefined ? {} : { managedScripts: file.managedScripts }),
           },
         ]),
       ),
@@ -238,6 +241,7 @@ interface ManifestFileLike {
   readonly ownership?: FileOwnership;
   readonly presence?: FilePresence;
   readonly status?: ManifestFileStatus;
+  readonly managedScripts?: Readonly<Record<string, string>>;
 }
 
 function isManifestLike(value: unknown): value is {
@@ -302,8 +306,21 @@ function isManifestFileLike(value: unknown): value is ManifestFileLike {
     isFileKind((value as { readonly kind: unknown }).kind) &&
     ((value as { readonly ownership?: unknown }).ownership === undefined || isFileOwnership((value as { readonly ownership?: unknown }).ownership)) &&
     ((value as { readonly presence?: unknown }).presence === undefined || isFilePresence((value as { readonly presence?: unknown }).presence)) &&
-    ((value as { readonly status?: unknown }).status === undefined || isManifestFileStatus((value as { readonly status?: unknown }).status))
+    ((value as { readonly status?: unknown }).status === undefined || isManifestFileStatus((value as { readonly status?: unknown }).status)) &&
+    ((value as { readonly managedScripts?: unknown }).managedScripts === undefined ||
+      ((value as { readonly path: unknown }).path === "package.json" &&
+        (value as { readonly kind: unknown }).kind === "runner" &&
+        (value as { readonly ownership?: unknown }).ownership === "block-managed" &&
+        isManagedScripts((value as { readonly managedScripts?: unknown }).managedScripts)))
   );
+}
+
+function isManagedScripts(value: unknown): value is Readonly<Record<string, string>> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const names = new Set(Object.keys(validationScripts("npm")));
+  return Object.entries(value).every(([name, script]) => names.has(name) && typeof script === "string");
 }
 
 function isSafeManifestFilePath(value: unknown): value is string {

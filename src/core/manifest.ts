@@ -31,6 +31,7 @@ export function createManifest(params: {
         initialChecksum: file.previousInitialChecksum ?? generatedChecksum,
         acceptedChecksum,
         generatedChecksum,
+        ...(file.managedScripts === undefined ? {} : { managedScripts: file.managedScripts }),
       };
     })
     .sort((left, right) => left.path.localeCompare(right.path));

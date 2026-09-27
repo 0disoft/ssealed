@@ -40,6 +40,34 @@ async function runJson(args: readonly string[]): Promise<{ readonly code: number
 }
 
 describe("managed surface integrity", () => {
+  it("keeps user package scripts outside runner ownership across init and update", async () => {
+    const dir = await tempDir();
+    const packagePath = path.join(dir, "package.json");
+    await writeFile(packagePath, '{"name":"example","scripts":{"test":"custom-test"}}\n');
+
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "pnpm", "--yes"])).code).toBe(0);
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    const packageEntry = manifest.files.find((file: { path: string }) => file.path === "package.json");
+    expect(packageEntry.managedScripts).not.toHaveProperty("test");
+    expect(packageEntry.managedScripts).toHaveProperty("lint");
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+    delete packageEntry.managedScripts;
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+    expect((await runJson(["update", dir, "--yes"])).code).toBe(0);
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+    const updatedManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    expect(updatedManifest.files.find((file: { path: string }) => file.path === "package.json").managedScripts).not.toHaveProperty("test");
+
+    const pkg = JSON.parse(await readFile(packagePath, "utf8")) as { scripts: Record<string, string> };
+    expect(pkg.scripts.test).toBe("custom-test");
+    pkg.scripts.lint = "echo changed";
+    await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+    expect((await runJson(["doctor", dir])).code).toBe(1);
+    expect((await runJson(["update", dir, "--yes"])).code).toBe(1);
+  });
+
   it("does not let update accept a modified managed package script", async () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);

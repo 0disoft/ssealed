@@ -72,6 +72,7 @@ export interface PlannedFile {
   readonly previousChecksum?: string | undefined;
   readonly previousGeneratedChecksum?: string | undefined;
   readonly previousInitialChecksum?: string | undefined;
+  readonly managedScripts?: Readonly<Record<string, string>>;
 }
 
 export interface ManifestFile {
@@ -84,6 +85,7 @@ export interface ManifestFile {
   readonly initialChecksum: string;
   readonly acceptedChecksum: string;
   readonly generatedChecksum: string;
+  readonly managedScripts?: Readonly<Record<string, string>>;
 }
 
 export interface Manifest {

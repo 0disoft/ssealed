@@ -31,6 +31,7 @@ export async function planTemplateFile(params: {
         readonly ownership: FileOwnership;
         readonly presence: FilePresence;
         readonly status: ManifestFileStatus;
+        readonly managedScripts?: Readonly<Record<string, string>>;
       }
     | undefined;
 }): Promise<PlannedFile> {
@@ -146,7 +147,7 @@ export async function planTemplateFile(params: {
 
   if (params.template.merge === "package-json") {
     return withLifecycle(
-      planPackageJson(params.template, existingContent, params.force, previouslyGenerated),
+      planPackageJson(params.template, existingContent, params.force, previouslyGenerated, params.previous),
       ownership,
       presence,
       previousChecksum,
@@ -462,6 +463,7 @@ function planPackageJson(
   existingContent: string | undefined,
   force: boolean,
   previouslyGenerated: boolean | undefined,
+  previous: { readonly checksum: string; readonly managedScripts?: Readonly<Record<string, string>> } | undefined,
 ): PlannedFile {
   const runner = template.runner === "pnpm" ? "pnpm" : "npm";
   const scripts = validationScripts(runner);
@@ -471,6 +473,7 @@ function planPackageJson(
       ...template,
       action: "create",
       content: normalizeText(JSON.stringify({ scripts }, null, 2)),
+      managedScripts: scripts,
     };
   }
 
@@ -499,11 +502,27 @@ function planPackageJson(
 
   const currentScripts = parsed.scripts ?? {};
   const nextScripts = { ...currentScripts };
+  const priorManagedScripts = previous?.managedScripts;
+  if (priorManagedScripts !== undefined) {
+    const modified = Object.entries(priorManagedScripts)
+      .filter(([name, value]) => currentScripts[name] !== value)
+      .map(([name]) => name);
+    if (modified.length > 0) {
+      return {
+        ...template,
+        action: "conflict",
+        content: template.content,
+        existingContent,
+        previouslyGenerated,
+        reason: `Previously managed package.json scripts changed: ${modified.join(", ")}.`,
+      };
+    }
+  }
   const userOwnedScripts = Object.entries(scripts)
-    .filter(([name]) => name in nextScripts && !isGeneratedValidationScript(nextScripts[name]))
+    .filter(([name]) => name in nextScripts && !isGeneratedValidationScript(nextScripts[name]) && !Object.hasOwn(priorManagedScripts ?? {}, name))
     .map(([name]) => name);
-  if (userOwnedScripts.length > 0) {
-    if (force || previouslyGenerated !== undefined) {
+  if (priorManagedScripts === undefined && userOwnedScripts.length > 0) {
+    if ((force && previous === undefined) || (previous !== undefined && checksumExisting(existingContent) !== previous.checksum)) {
       return {
         ...template,
         action: "conflict",
@@ -514,18 +533,23 @@ function planPackageJson(
       };
     }
   }
+  const managedScripts: Record<string, string> = {};
   for (const [name, value] of Object.entries(scripts)) {
-    if (force || !(name in nextScripts) || isGeneratedValidationScript(nextScripts[name])) {
+    const owned = priorManagedScripts === undefined
+      ? name in nextScripts && isGeneratedValidationScript(nextScripts[name])
+      : Object.hasOwn(priorManagedScripts, name);
+    if (!(name in nextScripts) || owned) {
       nextScripts[name] = value;
+      managedScripts[name] = value;
     }
   }
   const nextPackage = { ...parsed, scripts: nextScripts };
   const indent = detectJsonIndent(existingContent);
   const nextContent = normalizeText(JSON.stringify(nextPackage, null, indent));
   if (normalizeText(existingContent) === nextContent) {
-    return { ...template, action: "unchanged", content: nextContent, existingContent, previouslyGenerated };
+    return { ...template, action: "unchanged", content: nextContent, existingContent, previouslyGenerated, managedScripts };
   }
-  return { ...template, action: "merge", content: nextContent, existingContent, previouslyGenerated };
+  return { ...template, action: "merge", content: nextContent, existingContent, previouslyGenerated, managedScripts };
 }
 
 function planManifest(
