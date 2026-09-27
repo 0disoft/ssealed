@@ -78,6 +78,7 @@ ssealed init [target] --runner none|make|just|task|npm|pnpm
 ssealed adopt [target] --repo-type library --density minimal --runner none
 ssealed update [target] --dry-run --json
 ssealed upgrade [target] --repo-type api-service --density strict --runner make --force
+ssealed upgrade [target] --clear-addons
 ssealed update [target] --break-stale-lock
 ssealed doctor [target] --json
 ssealed doctor [target] --strict --json
@@ -141,6 +142,7 @@ ssealed init --scope general --repo-type cli-tool --addon github-action --addon 
 ```
 
 Addons may be any repository type except `generic`. They are recorded in `.ssealed/manifest.json` as `addons` and are compared by `update`; use `upgrade` to change them intentionally.
+On `upgrade`, repeated `--addon` values replace the existing addon list. Use `--clear-addons` to remove every addon while preserving its files as retired project documents. The two options cannot be combined.
 
 ## Density Matrix
 

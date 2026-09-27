@@ -38,6 +38,7 @@ export interface InitCliOptions {
   readonly profile?: string;
   readonly repoType?: string;
   readonly addon?: string | readonly string[];
+  readonly clearAddons?: boolean;
   readonly density?: string;
   readonly runner: string | undefined;
   readonly yes: boolean;
@@ -113,6 +114,7 @@ type InitErrorCode =
   | "INVALID_SCOPE"
   | "INVALID_PROFILE"
   | "INVALID_ADDON"
+  | "CONFLICTING_ADDON_OPTIONS"
   | "INVALID_DENSITY"
   | "INVALID_RUNNER"
   | "CONFLICTING_REPOSITORY_TYPE"
@@ -270,7 +272,10 @@ function resolveRepositoryShape(options: InitCliOptions, previous?: PreviousMani
     return profile;
   }
 
-  const addonValues = options.addon === undefined ? previous?.addons ?? [] : toStringArray(options.addon);
+  if (options.clearAddons && options.addon !== undefined) {
+    return { code: "CONFLICTING_ADDON_OPTIONS", message: "Use either --clear-addons or --addon, not both." };
+  }
+  const addonValues = options.clearAddons ? [] : options.addon === undefined ? previous?.addons ?? [] : toStringArray(options.addon);
   const parsedAddons: Addon[] = [];
   for (const value of addonValues) {
     if (value === "generic") {

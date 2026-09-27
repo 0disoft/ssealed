@@ -40,6 +40,36 @@ async function runJson(args: readonly string[]): Promise<{ readonly code: number
 }
 
 describe("managed surface integrity", () => {
+  it("clears all addons during upgrade without deleting their documents", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--repo-type", "cli-tool", "--addon", "docs-site", "--yes"])).code).toBe(0);
+    const addonDoc = path.join(dir, "docs", "docs-site", "information-architecture.md");
+    const originalDoc = await readFile(addonDoc, "utf8");
+
+    const conflicting = await runJson(["upgrade", dir, "--clear-addons", "--addon", "github-action", "--yes"]);
+    expect(conflicting.code).toBe(1);
+    expect(conflicting.payload.error).toMatchObject({ code: "CONFLICTING_ADDON_OPTIONS" });
+
+    const cleared = await runJson(["upgrade", dir, "--clear-addons", "--yes"]);
+    expect(cleared.code).toBe(0);
+    expect(cleared.payload.addons).toEqual([]);
+    expect(await readFile(addonDoc, "utf8")).toBe(originalDoc);
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+
+    const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+    expect(manifest.addons).toEqual([]);
+    expect(manifest.files).toContainEqual(expect.objectContaining({ path: "docs/docs-site/information-architecture.md", status: "retired" }));
+  });
+
+  it("can promote the last addon to the primary repository type", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--repo-type", "cli-tool", "--addon", "docs-site", "--yes"])).code).toBe(0);
+    const upgraded = await runJson(["upgrade", dir, "--repo-type", "docs-site", "--clear-addons", "--yes"]);
+    expect(upgraded.code).toBe(0);
+    expect(upgraded.payload).toMatchObject({ profile: "docs-site", addons: [] });
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+  });
+
   it("keeps user package scripts outside runner ownership across init and update", async () => {
     const dir = await tempDir();
     const packagePath = path.join(dir, "package.json");

@@ -11,7 +11,7 @@ Usage:
   ssealed init [target] --scope backend|frontend|fullstack|general|mobile|infra|data [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed adopt [target] --scope backend|frontend|fullstack|general|mobile|infra|data [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed update [target]
-  ssealed upgrade [target] [--scope backend|frontend|fullstack|general|mobile|infra|data] [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
+  ssealed upgrade [target] [--scope backend|frontend|fullstack|general|mobile|infra|data] [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo | --clear-addons] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed doctor [target] [--strict]
   ssealed eject runner [target] [--dry-run]
   ssealed --help
@@ -22,6 +22,7 @@ Options:
   --repo-type  Primary repository shape. Defaults to generic for init.
   --profile    Alias for --repo-type.
   --addon      Add an extra repository-shape surface. Repeatable.
+  --clear-addons  Remove all addons during upgrade.
   --density    Scaffold density. Defaults to standard for init.
   --runner     Optional validation runner entrypoint. Defaults to none for init.
   --yes        Never prompt.
@@ -93,6 +94,7 @@ Examples:
   ssealed init --scope general --repo-type cli-tool --addon github-action --dry-run
   ssealed update ./my-service --yes
   ssealed upgrade ./my-service --repo-type api-service --density strict --runner make --yes --force
+  ssealed upgrade ./my-service --clear-addons --yes
   ssealed doctor ./my-service --json
   ssealed doctor ./my-service --strict
   ssealed eject runner ./my-service
@@ -104,6 +106,7 @@ interface ParsedScaffoldArgs {
     readonly profile?: string;
     readonly "repo-type"?: string;
     readonly addon?: string | readonly string[];
+    readonly "clear-addons"?: boolean;
     readonly density?: string;
     readonly runner?: string;
     readonly yes?: boolean;
@@ -209,6 +212,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       ...(parsed.values["repo-type"] === undefined ? {} : { repoType: parsed.values["repo-type"] }),
       ...(parsed.values.profile === undefined ? {} : { profile: parsed.values.profile }),
       ...(parsed.values.addon === undefined ? {} : { addon: parsed.values.addon }),
+      ...(parsed.values["clear-addons"] === undefined ? {} : { clearAddons: parsed.values["clear-addons"] }),
       ...(parsed.values.density === undefined ? {} : { density: parsed.values.density }),
     });
   } catch (error: unknown) {
@@ -234,6 +238,7 @@ function parseScaffoldArgs(args: readonly string[]): ParsedScaffoldArgs | Error 
         "repo-type": { type: "string" },
         profile: { type: "string" },
         addon: { type: "string", multiple: true },
+        "clear-addons": { type: "boolean" },
         density: { type: "string" },
         runner: { type: "string" },
         yes: { type: "boolean" },
@@ -256,7 +261,7 @@ function findUnsupportedOption(command: CliCommand, values: ParsedScaffoldArgs["
     init: new Set([...common, "scope", "repo-type", "profile", "addon", "density", "runner", "yes", "dry-run", "force", "break-stale-lock"]),
     adopt: new Set([...common, "scope", "repo-type", "profile", "addon", "density", "runner", "yes", "dry-run", "force", "break-stale-lock"]),
     update: new Set([...common, "yes", "dry-run", "force", "break-stale-lock"]),
-    upgrade: new Set([...common, "scope", "repo-type", "profile", "addon", "density", "runner", "yes", "dry-run", "force", "break-stale-lock"]),
+    upgrade: new Set([...common, "scope", "repo-type", "profile", "addon", "clear-addons", "density", "runner", "yes", "dry-run", "force", "break-stale-lock"]),
     doctor: new Set([...common, "strict"]),
     eject: new Set([...common, "dry-run", "break-stale-lock"]),
   };
