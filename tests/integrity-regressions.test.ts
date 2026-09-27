@@ -117,11 +117,13 @@ describe("managed surface integrity", () => {
 
   it("rejects unknown future manifest schemas instead of guessing compatibility", async () => {
     const dir = await tempDir();
-    expect((await runJson(["init", dir, "--scope", "general", "--yes"])).code).toBe(0);
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);
 
     const manifestPath = path.join(dir, ".ssealed", "manifest.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
     await writeFile(manifestPath, `${JSON.stringify({ ...manifest, schemaVersion: 2 }, null, 2)}\n`);
+    const originalManifest = await readFile(manifestPath, "utf8");
+    const originalPackage = await readFile(path.join(dir, "package.json"), "utf8");
 
     const doctor = await runJson(["doctor", dir]);
     expect(doctor).toEqual({
@@ -132,6 +134,18 @@ describe("managed surface integrity", () => {
         error: expect.objectContaining({ code: "INVALID_MANIFEST" }),
       }),
     });
+    for (const args of [
+      ["init", dir, "--scope", "general", "--runner", "npm", "--yes"],
+      ["adopt", dir, "--scope", "general", "--runner", "npm", "--yes"],
+      ["update", dir, "--yes"],
+      ["upgrade", dir, "--density", "strict", "--yes"],
+      ["eject", "runner", dir],
+    ]) {
+      const result = await runJson(args);
+      expect(result.code).toBe(1);
+      expect(await readFile(manifestPath, "utf8")).toBe(originalManifest);
+      expect(await readFile(path.join(dir, "package.json"), "utf8")).toBe(originalPackage);
+    }
   });
 });
 

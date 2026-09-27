@@ -50,8 +50,20 @@ async function planScaffoldWithWarnings(
   const profile = options.profile ?? "generic";
   const addons = normalizeAddons(options.addons ?? []);
   const density = options.density ?? "standard";
-  const templates = templateFilesFor(options.scope, options.runner, profile, density, addons);
   const previousManifest = previousManifestOverride ?? (await readPreviousManifest(targetRoot));
+  if (previousManifest.warnings.some((warning) => warning.code === "INVALID_MANIFEST")) {
+    return {
+      files: [{
+        path: ".ssealed/manifest.json",
+        kind: "manifest",
+        action: "conflict",
+        content: "",
+        reason: "Existing .ssealed/manifest.json is invalid or uses an unsupported schema. Repair it before running a scaffold command.",
+      }],
+      warnings: previousManifest.warnings,
+    };
+  }
+  const templates = templateFilesFor(options.scope, options.runner, profile, density, addons);
   const planned = await mapWithConcurrency(
     templates,
     filesystemReadConcurrency,

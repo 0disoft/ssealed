@@ -570,10 +570,11 @@ describe("CLI argument parsing", () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await expect(main(["init", dir, "--scope", "general", "--dry-run", "--json"])).resolves.toBe(0);
+      await expect(main(["init", dir, "--scope", "general", "--dry-run", "--json"])).resolves.toBe(1);
       expect(stderr).not.toHaveBeenCalled();
       const payload = JSON.parse(String(stdout.mock.calls[0]?.[0]));
-      expect(payload.ok).toBe(true);
+      expect(payload.ok).toBe(false);
+      expect(payload.conflicts).toEqual([expect.objectContaining({ path: ".ssealed/manifest.json", action: "conflict" })]);
       expect(payload.warnings).toEqual([
         expect.objectContaining({
           code: "INVALID_MANIFEST",
