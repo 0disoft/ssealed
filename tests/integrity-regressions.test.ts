@@ -68,6 +68,36 @@ describe("managed surface integrity", () => {
     expect((await runJson(["update", dir, "--yes"])).code).toBe(1);
   });
 
+  it("releases package runner ownership when upgrading to none and safely reactivates it", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "pnpm", "--yes"])).code).toBe(0);
+    const packagePath = path.join(dir, "package.json");
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const originalPackage = await readFile(packagePath, "utf8");
+
+    expect((await runJson(["upgrade", dir, "--runner", "none", "--yes"])).code).toBe(0);
+    expect(await readFile(packagePath, "utf8")).toBe(originalPackage);
+    const retiredManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    const retiredPackage = retiredManifest.files.find((file: { path: string }) => file.path === "package.json");
+    expect(retiredPackage).toMatchObject({ ownership: "project-owned", status: "retired" });
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+
+    retiredPackage.ownership = "block-managed";
+    await writeFile(manifestPath, `${JSON.stringify(retiredManifest, null, 2)}\n`);
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+    expect((await runJson(["update", dir, "--yes"])).code).toBe(0);
+    const migrated = JSON.parse(await readFile(manifestPath, "utf8"));
+    expect(migrated.files.find((file: { path: string }) => file.path === "package.json").ownership).toBe("project-owned");
+
+    const pkg = JSON.parse(await readFile(packagePath, "utf8")) as { scripts: Record<string, string> };
+    pkg.scripts.test = "custom-test";
+    await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+    expect((await runJson(["upgrade", dir, "--runner", "pnpm", "--yes"])).code).toBe(0);
+    expect((JSON.parse(await readFile(packagePath, "utf8")) as { scripts: Record<string, string> }).scripts.test).toBe("custom-test");
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+  });
+
   it("does not let update accept a modified managed package script", async () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);

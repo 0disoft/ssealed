@@ -68,14 +68,17 @@ async function planScaffoldWithWarnings(
   const planned = await mapWithConcurrency(
     templates,
     filesystemReadConcurrency,
-    (template) =>
-      planTemplateFile({
+    (template) => {
+      const previous = previousManifest.files.get(template.path);
+      const reactivateRunner = template.path === "package.json" && previous?.status === "retired";
+      return planTemplateFile({
         targetRoot,
         template,
-        force: options.force,
+        force: reactivateRunner ? false : options.force,
         command,
-        previous: previousManifest.files.get(template.path)?.kind === template.kind ? previousManifest.files.get(template.path) : undefined,
-      }),
+        previous: !reactivateRunner && previous?.kind === template.kind ? previous : undefined,
+      });
+    },
   );
   const plannedPaths = new Set(planned.map((file) => file.path));
   const retiredPreviousFiles =
@@ -89,8 +92,8 @@ async function planScaffoldWithWarnings(
               kind: file.kind,
               action: "retired",
               content: "",
-              ownership: file.ownership,
-              presence: file.presence,
+              ownership: filePath === "package.json" && file.kind === "runner" ? "project-owned" : file.ownership,
+              presence: filePath === "package.json" && file.kind === "runner" ? "optional" : file.presence,
               manifestStatus: "retired",
               previousChecksum: file.checksum,
               previousGeneratedChecksum: file.generatedChecksum,

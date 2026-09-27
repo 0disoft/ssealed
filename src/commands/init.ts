@@ -745,6 +745,10 @@ function checkExistingManifestFile(params: {
     return { ...base, status: "project-owned", reason: "File is explicitly project-owned and is not managed by ssealed." };
   }
 
+  if (params.path === "package.json" && params.kind === "runner" && params.manifestStatus === "retired") {
+    return { ...base, status: "project-owned", reason: "Retired package runner is no longer managed by ssealed." };
+  }
+
   if (params.ownership === "block-managed") {
     if (params.path === "package.json" && params.managedScripts === undefined && params.actualChecksum === params.expectedChecksum) {
       return { ...base, status: "ok" };
