@@ -98,6 +98,21 @@ describe("managed surface integrity", () => {
     expect((await runJson(["update", dir, "--yes"])).code).toBe(1);
   });
 
+  it("restores a deleted managed package script on update", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);
+    const packagePath = path.join(dir, "package.json");
+    const pkg = JSON.parse(await readFile(packagePath, "utf8")) as { scripts: Record<string, string> };
+    const generatedLint = pkg.scripts.lint;
+    delete pkg.scripts.lint;
+    await writeFile(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+
+    expect((await runJson(["doctor", dir])).code).toBe(1);
+    expect((await runJson(["update", dir, "--yes"])).code).toBe(0);
+    expect((JSON.parse(await readFile(packagePath, "utf8")) as { scripts: Record<string, string> }).scripts.lint).toBe(generatedLint);
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+  });
+
   it("releases package runner ownership when upgrading to none and safely reactivates it", async () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--runner", "pnpm", "--yes"])).code).toBe(0);

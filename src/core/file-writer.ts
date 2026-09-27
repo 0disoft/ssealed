@@ -504,7 +504,7 @@ function planPackageJson(
   const priorManagedScripts = previous?.managedScripts;
   if (priorManagedScripts !== undefined) {
     const modified = Object.entries(priorManagedScripts)
-      .filter(([name, value]) => currentScripts[name] !== value)
+      .filter(([name, value]) => Object.hasOwn(currentScripts, name) && currentScripts[name] !== value)
       .map(([name]) => name);
     if (modified.length > 0) {
       return {
