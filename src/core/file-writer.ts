@@ -3,13 +3,12 @@ import { chmod, link, lstat, mkdir, readFile, rename, rm, rmdir, writeFile } fro
 import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { SsealedError } from "./errors.js";
+import { findGitignoreManagedBlocks } from "./gitignore-block.js";
 import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
 import { getScaffoldInterruptContext, withScaffoldSignalHandling, type ScaffoldInterruptContext } from "./signals.js";
 import type { FileOwnership, FilePresence, ManifestFileStatus, PlannedFile, ScaffoldCommand, TemplateFile } from "./types.js";
 import { validationScripts } from "../templates/runners.js";
 
-const gitignoreStart = "# >>> ssealed ignore patterns >>>";
-const gitignoreEnd = "# <<< ssealed ignore patterns <<<";
 const generatedValidationScripts = new Set([...Object.values(validationScripts("npm")), ...Object.values(validationScripts("pnpm"))]);
 const writeConcurrency = 8;
 
@@ -423,7 +422,7 @@ function planGitignore(
     return { ...template, action: "create", content: generatedBlock };
   }
 
-  const blockRanges = findManagedBlocks(existingContent);
+  const blockRanges = findGitignoreManagedBlocks(existingContent);
   if (blockRanges === undefined || blockRanges.length > 1) {
     return {
       ...template,
@@ -576,29 +575,6 @@ function planManifest(
 
 function checksumExisting(content: string): string {
   return sha256(content);
-}
-
-function findManagedBlocks(content: string): readonly { readonly start: number; readonly end: number }[] | undefined {
-  const blocks: Array<{ readonly start: number; readonly end: number }> = [];
-  let offset = 0;
-  while (offset < content.length) {
-    const start = content.indexOf(gitignoreStart, offset);
-    const nextEnd = content.indexOf(gitignoreEnd, offset);
-    if (start < 0) {
-      return nextEnd < 0 ? blocks : undefined;
-    }
-    if (nextEnd >= 0 && nextEnd < start) {
-      return undefined;
-    }
-    const endMarker = content.indexOf(gitignoreEnd, start + gitignoreStart.length);
-    if (endMarker < 0) {
-      return undefined;
-    }
-    const end = endMarker + gitignoreEnd.length;
-    blocks.push({ start, end });
-    offset = end;
-  }
-  return blocks;
 }
 
 function parseJsonObject(content: string): Record<string, unknown> | undefined {

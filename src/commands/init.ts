@@ -5,6 +5,7 @@ import { stdin as input, stdout as output } from "node:process";
 import { normalizeText, sha256 } from "../core/checksum.js";
 import { filesystemReadConcurrency, mapWithConcurrency } from "../core/concurrency.js";
 import { SsealedError } from "../core/errors.js";
+import { findGitignoreManagedBlocks } from "../core/gitignore-block.js";
 import { writeTextFileAtomically } from "../core/file-writer.js";
 import { executeScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock, type PreviousManifestSettings, type PreviousManifestState } from "../core/scaffold.js";
 import { assertNoSymlinkInPath, resolveInsideTarget } from "../core/path-safety.js";
@@ -793,8 +794,9 @@ function checkManagedBlock(
   managedScripts?: Readonly<Record<string, string>>,
 ): boolean | undefined {
   if (pathValue === ".gitignore") {
-    const blocks = extractManagedBlocks(content);
-    return blocks.length === 1 && gitignoreBlocksAcceptedForManifest(manifestVersion).includes(normalizeText(blocks[0] ?? ""));
+    const blocks = findGitignoreManagedBlocks(content);
+    const block = blocks?.[0];
+    return blocks?.length === 1 && block !== undefined && gitignoreBlocksAcceptedForManifest(manifestVersion).includes(normalizeText(content.slice(block.start, block.end)));
   }
   if (pathValue === "package.json") {
     const parsed = parseJsonObject(content);
@@ -847,30 +849,6 @@ function parseVersion(value: string): readonly number[] | undefined {
     return undefined;
   }
   return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function extractManagedBlocks(content: string): readonly string[] {
-  const normalized = normalizeText(content);
-  const startMarker = "# >>> ssealed ignore patterns >>>";
-  const endMarker = "# <<< ssealed ignore patterns <<<";
-  const blocks: string[] = [];
-  let offset = 0;
-
-  while (offset < normalized.length) {
-    const start = normalized.indexOf(startMarker, offset);
-    if (start < 0) {
-      break;
-    }
-    const end = normalized.indexOf(endMarker, start + startMarker.length);
-    if (end < 0) {
-      blocks.push(normalized.slice(start));
-      break;
-    }
-    blocks.push(normalized.slice(start, end + endMarker.length));
-    offset = end + endMarker.length;
-  }
-
-  return blocks;
 }
 
 function isFailedDoctorCheck(check: DoctorCheck): boolean {

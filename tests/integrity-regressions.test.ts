@@ -128,6 +128,31 @@ describe("managed surface integrity", () => {
     expect((await runJson(["doctor", dir])).code).toBe(1);
   });
 
+  it("uses the same managed-block grammar for doctor and update", async () => {
+    const start = "# >>> ssealed ignore patterns >>>";
+    const end = "# <<< ssealed ignore patterns <<<";
+    for (const corrupt of [
+      (base: string): string => `${base}${end}\n`,
+      (base: string): string => base.replace(end, `${start}\n${end}`),
+      (base: string): string => base.replace(start, `prefix ${start}`),
+      (base: string): string => base.replace(end, ""),
+    ]) {
+      const dir = await tempDir();
+      expect((await runJson(["init", dir, "--scope", "general", "--yes"])).code).toBe(0);
+      const ignorePath = path.join(dir, ".gitignore");
+      const corrupted = corrupt(await readFile(ignorePath, "utf8"));
+      await writeFile(ignorePath, corrupted);
+
+      const doctor = await runJson(["doctor", dir]);
+      expect(doctor.code).toBe(1);
+      expect(doctor.payload.checks).toContainEqual(expect.objectContaining({ path: ".gitignore", status: "block-modified" }));
+      const update = await runJson(["update", dir, "--yes"]);
+      expect(update.code).toBe(1);
+      expect(update.payload.conflicts).toContainEqual(expect.objectContaining({ path: ".gitignore", action: "conflict" }));
+      expect(await readFile(ignorePath, "utf8")).toBe(corrupted);
+    }
+  });
+
   it("keeps eject runner dry-run side-effect free", async () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);
