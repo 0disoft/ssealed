@@ -140,6 +140,7 @@ type InitErrorCode =
   | "CONFLICTING_REPOSITORY_TYPE"
   | "MISSING_SCOPE"
   | "MISSING_MANIFEST"
+  | "INVALID_MANIFEST"
   | "SETTINGS_CHANGE_REQUIRES_UPGRADE"
   | "INVALID_EJECT_TARGET"
   | "RUNNER_NOT_BLOCK_MANAGED";
@@ -184,7 +185,7 @@ async function resolveScaffoldSettings(
   const previous = previousManifest ?? (await readPreviousManifest(target));
   if (previous.settings === undefined) {
     return {
-      code: "MISSING_MANIFEST",
+      code: previous.warnings.length > 0 ? "INVALID_MANIFEST" : "MISSING_MANIFEST",
       message:
         previous.warnings.length > 0
           ? "Existing .ssealed/manifest.json is invalid. Repair or remove it before update or upgrade."
@@ -382,7 +383,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
   const previous = await readPreviousManifest(target);
   if (previous.settings === undefined) {
     return writeEjectError(json, {
-      code: "MISSING_MANIFEST",
+      code: previous.warnings.length > 0 ? "INVALID_MANIFEST" : "MISSING_MANIFEST",
       message:
         previous.warnings.length > 0
           ? "Existing .ssealed/manifest.json is invalid. Repair or remove it before ejecting runner ownership."
@@ -414,7 +415,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
   const manifest = parseJsonObject(manifestContent);
   if (manifest === undefined || !Array.isArray(manifest.files)) {
     return writeEjectError(json, {
-      code: "MISSING_MANIFEST",
+      code: "INVALID_MANIFEST",
       message: "Existing .ssealed/manifest.json is invalid. Repair or remove it before ejecting runner ownership.",
     });
   }

@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.7`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.8`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -182,6 +182,7 @@ Every write run refreshes `.ssealed/manifest.json` with a schema version, genera
 
 Manifest loading rejects unsafe or reserved file paths, duplicate file paths, and checksum fields that are not lowercase `sha256:` values with 64 hexadecimal digits. Path uniqueness and reserved metadata checks ignore letter case on every platform so a manifest cannot record aliases such as `README.md` and `readme.md`, or `.ssealed/MANIFEST.JSON`. Accepted paths retain their original spelling. Invalid manifests are reported as `INVALID_MANIFEST` before their entries reach planning or doctor checks.
 The manifest itself must be a regular file no larger than 1 MiB. Directories and other non-regular entries at `.ssealed/manifest.json` are rejected before reading or parsing their contents.
+`update`, `upgrade`, `eject`, and `doctor` distinguish an absent manifest (`MISSING_MANIFEST`) from an invalid one (`INVALID_MANIFEST`) in their JSON error envelopes. Invalid manifests must be repaired or removed; these commands do not replace them, including during dry runs.
 
 - Missing `schemaVersion` is treated as the legacy schema. `schemaVersion: 1` is the current schema.
 - Unknown future schema versions fail closed as `INVALID_MANIFEST`; ssealed never guesses how to interpret them.

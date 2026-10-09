@@ -40,6 +40,30 @@ async function runJson(args: readonly string[]): Promise<{ readonly code: number
 }
 
 describe("managed surface integrity", () => {
+  it.each([
+    { args: ["update"] },
+    { args: ["upgrade"] },
+    { args: ["eject", "runner"] },
+  ])("distinguishes invalid and missing manifests for $args", async ({ args }) => {
+    const invalid = await tempDir();
+    const missing = await tempDir();
+    const manifestPath = path.join(invalid, ".ssealed", "manifest.json");
+    await mkdir(path.dirname(manifestPath));
+    await writeFile(manifestPath, "{bad json\n");
+
+    for (const flags of [[], ["--dry-run"]]) {
+      expect(await runJson([...args, invalid, ...flags])).toMatchObject({
+        code: 1, payload: { ok: false, error: { code: "INVALID_MANIFEST" } },
+      });
+      expect(await runJson([...args, missing, ...flags])).toMatchObject({
+        code: 1, payload: { ok: false, error: { code: "MISSING_MANIFEST" } },
+      });
+    }
+    await expect(readFile(manifestPath, "utf8")).resolves.toBe("{bad json\n");
+    await expect(lstat(path.join(invalid, ".ssealed-init.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(path.join(missing, ".ssealed"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("reports INVALID_MANIFEST when doctor encounters a directory at the manifest path", async () => {
     const dir = await tempDir();
     await mkdir(path.join(dir, ".ssealed", "manifest.json"), { recursive: true });
