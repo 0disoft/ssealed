@@ -2,7 +2,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { executeScaffold } from "../src/core/scaffold.js";
+import { executeScaffold, readPreviousManifest } from "../src/core/scaffold.js";
+import { sha256 } from "../src/core/checksum.js";
 import type { Runner } from "../src/core/types.js";
 import { runInit } from "../src/commands/init.js";
 import { validationScripts } from "../src/templates/runners.js";
@@ -113,6 +114,23 @@ describe("runner generation", () => {
     const updated = await executeScaffold({ command: "update", target: dir, scope: "general", runner: "npm", dryRun: false, force: false });
     expect(updated.written).not.toContain("package.json");
     expect(await readFile(packagePath, "utf8")).toBe(content);
+  });
+
+  it.each(["npm", "pnpm"] as const)("preserves custom package.json layout during unchanged %s updates", async (runner) => {
+    const dir = await scaffold(runner);
+    const packagePath = path.join(dir, "package.json");
+    const scripts = { ...validationScripts(runner), start: "node app.js" };
+    const content = `{\r\n    "name" : "example",\r\n    "scripts" : ${JSON.stringify(scripts)}\r\n}\r\n`;
+    await writeFile(packagePath, content);
+
+    for (const force of [false, true]) {
+      const result = await executeScaffold({ command: "update", target: dir, scope: "general", runner, dryRun: false, force });
+      expect(result.conflicts).toHaveLength(0);
+      expect(result.files.find((file) => file.path === "package.json")?.action).toBe("unchanged");
+      expect(result.written).not.toContain("package.json");
+      await expect(readFile(packagePath, "utf8")).resolves.toBe(content);
+      expect((await readPreviousManifest(dir)).files.get("package.json")?.checksum).toBe(sha256(content));
+    }
   });
 
   it("force conflicts instead of overwriting user-owned package scripts", async () => {

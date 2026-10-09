@@ -534,14 +534,19 @@ function planPackageJson(
     }
   }
   const managedScripts: Record<string, string> = {};
+  let scriptsChanged = false;
   for (const [name, value] of Object.entries(scripts)) {
     const owned = priorManagedScripts === undefined
       ? name in nextScripts && isGeneratedValidationScript(nextScripts[name])
       : Object.hasOwn(priorManagedScripts, name);
     if (!(name in nextScripts) || owned) {
+      scriptsChanged ||= nextScripts[name] !== value;
       nextScripts[name] = value;
       managedScripts[name] = value;
     }
+  }
+  if (!scriptsChanged) {
+    return { ...template, action: "unchanged", content: normalizeText(existingContent), existingContent, previouslyGenerated, managedScripts };
   }
   const nextPackage = { ...parsed, scripts: nextScripts };
   const indent = detectJsonIndent(existingContent);
