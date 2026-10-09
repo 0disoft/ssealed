@@ -194,6 +194,7 @@ Manifest file ownership has four meanings:
 - `managed`: ssealed owns the full file content as tool metadata.
 
 For npm and pnpm runners, each `package.json` manifest entry also records `managedScripts`: only the validation scripts actually supplied by ssealed. Pre-existing user scripts remain outside that set. `update` restores a deleted managed script but refuses to replace one whose value was edited. Legacy entries without `managedScripts` remain readable and gain the field on an accepted update.
+Merging runner scripts preserves existing tab or space indentation and keeps compact, single-line package files compact. An accepted update leaves `package.json` untouched when no script or content changes are needed.
 
 Seeded files use `presence: optional`; missing seeded files can be retained as `status: retired`. Active files keep `initialChecksum`, `generatedChecksum`, and `acceptedChecksum` so tooling can distinguish original template content, the last generated scaffold content, and project-accepted content. The legacy `checksum` field remains as the accepted checksum for compatibility.
 

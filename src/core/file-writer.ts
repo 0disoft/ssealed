@@ -586,9 +586,9 @@ function parseJsonObject(content: string): Record<string, unknown> | undefined {
   }
 }
 
-function detectJsonIndent(content: string): number {
-  const match = /\n( +)"/u.exec(content);
-  return match?.[1]?.length ?? 2;
+function detectJsonIndent(content: string): string | number {
+  const match = /(?:\r\n?|\n)([ \t]+)"/u.exec(content);
+  return match?.[1] ?? (/[\r\n]/u.test(content.trimEnd()) ? 2 : 0);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

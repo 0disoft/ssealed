@@ -93,6 +93,28 @@ describe("runner generation", () => {
     expect(pkg.scripts.typecheck).toContain("typecheck is not configured");
   });
 
+  it.each(["\t", "    ", ""])("preserves package.json indentation %j while merging validation scripts", async (indent) => {
+    const dir = await tempDir();
+    const packagePath = path.join(dir, "package.json");
+    await writeFile(packagePath, `${JSON.stringify({ name: "example", scripts: { test: "custom-test" } }, null, indent)}\n`);
+    const result = await executeScaffold({ target: dir, scope: "general", runner: "npm", dryRun: false, force: false });
+    expect(result.conflicts).toHaveLength(0);
+    const content = await readFile(packagePath, "utf8");
+    const pkg = JSON.parse(content) as PackageJsonForTest;
+    expect(pkg.name).toBe("example");
+    expect(pkg.scripts.test).toBe("custom-test");
+    expect(pkg.scripts.typecheck).toBe(validationScripts("npm").typecheck);
+    if (indent === "") {
+      expect(content.trimEnd()).not.toContain("\n");
+    } else {
+      expect(content).toContain(`\n${indent}"name"`);
+      expect(content).toContain(`\n${indent}${indent}"test"`);
+    }
+    const updated = await executeScaffold({ command: "update", target: dir, scope: "general", runner: "npm", dryRun: false, force: false });
+    expect(updated.written).not.toContain("package.json");
+    expect(await readFile(packagePath, "utf8")).toBe(content);
+  });
+
   it("force conflicts instead of overwriting user-owned package scripts", async () => {
     const dir = await tempDir();
     await writeFile(path.join(dir, "package.json"), '{\n  "scripts": {\n    "test": "custom-test"\n  }\n}\n');
