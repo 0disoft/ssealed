@@ -215,10 +215,10 @@ async function resolveInitScope(options: InitCliOptions): Promise<Scope | InitEr
     return resolveScopeValue(options.scope);
   }
 
-  if (options.yes) {
+  if (options.yes || options.json) {
     return {
       code: "MISSING_SCOPE",
-      message: `Missing --scope. --yes disables prompts, so pass one of: ${scopes.join(", ")}.`,
+      message: `Missing --scope. ${options.yes ? "--yes" : "--json"} disables prompts, so pass one of: ${scopes.join(", ")}.`,
       showExamples: true,
     };
   }

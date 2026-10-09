@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import readline from "node:readline/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli-main.js";
 import { gitignoreBlock } from "../src/templates/index.js";
@@ -22,6 +23,36 @@ async function tempDir(): Promise<string> {
 }
 
 describe("CLI argument parsing", () => {
+  it.each(["init", "adopt"])("never prompts for a missing scope in JSON-mode %s, even in a terminal", async (command) => {
+    const dir = await tempDir();
+    const inputTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    const outputTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+    const prompt = vi.spyOn(readline, "createInterface").mockImplementation(() => {
+      throw new Error("JSON mode must not open an interactive prompt.");
+    });
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main([command, dir, "--json"])).resolves.toBe(1);
+      expect(prompt).not.toHaveBeenCalled();
+      expect(stderr).not.toHaveBeenCalled();
+      const payload = JSON.parse(stdout.mock.calls.map(([chunk]) => String(chunk)).join(""));
+      expect(payload).toMatchObject({ ok: false, error: { code: "MISSING_SCOPE" } });
+      expect(payload.error.message).toContain("--json disables prompts");
+      await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
+    } finally {
+      prompt.mockRestore();
+      stderr.mockRestore();
+      stdout.mockRestore();
+      if (inputTTY === undefined) Reflect.deleteProperty(process.stdin, "isTTY");
+      else Object.defineProperty(process.stdin, "isTTY", inputTTY);
+      if (outputTTY === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
+      else Object.defineProperty(process.stdout, "isTTY", outputTTY);
+    }
+  });
+
   it("rejects more than one init target instead of silently ignoring extra positionals", async () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);

@@ -258,7 +258,7 @@ ssealed eject runner ./my-service --json
 ssealed eject runner ./my-service --dry-run --json
 ```
 
-`--json` prints a public result shape with command, target, scope, profile, repoType, addons, density, runner, file paths, kinds, ownership, presence, actions, lifecycle statuses, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.
+`--json` disables interactive prompts, including when run in a terminal. Pass `--scope` explicitly for `init` and `adopt`; a missing scope returns a `MISSING_SCOPE` JSON error. It prints a public result shape with command, target, scope, profile, repoType, addons, density, runner, file paths, kinds, ownership, presence, actions, lifecycle statuses, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.
 
 ## Why `.agents/skills`
 

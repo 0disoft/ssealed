@@ -31,7 +31,7 @@ Options:
   --break-stale-lock
                Remove an old scaffold lock after verifying it is stale.
   --strict     Make doctor fail on any accepted-checksum drift.
-  --json       Print machine-readable JSON.
+  --json       Print machine-readable JSON without interactive prompts.
 `;
 
 const commandHelpText = `ssealed init|adopt|update|upgrade|doctor|eject [target]
