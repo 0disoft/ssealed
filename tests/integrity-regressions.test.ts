@@ -40,6 +40,30 @@ async function runJson(args: readonly string[]): Promise<{ readonly code: number
 }
 
 describe("managed surface integrity", () => {
+  it.each([
+    ["update"],
+    ["upgrade"],
+    ["eject", "runner"],
+    ["update", "--dry-run"],
+    ["upgrade", "--dry-run"],
+    ["eject", "runner", "--dry-run"],
+  ])("does not create missing target directories for %j", async (...args) => {
+    const parent = await tempDir();
+    const missingParent = path.join(parent, "missing-parent");
+    const target = path.join(missingParent, "target");
+    const result = await runJson([...args, target]);
+    expect(result).toMatchObject({ code: 1, payload: { ok: false, error: { code: "MISSING_MANIFEST" } } });
+    await expect(lstat(missingParent)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects an invalid eject subject without creating a target directory", async () => {
+    const parent = await tempDir();
+    const target = path.join(parent, "missing-target");
+    const result = await runJson(["eject", "unknown", target]);
+    expect(result).toMatchObject({ code: 1, payload: { error: { code: "INVALID_EJECT_TARGET" } } });
+    await expect(lstat(target)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("clears all addons during upgrade without deleting their documents", async () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--repo-type", "cli-tool", "--addon", "docs-site", "--yes"])).code).toBe(0);

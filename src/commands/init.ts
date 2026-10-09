@@ -59,8 +59,28 @@ export async function runScaffoldCommand(options: InitCliOptions & { readonly co
   if (options.command === "doctor") {
     return withScaffoldReadLock(target, () => runDoctor(target, options.json, options.strict ?? false));
   }
+  if (options.command === "eject" && options.eject !== "runner") {
+    return writeEjectError(options.json, {
+      code: "INVALID_EJECT_TARGET",
+      message: "Invalid eject target. Use: ssealed eject runner [target]",
+    });
+  }
+  if (options.command !== "init" && options.command !== "adopt") {
+    const targetStat = await lstat(target).catch((error: unknown) => {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    });
+    if (targetStat === undefined) {
+      return writeInitError(options, {
+        code: "MISSING_MANIFEST",
+        message: "Missing .ssealed/manifest.json. Use ssealed init to create a new scaffold first.",
+      });
+    }
+  }
   if (options.command === "eject") {
-    const run = (): Promise<number> => runEject(target, options.eject, options.json, options.dryRun);
+    const run = (): Promise<number> => runEject(target, options.json, options.dryRun);
     return options.dryRun ? withScaffoldReadLock(target, run) : withScaffoldWriteLock(target, options.breakStaleLock ?? false, run);
   }
   const scaffoldCommand = options.command;
@@ -354,14 +374,7 @@ function writeInitError(options: InitCliOptions, error: InitError): number {
   return 1;
 }
 
-async function runEject(target: string, subject: string | undefined, json: boolean, dryRun: boolean): Promise<number> {
-  if (subject !== "runner") {
-    return writeEjectError(json, {
-      code: "INVALID_EJECT_TARGET",
-      message: "Invalid eject target. Use: ssealed eject runner [target]",
-    });
-  }
-
+async function runEject(target: string, json: boolean, dryRun: boolean): Promise<number> {
   const previous = await readPreviousManifest(target);
   if (previous.settings === undefined) {
     return writeEjectError(json, {
