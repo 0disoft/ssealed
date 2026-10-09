@@ -40,6 +40,42 @@ async function runJson(args: readonly string[]): Promise<{ readonly code: number
 }
 
 describe("managed surface integrity", () => {
+  it.each(["init", "adopt", "update", "upgrade"] as const)("rejects linked generated directories while planning %s", async (command) => {
+    for (const dryRun of [true, false]) {
+      const dir = await tempDir();
+      const external = await tempDir();
+      const outsideDocs = path.join(external, "docs");
+      const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+      let originalManifest: string | undefined;
+      if (command === "update" || command === "upgrade") {
+        expect((await runJson(["init", dir, "--scope", "general", "--yes"])).code).toBe(0);
+        originalManifest = await readFile(manifestPath, "utf8");
+        await rename(path.join(dir, "docs"), outsideDocs);
+      } else {
+        await mkdir(outsideDocs);
+      }
+      const sentinel = path.join(outsideDocs, "sentinel.txt");
+      await writeFile(sentinel, "EXTERNAL_CONTENT\n");
+      await symlink(outsideDocs, path.join(dir, "docs"), process.platform === "win32" ? "junction" : "dir");
+      const args = [command, dir, "--yes", ...(dryRun ? ["--dry-run"] : [])];
+      if (command === "init" || command === "adopt") {
+        args.push("--scope", "general");
+      }
+
+      expect(await runJson(args)).toMatchObject({
+        code: 1, payload: { ok: false, error: { code: "PATH_SAFETY_ERROR" } },
+      });
+      if (originalManifest === undefined) {
+        await expect(lstat(manifestPath)).rejects.toMatchObject({ code: "ENOENT" });
+        await expect(lstat(path.join(dir, "AGENTS.md"))).rejects.toMatchObject({ code: "ENOENT" });
+      } else {
+        await expect(readFile(manifestPath, "utf8")).resolves.toBe(originalManifest);
+      }
+      await expect(readFile(sentinel, "utf8")).resolves.toBe("EXTERNAL_CONTENT\n");
+      await expect(lstat(path.join(dir, ".ssealed-init.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  });
+
   it.each([
     { args: ["update"] },
     { args: ["upgrade"] },

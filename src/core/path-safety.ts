@@ -81,7 +81,7 @@ export async function ensureDirectoryInsideTarget(targetRoot: string, directoryP
   await mkdir(path.resolve(rootReal, relative), { recursive: true });
 }
 
-export async function assertNoSymlinkInPath(targetRoot: string, filePath: string): Promise<void> {
+export async function assertNoSymlinkInParentPath(targetRoot: string, filePath: string): Promise<void> {
   const root = path.resolve(targetRoot);
   const rootStat = await lstatIfExists(root);
   if (rootStat?.isSymbolicLink()) {
@@ -104,7 +104,11 @@ export async function assertNoSymlinkInPath(targetRoot: string, filePath: string
       throw new SsealedError("PATH_SAFETY_ERROR", `Refusing to write through symlinked directory: ${toDisplayPath(path.relative(root, current))}`);
     }
   }
+}
 
+export async function assertNoSymlinkInPath(targetRoot: string, filePath: string): Promise<void> {
+  await assertNoSymlinkInParentPath(targetRoot, filePath);
+  const root = path.resolve(targetRoot);
   const existing = await lstat(filePath).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
       return undefined;

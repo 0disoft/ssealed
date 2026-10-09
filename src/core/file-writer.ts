@@ -4,7 +4,7 @@ import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { SsealedError } from "./errors.js";
 import { findGitignoreManagedBlocks } from "./gitignore-block.js";
-import { assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
+import { assertNoSymlinkInParentPath, assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
 import { getScaffoldInterruptContext, withScaffoldSignalHandling, type ScaffoldInterruptContext } from "./signals.js";
 import type { FileOwnership, FilePresence, ManifestFileStatus, PlannedFile, ScaffoldCommand, TemplateFile } from "./types.js";
 import { validationScripts } from "../templates/runners.js";
@@ -35,6 +35,7 @@ export async function planTemplateFile(params: {
     | undefined;
 }): Promise<PlannedFile> {
   const targetPath = resolveInsideTarget(params.targetRoot, params.template.path);
+  await assertNoSymlinkInParentPath(params.targetRoot, targetPath);
   const existing = await readExistingPath(targetPath);
   const generatedContent = normalizeText(params.template.content);
   const ownership = params.previous?.ownership ?? defaultOwnership(params.template);
