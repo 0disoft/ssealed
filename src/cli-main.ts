@@ -150,7 +150,8 @@ export async function main(argv: readonly string[]): Promise<number> {
       );
       return 1;
     }
-    throw parsed;
+    process.stderr.write(`ssealed: ${parsed.message}\n`);
+    return 1;
   }
 
   if (parsed.values.help) {
@@ -274,7 +275,11 @@ function isCliCommand(value: string): value is CliCommand {
 }
 
 function wantsJson(argv: readonly string[]): boolean {
-  return argv.includes("--json");
+  for (const arg of argv) {
+    if (arg === "--") break;
+    if (arg === "--json") return true;
+  }
+  return false;
 }
 
 function classifyRuntimeError(error: unknown): {

@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.4`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.5`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -264,6 +264,7 @@ ssealed eject runner ./my-service --dry-run --json
 ```
 
 `--json` disables interactive prompts, including when run in a terminal. Pass `--scope` explicitly for `init` and `adopt`; a missing scope returns a `MISSING_SCOPE` JSON error. It prints a public result shape with command, target, scope, profile, repoType, addons, density, runner, file paths, kinds, ownership, presence, actions, lifecycle statuses, reasons, conflicts, warnings, and written paths. Runtime failures also return `{ "ok": false, "error": { "code": "...", "message": "..." } }`. JSON output does not include generated file contents or existing file contents.
+`--` ends option parsing. A following token such as `--json` is a positional value and does not enable JSON error output. Argument parsing failures in human mode are written to stderr and return exit code 1.
 
 ## Why `.agents/skills`
 

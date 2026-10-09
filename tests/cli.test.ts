@@ -23,6 +23,34 @@ async function tempDir(): Promise<string> {
 }
 
 describe("CLI argument parsing", () => {
+  it.each([
+    { args: ["unknown", "--", "--json"], json: false, code: "UNKNOWN_COMMAND" },
+    { args: ["unknown", "--json", "--", "--json"], json: true, code: "UNKNOWN_COMMAND" },
+    { args: ["init", "--unexpected", "--", "--json"], json: false, code: "INVALID_ARGUMENT" },
+    { args: ["init", "--unexpected", "--json"], json: true, code: "INVALID_ARGUMENT" },
+    { args: ["init", "--scope"], json: false, code: "INVALID_ARGUMENT" },
+  ])("reports argument errors using only JSON options before the separator: $args", async ({ args, json, code }) => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await expect(main(args)).resolves.toBe(1);
+      if (json) {
+        expect(stderr).not.toHaveBeenCalled();
+        expect(JSON.parse(stdout.mock.calls.map(([chunk]) => String(chunk)).join(""))).toMatchObject({ ok: false, error: { code } });
+      } else {
+        expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join("")).toContain("ssealed:");
+        if (code === "UNKNOWN_COMMAND") {
+          expect(stdout.mock.calls.map(([chunk]) => String(chunk)).join("")).toContain("Usage:");
+        } else {
+          expect(stdout).not.toHaveBeenCalled();
+        }
+      }
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  });
+
   it.each(["init", "adopt"])("never prompts for a missing scope in JSON-mode %s, even in a terminal", async (command) => {
     const dir = await tempDir();
     const inputTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
