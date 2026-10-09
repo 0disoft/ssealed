@@ -596,7 +596,7 @@ async function acquireScaffoldLock<T>(
       throw new SsealedError(
         "LOCK_EXISTS",
         breakStaleLock
-          ? "Existing scaffold lock is not stale. Refusing to remove .ssealed-init.lock while another ssealed command may still be running."
+          ? "Existing scaffold lock is not stale or its owning process cannot be verified. Refusing to remove .ssealed-init.lock while another ssealed command may still be running."
           : lockExistsMessage,
       );
     }
@@ -727,10 +727,10 @@ function isStaleScaffoldLock(metadata: ScaffoldLockMetadata | undefined): boolea
   if (!Number.isFinite(createdAtMs) || Date.now() - createdAtMs < staleLockAgeMs) {
     return false;
   }
-  return !isLockProcessAlive(metadata);
+  return isLockProcessStopped(metadata);
 }
 
-function isLockProcessAlive(metadata: ScaffoldLockMetadata): boolean {
+function isLockProcessStopped(metadata: ScaffoldLockMetadata): boolean {
   if (metadata.hostname !== undefined && metadata.hostname !== hostname()) {
     return false;
   }
@@ -739,8 +739,8 @@ function isLockProcessAlive(metadata: ScaffoldLockMetadata): boolean {
   }
   try {
     process.kill(metadata.pid, 0);
-    return true;
+    return false;
   } catch (error: unknown) {
-    return isNodeError(error) && error.code === "EPERM";
+    return isNodeError(error) && error.code === "ESRCH";
   }
 }

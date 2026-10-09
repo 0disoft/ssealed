@@ -1,5 +1,5 @@
 import { chmod, lstat, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli-main.js";
@@ -370,6 +370,44 @@ describe("managed surface integrity", () => {
       expect(result.code).toBe(1);
       expect(await readFile(manifestPath, "utf8")).toBe(originalManifest);
       expect(await readFile(path.join(dir, "package.json"), "utf8")).toBe(originalPackage);
+    }
+  });
+});
+
+describe("stale lock ownership", () => {
+  it.each([
+    { hostname: `${hostname()}-other`, pid: 999999999 },
+    { hostname: hostname() },
+    { hostname: hostname(), pid: 0 },
+    { hostname: hostname(), pid: -1 },
+    { hostname: hostname(), pid: 1.5 },
+    { hostname: hostname(), pid: 2 ** 31 },
+  ])("preserves an old lock whose process cannot be verified locally: %j", async (identity) => {
+    const dir = await tempDir();
+    const lockPath = path.join(dir, ".ssealed-init.lock");
+    const lockContent = `${JSON.stringify({ tool: "ssealed", ...identity, createdAt: "2020-01-01T00:00:00.000Z" })}\n`;
+    await writeFile(lockPath, lockContent);
+    const task = vi.fn(async () => "write-result");
+    await expect(withScaffoldWriteLock(dir, true, task)).rejects.toMatchObject({ code: "LOCK_EXISTS" });
+    expect(task).not.toHaveBeenCalled();
+    expect(await readFile(lockPath, "utf8")).toBe(lockContent);
+  });
+
+  it.each(["EPERM", "EACCES", "EIO"])("preserves an old lock when the process probe fails with %s", async (code) => {
+    const dir = await tempDir();
+    const lockPath = path.join(dir, ".ssealed-init.lock");
+    const lockContent = `${JSON.stringify({ tool: "ssealed", hostname: hostname(), pid: process.pid, createdAt: "2020-01-01T00:00:00.000Z" })}\n`;
+    await writeFile(lockPath, lockContent);
+    const probe = vi.spyOn(process, "kill").mockImplementation(() => {
+      throw Object.assign(new Error("Process state unavailable."), { code });
+    });
+    const task = vi.fn(async () => "write-result");
+    try {
+      await expect(withScaffoldWriteLock(dir, true, task)).rejects.toMatchObject({ code: "LOCK_EXISTS" });
+      expect(task).not.toHaveBeenCalled();
+      expect(await readFile(lockPath, "utf8")).toBe(lockContent);
+    } finally {
+      probe.mockRestore();
     }
   });
 });
