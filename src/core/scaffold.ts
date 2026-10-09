@@ -65,6 +65,24 @@ async function planScaffoldWithWarnings(
     };
   }
   const templates = templateFilesFor(options.scope, options.runner, profile, density, addons);
+  if (!isFreshScaffoldCommand(command)) {
+    const previousPaths = new Map([...previousManifest.files.keys()].map((filePath) => [filePath.toLowerCase(), filePath]));
+    const caseConflicts = templates.flatMap<PlannedFile>((template) => {
+      const previousPath = previousPaths.get(template.path.toLowerCase());
+      if (previousPath === undefined || previousPath === template.path) {
+        return [];
+      }
+      return [{
+        ...template,
+        action: "conflict",
+        content: normalizeText(template.content),
+        reason: `Manifest path ${previousPath} differs in letter case from generated path ${template.path}. Repair the recorded path casing before updating; ssealed cannot safely transfer ownership between these paths.`,
+      }];
+    });
+    if (caseConflicts.length > 0) {
+      return { files: caseConflicts, warnings: previousManifest.warnings };
+    }
+  }
   const planned = await mapWithConcurrency(
     templates,
     filesystemReadConcurrency,

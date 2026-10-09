@@ -40,6 +40,34 @@ async function runJson(args: readonly string[]): Promise<{ readonly code: number
 }
 
 describe("managed surface integrity", () => {
+  it.each(["update", "upgrade"] as const)("blocks manifest path case aliases before %s writes", async (command) => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--yes"])).code).toBe(0);
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { files: { path: string }[] };
+    const readme = manifest.files.find((file) => file.path === "README.md");
+    expect(readme).toBeDefined();
+    readme!.path = "readme.md";
+    const manifestContent = `${JSON.stringify(manifest, null, 2)}\n`;
+    await writeFile(manifestPath, manifestContent);
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+
+    for (const flags of [["--dry-run"], []]) {
+      const result = await runJson([command, dir, "--yes", ...flags]);
+      expect(result).toMatchObject({ code: 1, payload: { ok: false } });
+      expect(result.payload.conflicts).toEqual([
+        expect.objectContaining({ path: "README.md", action: "conflict", reason: expect.stringMatching(/readme\.md.*README\.md/u) }),
+      ]);
+      expect(result.payload.written).toEqual([]);
+      await expect(readFile(manifestPath, "utf8")).resolves.toBe(manifestContent);
+    }
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+    readme!.path = "README.md";
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    expect((await runJson([command, dir, "--yes"])).code).toBe(0);
+    expect((await runJson(["doctor", dir])).code).toBe(0);
+  });
+
   it.each(["init", "adopt", "update", "upgrade"] as const)("rejects linked generated directories while planning %s", async (command) => {
     for (const dryRun of [true, false]) {
       const dir = await tempDir();
