@@ -205,6 +205,7 @@ The manifest helps identify previously generated files, but it never authorizes 
 Template paths must be relative, normalized, and contained by the selected target directory.
 
 `ssealed` rejects absolute paths, parent traversal, Windows reserved names, unsafe path characters (including control characters), and `bunfig.toml` generation. Ordinary names containing dots, such as `..notes.md`, remain valid inside the target. Scaffold writes refuse symlinked generated directories and symlinked existing files instead of following them outside the target.
+All commands reject a symlink or Windows junction selected as the target directory itself, including `doctor` and dry runs. Select the real directory instead.
 
 Commands use `.ssealed-init.lock` to keep reads and writes for the same existing target mutually exclusive. If a previous process crashed and left an old lock, rerun a write command with `--break-stale-lock`; the lock is removed only when its metadata is old enough and its recorded process is not still alive on the current host.
 

@@ -1,11 +1,11 @@
-import { chmod, lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli-main.js";
 import { mapWithConcurrency } from "../src/core/concurrency.js";
 import { writePlannedFiles } from "../src/core/file-writer.js";
-import { withScaffoldWriteLock } from "../src/core/scaffold.js";
+import { withScaffoldReadLock, withScaffoldWriteLock } from "../src/core/scaffold.js";
 import { getScaffoldInterruptContext, withScaffoldSignalHandling } from "../src/core/signals.js";
 import { gitignoreBlock } from "../src/templates/index.js";
 import type { PlannedFile } from "../src/core/types.js";
@@ -40,6 +40,36 @@ async function runJson(args: readonly string[]): Promise<{ readonly code: number
 }
 
 describe("managed surface integrity", () => {
+  it.each([
+    ["doctor"],
+    ["init", "--scope", "general", "--dry-run"],
+    ["update", "--dry-run"],
+    ["upgrade", "--dry-run"],
+    ["eject", "runner", "--dry-run"],
+  ])("rejects a linked target root for %j", async (...args) => {
+    const parent = await tempDir();
+    const real = await tempDir();
+    expect((await runJson(["init", real, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);
+    const manifestPath = path.join(real, ".ssealed", "manifest.json");
+    const originalManifest = await readFile(manifestPath, "utf8");
+    const link = path.join(parent, "target-link");
+    await symlink(real, link, process.platform === "win32" ? "junction" : "dir");
+
+    const result = await runJson([...args, link]);
+    expect(result).toMatchObject({ code: 1, payload: { ok: false, error: { code: "PATH_SAFETY_ERROR" } } });
+    expect(await readFile(manifestPath, "utf8")).toBe(originalManifest);
+    await expect(lstat(path.join(real, ".ssealed-init.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects a dangling linked root before invoking a read task", async () => {
+    const parent = await tempDir();
+    const link = path.join(parent, "target-link");
+    await symlink(path.join(parent, "missing"), link, process.platform === "win32" ? "junction" : "dir");
+    const task = vi.fn(async () => "read-result");
+    await expect(withScaffoldReadLock(link, task)).rejects.toMatchObject({ code: "PATH_SAFETY_ERROR" });
+    expect(task).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["update"],
     ["upgrade"],

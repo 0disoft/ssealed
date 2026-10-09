@@ -83,6 +83,10 @@ export async function ensureDirectoryInsideTarget(targetRoot: string, directoryP
 
 export async function assertNoSymlinkInPath(targetRoot: string, filePath: string): Promise<void> {
   const root = path.resolve(targetRoot);
+  const rootStat = await lstatIfExists(root);
+  if (rootStat?.isSymbolicLink()) {
+    throw new SsealedError("PATH_SAFETY_ERROR", `Refusing to use symlinked target directory: ${toDisplayPath(root)}`);
+  }
   const parent = path.dirname(path.resolve(filePath));
   const relative = path.relative(root, parent);
   const parts = relative === "" ? [] : relative.split(path.sep).filter(Boolean);
