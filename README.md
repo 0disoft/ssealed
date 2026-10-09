@@ -179,6 +179,7 @@ Before each write, `ssealed` rechecks that the target file still matches the sta
 Every write run refreshes `.ssealed/manifest.json` with a schema version, generator version, generation timestamp, scope, profile, addons, density, runner, file paths, kinds, ownership, presence, lifecycle status, and SHA-256 checksums of normalized LF content. The legacy `version` field remains a generator-version alias for older clients; compatibility decisions use `generatorVersion` when present. The `profile` field is retained for manifest compatibility and represents the selected primary repository type.
 
 Manifest loading rejects unsafe or reserved file paths, duplicate file paths, and checksum fields that are not lowercase `sha256:` values with 64 hexadecimal digits. Invalid manifests are reported as `INVALID_MANIFEST` before their entries reach planning or doctor checks.
+The manifest itself must be a regular file no larger than 1 MiB. Directories and other non-regular entries at `.ssealed/manifest.json` are rejected before reading or parsing their contents.
 
 - Missing `schemaVersion` is treated as the legacy schema. `schemaVersion: 1` is the current schema.
 - Unknown future schema versions fail closed as `INVALID_MANIFEST`; ssealed never guesses how to interpret them.

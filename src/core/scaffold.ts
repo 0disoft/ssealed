@@ -177,6 +177,9 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
   if (manifestStat === undefined) {
     return { version: undefined, files: new Map(), settings: undefined, warnings: [] };
   }
+  if (!manifestStat.isFile()) {
+    return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json is not a regular file.")] };
+  }
   if (manifestStat.size > maxManifestBytes) {
     return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json exceeds the supported 1 MiB size limit.")] };
   }

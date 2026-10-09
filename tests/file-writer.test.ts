@@ -418,6 +418,18 @@ describe("file writer behavior", () => {
     ]);
   });
 
+  it("treats a directory at the manifest path as invalid without attempting to read it", async () => {
+    const dir = await tempDir();
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    await mkdir(manifestPath, { recursive: true });
+    await expectInvalidManifest(dir);
+    const result = await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });
+    expect(result.conflicts).toEqual([expect.objectContaining({ path: ".ssealed/manifest.json" })]);
+    expect(result.written).toEqual([]);
+    expect((await lstat(manifestPath)).isDirectory()).toBe(true);
+    await expect(lstat(path.join(dir, "AGENTS.md"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("refuses init when a valid scaffold manifest already exists", async () => {
     const dir = await tempDir();
     await executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false });

@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,6 +40,13 @@ async function runJson(args: readonly string[]): Promise<{ readonly code: number
 }
 
 describe("managed surface integrity", () => {
+  it("reports INVALID_MANIFEST when doctor encounters a directory at the manifest path", async () => {
+    const dir = await tempDir();
+    await mkdir(path.join(dir, ".ssealed", "manifest.json"), { recursive: true });
+    const result = await runJson(["doctor", dir]);
+    expect(result).toMatchObject({ code: 1, payload: { ok: false, error: { code: "INVALID_MANIFEST" } } });
+  });
+
   it.each([
     ["doctor"],
     ["init", "--scope", "general", "--dry-run"],
