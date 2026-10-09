@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.5`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.6`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -96,6 +96,7 @@ ssealed init --help
 Repeating `eject runner` after ownership is already project-owned reports `unchanged` in both human and JSON output and leaves the manifest and package files untouched.
 
 `--profile` remains accepted as an alias for `--repo-type`.
+`init` and `adopt` validate repository type, addons, density, and runner before asking for a missing scope. Invalid settings fail immediately without opening an interactive prompt or creating scaffold files.
 When `upgrade --repo-type` promotes an inherited addon to the primary repository type, that addon is removed from the inherited addon list and other addons remain enabled. Explicitly passing the primary type as `--addon` still returns `INVALID_ADDON`.
 
 ## Scope Matrix

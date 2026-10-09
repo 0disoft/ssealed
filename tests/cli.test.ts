@@ -51,24 +51,35 @@ describe("CLI argument parsing", () => {
     }
   });
 
-  it.each(["init", "adopt"])("never prompts for a missing scope in JSON-mode %s, even in a terminal", async (command) => {
+  it.each(["init", "adopt"].flatMap((command) => [
+    { command, args: ["--json"], json: true, message: "--json disables prompts" },
+    { command, args: ["--runner", "bun"], json: false, message: "Invalid runner: bun" },
+    { command, args: ["--density", "huge"], json: false, message: "Invalid density: huge" },
+    { command, args: ["--repo-type", "unknown"], json: false, message: "Invalid repository type: unknown" },
+    { command, args: ["--addon", "generic"], json: false, message: "Invalid addon: generic" },
+  ]))("never prompts for invalid or non-interactive input in $command: $args", async ({ command, args, json, message }) => {
     const dir = await tempDir();
     const inputTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
     const outputTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
     Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
     Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
     const prompt = vi.spyOn(readline, "createInterface").mockImplementation(() => {
-      throw new Error("JSON mode must not open an interactive prompt.");
+      throw new Error("Invalid or non-interactive input must not open a prompt.");
     });
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await expect(main([command, dir, "--json"])).resolves.toBe(1);
+      await expect(main([command, dir, ...args])).resolves.toBe(1);
       expect(prompt).not.toHaveBeenCalled();
-      expect(stderr).not.toHaveBeenCalled();
-      const payload = JSON.parse(stdout.mock.calls.map(([chunk]) => String(chunk)).join(""));
-      expect(payload).toMatchObject({ ok: false, error: { code: "MISSING_SCOPE" } });
-      expect(payload.error.message).toContain("--json disables prompts");
+      if (json) {
+        expect(stderr).not.toHaveBeenCalled();
+        const payload = JSON.parse(stdout.mock.calls.map(([chunk]) => String(chunk)).join(""));
+        expect(payload).toMatchObject({ ok: false, error: { code: "MISSING_SCOPE" } });
+        expect(payload.error.message).toContain(message);
+      } else {
+        expect(stdout).not.toHaveBeenCalled();
+        expect(stderr.mock.calls.map(([chunk]) => String(chunk)).join("")).toContain(message);
+      }
       await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
     } finally {
       prompt.mockRestore();

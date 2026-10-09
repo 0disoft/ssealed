@@ -156,10 +156,6 @@ async function resolveScaffoldSettings(
   previousManifest?: PreviousManifestState,
 ): Promise<PreviousManifestSettings | InitError> {
   if (options.command === "init" || options.command === "adopt") {
-    const scope = await resolveInitScope(options);
-    if (isInitError(scope)) {
-      return scope;
-    }
     const repositoryShape = resolveRepositoryShape(options);
     if (isInitError(repositoryShape)) {
       return repositoryShape;
@@ -171,6 +167,10 @@ async function resolveScaffoldSettings(
     const runner = resolveRunner(options.runner);
     if (isInitError(runner)) {
       return runner;
+    }
+    const scope = await resolveInitScope(options);
+    if (isInitError(scope)) {
+      return scope;
     }
     return {
       scope,
