@@ -125,10 +125,28 @@ describe("managed surface integrity", () => {
   it("can promote the last addon to the primary repository type", async () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--repo-type", "cli-tool", "--addon", "docs-site", "--yes"])).code).toBe(0);
-    const upgraded = await runJson(["upgrade", dir, "--repo-type", "docs-site", "--clear-addons", "--yes"]);
+    const upgraded = await runJson(["upgrade", dir, "--repo-type", "docs-site", "--yes"]);
     expect(upgraded.code).toBe(0);
     expect(upgraded.payload).toMatchObject({ profile: "docs-site", addons: [] });
     expect((await runJson(["doctor", dir])).code).toBe(0);
+  });
+
+  it("promotes an inherited addon while preserving other addons and customized documents", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--repo-type", "cli-tool", "--addon", "docs-site", "--addon", "github-action"])).code).toBe(0);
+    const docPath = path.join(dir, "docs", "docs-site", "information-architecture.md");
+    const customDoc = "# Project documentation\n\nKeep this structure.\n";
+    await writeFile(docPath, customDoc);
+    const upgraded = await runJson(["upgrade", dir, "--repo-type", "docs-site"]);
+    expect(upgraded).toMatchObject({ code: 0, payload: { profile: "docs-site", addons: ["github-action"] } });
+    expect(await readFile(docPath, "utf8")).toBe(customDoc);
+    expect((await runJson(["doctor", dir, "--strict"])).code).toBe(0);
+
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const originalManifest = await readFile(manifestPath, "utf8");
+    const explicitDuplicate = await runJson(["upgrade", dir, "--repo-type", "docs-site", "--addon", "docs-site"]);
+    expect(explicitDuplicate).toMatchObject({ code: 1, payload: { error: { code: "INVALID_ADDON" } } });
+    expect(await readFile(manifestPath, "utf8")).toBe(originalManifest);
   });
 
   it("keeps user package scripts outside runner ownership across init and update", async () => {

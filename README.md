@@ -96,6 +96,7 @@ ssealed init --help
 Repeating `eject runner` after ownership is already project-owned reports `unchanged` in both human and JSON output and leaves the manifest and package files untouched.
 
 `--profile` remains accepted as an alias for `--repo-type`.
+When `upgrade --repo-type` promotes an inherited addon to the primary repository type, that addon is removed from the inherited addon list and other addons remain enabled. Explicitly passing the primary type as `--addon` still returns `INVALID_ADDON`.
 
 ## Scope Matrix
 

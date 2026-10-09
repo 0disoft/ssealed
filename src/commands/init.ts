@@ -295,7 +295,11 @@ function resolveRepositoryShape(options: InitCliOptions, previous?: PreviousMani
   if (options.clearAddons && options.addon !== undefined) {
     return { code: "CONFLICTING_ADDON_OPTIONS", message: "Use either --clear-addons or --addon, not both." };
   }
-  const addonValues = options.clearAddons ? [] : options.addon === undefined ? previous?.addons ?? [] : toStringArray(options.addon);
+  const addonValues = options.clearAddons
+    ? []
+    : options.addon === undefined
+      ? (previous?.addons ?? []).filter((addon) => addon !== profile)
+      : toStringArray(options.addon);
   const parsedAddons: Addon[] = [];
   for (const value of addonValues) {
     if (value === "generic") {
