@@ -278,6 +278,38 @@ describe("managed surface integrity", () => {
     expect((await runJson(["doctor", dir])).code).toBe(0);
   });
 
+  it("leaves the manifest untouched when ejecting an already project-owned runner", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);
+    expect((await runJson(["eject", "runner", dir])).code).toBe(0);
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.generatedAt = "2020-01-01T00:00:00.000Z";
+    const manifestContent = `${JSON.stringify(manifest, null, 2)}\n`;
+    await writeFile(manifestPath, manifestContent);
+    const packagePath = path.join(dir, "package.json");
+    const pkg = JSON.parse(await readFile(packagePath, "utf8"));
+    pkg.scripts.lint = "echo project-owned";
+    const packageContent = `${JSON.stringify(pkg, null, 2)}\n`;
+    await writeFile(packagePath, packageContent);
+
+    for (const flags of [["--dry-run"], []]) {
+      const result = await runJson(["eject", "runner", dir, ...flags]);
+      expect(result).toMatchObject({ code: 0, payload: { ok: true, status: "unchanged" } });
+      expect(await readFile(manifestPath, "utf8")).toBe(manifestContent);
+      expect(await readFile(packagePath, "utf8")).toBe(packageContent);
+    }
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      expect(await main(["eject", "runner", dir])).toBe(0);
+      expect(stdout.mock.calls.map(([chunk]) => String(chunk)).join("")).toContain("- unchanged: package.json");
+      expect(await readFile(manifestPath, "utf8")).toBe(manifestContent);
+    } finally {
+      stdout.mockRestore();
+    }
+    expect((await runJson(["doctor", dir, "--strict"])).code).toBe(0);
+  });
+
   it("rejects unknown future manifest schemas instead of guessing compatibility", async () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);

@@ -400,6 +400,9 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
       message: "This scaffold does not record a package.json runner block to eject.",
     });
   }
+  if (previousPackage.ownership === "project-owned") {
+    return writeEjectResult(target, json, dryRun, "unchanged");
+  }
 
   const manifestPath = resolveInsideTarget(target, ".ssealed/manifest.json");
   await assertNoSymlinkInPath(target, manifestPath);
@@ -459,6 +462,11 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
     });
   }
 
+  return writeEjectResult(target, json, dryRun, dryRun ? "planned" : "project-owned");
+}
+
+function writeEjectResult(target: string, json: boolean, dryRun: boolean, status: "unchanged" | "planned" | "project-owned"): number {
+  const reason = status === "unchanged" ? "Runner block is already project-owned." : "Runner block is explicitly marked as project-owned.";
   const payload = {
     ok: true,
     command: "eject",
@@ -467,8 +475,8 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
     dryRun,
     path: "package.json",
     ownership: "project-owned",
-    status: previousPackage.ownership === "project-owned" ? "unchanged" : dryRun ? "planned" : "project-owned",
-    reason: "Runner block is explicitly marked as project-owned.",
+    status,
+    reason,
   };
   if (json) {
     output.write(`${JSON.stringify(payload, null, 2)}\n`);
@@ -479,7 +487,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
         `Target: ${target}`,
         "Subject: runner",
         `Dry run: ${dryRun ? "yes" : "no"}`,
-        `- ${dryRun ? "planned" : "project-owned"}: package.json (Runner block is explicitly marked as project-owned.)`,
+        `- ${status}: package.json (${reason})`,
       ].join("\n") + "\n",
     );
   }
