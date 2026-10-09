@@ -330,7 +330,11 @@ function isManagedScripts(value: unknown): value is Readonly<Record<string, stri
 }
 
 function isSafeManifestFilePath(value: unknown): value is string {
-  if (typeof value !== "string" || value === ".ssealed/manifest.json" || value === ".ssealed-init.lock") {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const pathKey = value.toLowerCase();
+  if (pathKey === ".ssealed/manifest.json" || pathKey === ".ssealed-init.lock") {
     return false;
   }
   try {
@@ -346,7 +350,7 @@ function isManifestChecksum(value: unknown): value is string {
 }
 
 function hasUniqueManifestPaths(files: readonly ManifestFileLike[]): boolean {
-  return new Set(files.map((file) => file.path)).size === files.length;
+  return new Set(files.map((file) => file.path.toLowerCase())).size === files.length;
 }
 
 function isDensity(value: unknown): value is Density {

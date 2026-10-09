@@ -394,6 +394,35 @@ describe("file writer behavior", () => {
     await expectInvalidManifest(dir);
   });
 
+  it.each([
+    ["README.md", "readme.md"],
+    ["docs/guide.md", "DOCS/GUIDE.md"],
+  ])("rejects case-colliding manifest paths %s and %s before updating files", async (left, right) => {
+    const dir = await tempDir();
+    await writeManifestFiles(dir, [manifestFile({ path: left }), manifestFile({ path: right })]);
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const originalManifest = await readFile(manifestPath, "utf8");
+    await expectInvalidManifest(dir);
+    const result = await executeScaffold({ command: "update", target: dir, scope: "general", runner: "none", dryRun: false, force: true });
+    expect(result.conflicts).toEqual([expect.objectContaining({ path: ".ssealed/manifest.json" })]);
+    expect(result.written).toEqual([]);
+    expect(await readFile(manifestPath, "utf8")).toBe(originalManifest);
+  });
+
+  it.each([".SSEALED/manifest.json", ".ssealed/MANIFEST.JSON", ".SSEALED-INIT.LOCK"])("rejects case aliases of reserved metadata: %s", async (filePath) => {
+    const dir = await tempDir();
+    await writeManifestFiles(dir, [manifestFile({ path: filePath })]);
+    await expectInvalidManifest(dir);
+  });
+
+  it("preserves the spelling of distinct portable manifest paths", async () => {
+    const dir = await tempDir();
+    await writeManifestFiles(dir, [manifestFile({ path: "README.md" }), manifestFile({ path: "docs/README.md" })]);
+    const previous = await readPreviousManifest(dir);
+    expect(previous.warnings).toEqual([]);
+    expect([...previous.files.keys()]).toEqual(["README.md", "docs/README.md"]);
+  });
+
   it("rejects malformed manifest checksums", async () => {
     const dir = await tempDir();
     await writeManifestFiles(dir, [manifestFile({ generatedChecksum: "sha256:not-a-digest" })]);
