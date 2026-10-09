@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { executeScaffold, planScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock } from "../src/core/scaffold.js";
 import { writePlannedFiles } from "../src/core/file-writer.js";
-import { assertSafeTemplatePath } from "../src/core/path-safety.js";
+import { assertSafeTemplatePath, resolveInsideTarget } from "../src/core/path-safety.js";
 import { gitignoreBlock } from "../src/templates/index.js";
 import type { PlannedFile } from "../src/core/types.js";
 
@@ -296,6 +296,17 @@ describe("file writer behavior", () => {
     expect(() => assertSafeTemplatePath("docs/CON.md")).toThrow();
   });
 
+  it.each(["..notes.md", "...notes/README.md", "docs/a..b.md"])("resolves safe names containing dots inside the target: %s", async (filePath) => {
+    const dir = await tempDir();
+    expect(resolveInsideTarget(dir, filePath)).toBe(path.join(dir, ...filePath.split("/")));
+    await writePlannedFiles(dir, [{ path: filePath, kind: "document", action: "create", content: "GENERATED\n" }]);
+    expect(await readFile(path.join(dir, filePath), "utf8")).toBe("GENERATED\n");
+  });
+
+  it.each(Array.from({ length: 32 }, (_, code) => code))("rejects control character %i before it reaches filesystem paths", (code) => {
+    expect(() => assertSafeTemplatePath(`docs/unsafe${String.fromCharCode(code)}name.md`)).toThrow();
+  });
+
   it("plans manifest checksums", async () => {
     const dir = await tempDir();
     const planned = await planScaffold({ target: dir, scope: "general", runner: "none", dryRun: true, force: false });
@@ -367,6 +378,10 @@ describe("file writer behavior", () => {
     const unsafeDir = await tempDir();
     await writeManifestFiles(unsafeDir, [manifestFile({ path: "../escape" })]);
     await expectInvalidManifest(unsafeDir);
+
+    const controlDir = await tempDir();
+    await writeManifestFiles(controlDir, [manifestFile({ path: "docs/unsafe\nname.md" })]);
+    await expectInvalidManifest(controlDir);
 
     const reservedDir = await tempDir();
     await writeManifestFiles(reservedDir, [manifestFile({ path: ".ssealed/manifest.json" })]);

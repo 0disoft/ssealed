@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.0`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.1`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -202,7 +202,7 @@ The manifest helps identify previously generated files, but it never authorizes 
 
 Template paths must be relative, normalized, and contained by the selected target directory.
 
-`ssealed` rejects absolute paths, parent traversal, Windows reserved names, unsafe path characters, and `bunfig.toml` generation. Scaffold writes refuse symlinked generated directories and symlinked existing files instead of following them outside the target.
+`ssealed` rejects absolute paths, parent traversal, Windows reserved names, unsafe path characters (including control characters), and `bunfig.toml` generation. Ordinary names containing dots, such as `..notes.md`, remain valid inside the target. Scaffold writes refuse symlinked generated directories and symlinked existing files instead of following them outside the target.
 
 Commands use `.ssealed-init.lock` to keep reads and writes for the same existing target mutually exclusive. If a previous process crashed and left an old lock, rerun a write command with `--break-stale-lock`; the lock is removed only when its metadata is old enough and its recorded process is not still alive on the current host.
 

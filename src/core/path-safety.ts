@@ -27,7 +27,7 @@ export function assertSafeTemplatePath(templatePath: string): void {
   }
 
   for (const part of parts) {
-    if (windowsDevicePattern.test(part) || /[<>:"|?*]/u.test(part) || /[. ]$/u.test(part)) {
+    if (windowsDevicePattern.test(part) || /[\u0000-\u001f<>:"|?*]/u.test(part) || /[. ]$/u.test(part)) {
       throw new SsealedError("PATH_SAFETY_ERROR", `Template path contains a platform-unsafe segment: ${templatePath}`);
     }
   }
@@ -42,7 +42,7 @@ export function resolveInsideTarget(targetRoot: string, templatePath: string): s
   const resolvedRoot = path.resolve(targetRoot);
   const resolvedTarget = path.resolve(resolvedRoot, ...templatePath.split("/"));
   const relative = path.relative(resolvedRoot, resolvedTarget);
-  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
+  if (relative === "" || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new SsealedError("PATH_SAFETY_ERROR", `Resolved path escapes target directory: ${templatePath}`);
   }
   return resolvedTarget;
