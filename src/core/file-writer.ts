@@ -347,6 +347,7 @@ async function writeOnePlannedFile(
     ...(expectedState.kind === "file" ? { mode: expectedState.mode } : {}),
     beforeCommit: async () => {
       await hooks.beforeCommit?.(file.path, targetPath);
+      await assertNoSymlinkInPath(targetRoot, targetPath);
       await assertExpectedWriteState(targetPath, file);
     },
     onCommit: () => {
@@ -658,6 +659,7 @@ async function rollbackWrittenFiles(
     }
     const targetPath = resolveInsideTarget(targetRoot, relativePath);
     try {
+      await assertNoSymlinkInPath(targetRoot, targetPath);
       const current = await readExistingPath(targetPath);
       if (current.kind === "missing") {
         continue;

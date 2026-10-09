@@ -1,4 +1,4 @@
-import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -474,6 +474,63 @@ describe("bounded filesystem work", () => {
 });
 
 describe("file publication integrity", () => {
+  it.each(["create", "overwrite"] as const)("rejects a replaced parent directory before %s publication", async (action) => {
+    const dir = await tempDir();
+    const external = await tempDir();
+    const parent = path.join(dir, "owned");
+    const moved = path.join(external, "moved");
+    await mkdir(parent);
+    if (action === "overwrite") {
+      await writeFile(path.join(parent, "victim.txt"), "ORIGINAL\n");
+    }
+    const planned: PlannedFile = {
+      path: "owned/victim.txt", kind: "document", action, content: "GENERATED\n",
+      ...(action === "overwrite" ? { existingContent: "ORIGINAL\n" } : {}),
+    };
+
+    await expect(writePlannedFiles(dir, [planned], {
+      beforeCommit: async () => {
+        await rename(parent, moved);
+        await symlink(moved, parent, process.platform === "win32" ? "junction" : "dir");
+      },
+    })).rejects.toThrow(/symlink/iu);
+    if (action === "overwrite") {
+      await expect(readFile(path.join(moved, "victim.txt"), "utf8")).resolves.toBe("ORIGINAL\n");
+    } else {
+      await expect(lstat(path.join(moved, "victim.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  });
+
+  it.each(["create", "overwrite"] as const)("does not follow a replaced parent during %s rollback", async (action) => {
+    const dir = await tempDir();
+    const external = await tempDir();
+    const parent = path.join(dir, "owned");
+    await mkdir(parent);
+    if (action === "overwrite") {
+      await writeFile(path.join(parent, "victim.txt"), "ORIGINAL\n");
+    }
+    await writeFile(path.join(external, "victim.txt"), "GENERATED\n");
+    const files: readonly PlannedFile[] = [
+      {
+        path: "owned/victim.txt", kind: "document", action, content: "GENERATED\n",
+        ...(action === "overwrite" ? { existingContent: "ORIGINAL\n" } : {}),
+      },
+      { path: ".ssealed/manifest.json", kind: "manifest", action: "create", content: "{}\n" },
+    ];
+
+    await expect(writePlannedFiles(dir, files, {
+      beforeCommit: async (relativePath) => {
+        if (relativePath === ".ssealed/manifest.json") {
+          await rename(parent, path.join(dir, "held"));
+          await symlink(external, parent, process.platform === "win32" ? "junction" : "dir");
+          throw new Error("injected manifest write failure");
+        }
+      },
+    })).rejects.toThrow(/recovery was incomplete.*symlink/iu);
+    await expect(readFile(path.join(external, "victim.txt"), "utf8")).resolves.toBe("GENERATED\n");
+    await expect(readFile(path.join(dir, "held", "victim.txt"), "utf8")).resolves.toBe("GENERATED\n");
+  });
+
   it("does not overwrite a file that appears after the temporary file is staged", async () => {
     const dir = await tempDir();
     const planned: PlannedFile = { path: "victim.txt", kind: "document", action: "create", content: "GENERATED\n" };
