@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.62`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.63`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -140,13 +140,17 @@ Architecture, backend, engineering, and operations document renderers require ex
 
 Contribution and development guides provide decisions for contribution scope, review evidence, delivery ownership, setup, exact project-owned commands, and safe local state management. Mobile, infrastructure, and data scope READMEs describe their own ownership boundaries and list the decision documents selected for the current density. These guides leave tools, commands, owners, and policies unselected until configured by the project; normal seeded-file protections continue to preserve edits and retired documents.
 
-Common feature, bugfix, refactor, operations-change, dependency-upgrade, and test-hardening skills have distinct discovery descriptions, relevant document links, and task-specific decision guidance. They distinguish requested behavior, demonstrated defects, behavior-preserving restructuring, active operating state, compatibility updates, and independent verification evidence. Validation gaps remain explicit, and these skills do not grant publication or external mutation authority beyond the project task. Existing skill paths, density, and seeded-file protections remain in place.
+Generated skills have distinct discovery descriptions, task-specific decision guidance, and links to documents present in the selected configuration.
 
-Backend API, DB migration, frontend UI, mobile app, infrastructure change, and data pipeline skills provide guidance for their contracts, state owners, interruption, and recovery. Frontend skills link the consumed API contract or the fullstack-owned API according to scope; mobile and data skills select the documents for the scope or repository type. Required links point to documents present at the skill's density, including minimal scaffolds.
+| Skill family | Skills | Decision focus |
+| --- | --- | --- |
+| Common tasks | `feature`, `bugfix`, `refactor`, `ops-change`, `dependency-upgrade`, `test-hardening` | Requested behavior, demonstrated defects, preserved contracts, active state, compatibility, and independent evidence. |
+| Scope work | `backend-api`, `db-migration`, `frontend-ui`, `mobile-app`, `infra-change`, `data-pipeline` | Contract authority, state ownership, interruption, and recovery for the selected scope. |
+| Packages and services | `cli-tool`, `api-service`, `library-package`, `sdk`, `worker-service` | Command completion, service lifecycle, distributed-package compatibility, upstream integration, and job acknowledgment or replay. |
+| Clients and hosts | `desktop-app`, `web-app`, `browser-extension`, `plugin` | Distribution, navigation, execution contexts, capabilities, and host lifecycle. |
+| Coordination and publishing | `infra-module`, `github-action`, `docs-site`, `monorepo` | Resource interfaces, runner authority, usable publication, and package dependency or artifact boundaries. |
 
-CLI tool, API service, library package, SDK, and worker service skills connect their public contracts to task-specific guidance. They cover command completion and output, service lifecycle and consumer migration, distributed-package compatibility, upstream SDK integration, and job acknowledgment or replay respectively. Their required references are available in minimal, standard, and strict scaffolds whether selected as a repository type or an addon.
-
-Desktop, web app, browser extension, and plugin skills address their distribution, navigation, execution-context, and host lifecycle contracts. Guidance connects interrupted work and user-state recovery to actual platform or host evidence, with explicit resource ownership and capability boundaries. Required document links remain valid when these repository types or addons are selected at minimal density.
+Frontend UI skills link the consumed API contract or the fullstack-owned API according to scope; mobile and data skills select the documents for the scope or repository type. Required references remain valid at each density where the skill is emitted, including minimal scaffolds. Existing skill paths, density, and seeded-file protections remain in place. Skills use the repository's validation routes, leave skipped or unconfigured checks explicit, and do not grant additional publication or external mutation authority.
 
 ## Repository Type Matrix
 

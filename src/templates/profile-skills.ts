@@ -91,6 +91,46 @@ const profileSkills: Readonly<Record<string, SkillDefinition>> = {
       "Verify relevant activation, capability denial, failure, and teardown behavior against supported hosts. Include state or host-version migration when affected and preserve user configuration through update or recovery.",
     ],
   },
+  "infra-module": {
+    description: "Change an infrastructure module's public interface, resource lifecycle, or environment integration with explicit state authority and consumer compatibility.",
+    sources: ["docs/infra-module/README.md", "docs/infra-module/module-interface.md", ".agents/checklists/infra-module.md"],
+    workflow: [
+      "Identify the module's owned resources, public inputs and outputs, external dependencies, and supported consumers. Keep shared resources and state authority distinct from module implementation and scaffold assumptions.",
+      "Trace input and interface changes to actual resource creation, replacement, import, or removal. Respect environment, credential, and concurrent state-writer boundaries before applying changes or taking over existing resources.",
+      "Account for drift, interruption, and partially applied effects. Determine which changes can be reversed and which need reconciliation or forward repair, preserving user-owned and shared state throughout recovery.",
+      "Verify affected consumer configurations and resource behavior with evidence appropriate to the authorized task. A valid module or successful plan alone does not prove applied state; report remaining activation, compatibility, and recovery gaps.",
+    ],
+  },
+  "github-action": {
+    description: "Change a GitHub Action's caller contract, runner effects, or execution lifecycle with explicit input handling, token authority, isolation, and cleanup evidence.",
+    sources: ["docs/github-action/README.md", "docs/github-action/action-contract.md", "docs/github-action/inputs-and-outputs.md", ".agents/checklists/github-action.md"],
+    workflow: [
+      "Identify supported caller workflows, runner environments, inputs, outputs, and permitted workspace or external effects. Separate contributor-controlled events and data from the authority needed for privileged operations.",
+      "Validate and normalize inputs, including absent, empty, multiline, and path values where relevant. Keep data separate from executable syntax and prevent credentials from appearing in outputs, logs, summaries, caches, or artifacts.",
+      "Use the task's existing token and publication authority and isolate concurrent runs and mutable state. Define interrupted-run cleanup, output timing, and safe retries according to actual effects rather than assuming rerunning a failed job is harmless.",
+      "Verify relevant callers on supported runners, including affected invalid-input, failure, and cancellation paths. Distinguish successful execution, published outputs, external completion, and cleanup, and keep untested matrix entries explicit.",
+    ],
+  },
+  "docs-site": {
+    description: "Change documentation navigation, versioned content, or publication with explicit canonical authority, durable reader links, and evidence of usable published content.",
+    sources: ["docs/docs-site/README.md", "docs/docs-site/information-architecture.md", ".agents/checklists/docs-site.md"],
+    workflow: [
+      "Identify reader tasks, canonical content owners, navigation, and supported version or locale boundaries. Preserve useful addresses and anchors or provide the agreed migration and redirect behavior when pages move.",
+      "Keep instructions, examples, and reference material aligned with their authoritative product or interface contracts. Resolve conflicting copies and stale variants rather than presenting scaffold assumptions as implemented behavior.",
+      "When publication is in scope, identify the reviewed source and built artifact, preview isolation, promotion authority, and partial-publication recovery. Preserve existing publication boundaries; a documentation edit does not grant additional deployment authority.",
+      "Verify relevant reader journeys, links, examples, and navigation. For an authorized publication, check the visible content, redirects, caching, and search state where affected rather than treating build success as proof of delivery.",
+    ],
+  },
+  monorepo: {
+    description: "Change workspace boundaries, shared tooling, or coordinated packages with explicit package authority, dependency direction, artifact ownership, and consumer evidence.",
+    sources: ["docs/monorepo/README.md", "docs/monorepo/workspace-boundaries.md", ".agents/checklists/monorepo.md"],
+    workflow: [
+      "Identify package roots, responsibilities, public surfaces, and the nearest working rules for affected files. Separate package authority from root tooling and keep independent release or deployment units visible.",
+      "Trace allowed dependency edges and consumers of shared configuration, schemas, or generated artifacts. Avoid private cross-package imports, cycles, or duplicate sources of truth that bypass the agreed ownership boundaries.",
+      "Coordinate compatible changes and any required version or migration sequence across affected packages. Assign mutable caches, temporary outputs, and build artifacts to owners so parallel package tasks do not overwrite each other's state.",
+      "Choose evidence for affected packages and consumers in dependency order using configured checks and actual artifacts. Report unresolved integration or release work; a root command passing alone does not establish every package's independent usability.",
+    ],
+  },
 };
 
 export function renderProfileSkill(name: string): string | undefined {
