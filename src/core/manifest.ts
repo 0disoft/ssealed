@@ -1,7 +1,7 @@
 import { sha256 } from "./checksum.js";
 import type { Addon, Density, FileOwnership, FilePresence, Manifest, ManifestFile, PlannedFile, Profile, Runner, Scope } from "./types.js";
 
-export const toolVersion = "0.7.60";
+export const toolVersion = "0.7.61";
 export const manifestSchemaVersion = 1;
 
 export function createManifest(params: {

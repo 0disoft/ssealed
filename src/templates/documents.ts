@@ -1,5 +1,6 @@
 import type { Addon, Density, Profile, Scope } from "../core/types.js";
 import { documentMetadata } from "./document-format.js";
+import { renderProfileSkill } from "./profile-skills.js";
 import { renderScopeSkill } from "./scope-skills.js";
 import { renderTaskSkill } from "./task-skills.js";
 
@@ -691,7 +692,7 @@ function checklistContent(lowerTitle: string): {
 }
 
 export function agentSkill(name: string, scope: Scope = "general"): string {
-  const skill = renderTaskSkill(name) ?? renderScopeSkill(name, scope);
+  const skill = renderTaskSkill(name) ?? renderScopeSkill(name, scope) ?? renderProfileSkill(name);
   if (skill !== undefined) return skill;
   return `---
 name: ${name}
