@@ -301,7 +301,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "context-map":
       return { ...file, content: contextMap(scope, profile, addons, density) };
     case "agent-skill":
-      return { ...file, content: agentSkill(file.title ?? "agent-skill") };
+      return { ...file, content: agentSkill(file.title ?? "agent-skill", scope) };
     case "checklist":
       return { ...file, content: checklistDoc(file.title ?? file.path) };
     case "openapi":

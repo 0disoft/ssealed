@@ -1,10 +1,6 @@
-interface TaskSkill {
-  readonly description: string;
-  readonly sources: readonly string[];
-  readonly workflow: readonly string[];
-}
+import { renderSkillDefinition, type SkillDefinition } from "./agent-skill-format.js";
 
-const taskSkills: Readonly<Record<string, TaskSkill>> = {
+const taskSkills: Readonly<Record<string, SkillDefinition>> = {
   feature: {
     description: "Implement new or expanded product behavior from project requirements, ownership boundaries, and observable acceptance criteria.",
     sources: ["docs/product/02-spec.md", "docs/architecture/00-system-boundary.md"],
@@ -71,26 +67,5 @@ export function renderTaskSkill(name: string): string | undefined {
   if (!Object.hasOwn(taskSkills, name)) return undefined;
   const skill = taskSkills[name];
   if (skill === undefined) return undefined;
-  const sources = ["AGENTS.md", "VALIDATION.md", "CHECKLIST.md", ".agents/context-map.md", ...skill.sources];
-  return `---
-name: ${name}
-description: ${JSON.stringify(skill.description)}
----
-
-# ${name}
-
-## Read First
-
-${sources.map((source) => `- [${source}](../../../${source})`).join("\n")}
-
-## Work Guidance
-
-${skill.workflow.map((step) => `- ${step}`).join("\n")}
-
-## Validation and Delivery
-
-Use repository rules and the task routes in VALIDATION.md to select relevant configured checks. Repair missing setup within the authorized scope or report the gap; an unconfigured or skipped check is not passing evidence.
-
-Report observable changes, actual checks and results, remaining gaps, and incomplete recovery or delivery work. Follow existing execution and delivery authority; this skill does not authorize additional publication or external mutations.
-`;
+  return renderSkillDefinition(name, skill);
 }

@@ -1,5 +1,6 @@
 import type { Addon, Density, Profile, Scope } from "../core/types.js";
 import { documentMetadata } from "./document-format.js";
+import { renderScopeSkill } from "./scope-skills.js";
 import { renderTaskSkill } from "./task-skills.js";
 
 export function markdownDoc(title: string): string {
@@ -689,9 +690,9 @@ function checklistContent(lowerTitle: string): {
   };
 }
 
-export function agentSkill(name: string): string {
-  const taskSkill = renderTaskSkill(name);
-  if (taskSkill !== undefined) return taskSkill;
+export function agentSkill(name: string, scope: Scope = "general"): string {
+  const skill = renderTaskSkill(name) ?? renderScopeSkill(name, scope);
+  if (skill !== undefined) return skill;
   return `---
 name: ${name}
 description: Use this when working on ${name} changes in this repository scaffold.

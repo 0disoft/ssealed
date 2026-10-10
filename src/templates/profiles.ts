@@ -193,7 +193,7 @@ function profileFileSpecs(profile: Addon, scope: Scope): readonly ProfileFileSpe
 function renderProfileFile(file: ProfileFileSpec, profile: Addon, scope: Scope): TemplateFile {
   switch (file.renderer) {
     case "agent-skill":
-      return { ...file, content: agentSkill(file.title) };
+      return { ...file, content: agentSkill(file.title, scope) };
     case "checklist":
       return { ...file, content: checklistDoc(file.title) };
     case "validation":
