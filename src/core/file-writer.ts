@@ -668,7 +668,13 @@ async function rollbackWrittenFiles(
       if (file.existingContent === undefined) {
         await rm(targetPath);
       } else {
-        await writeTextFileAtomically(targetPath, file.existingContent, { mode: current.mode });
+        await writeTextFileAtomically(targetPath, file.existingContent, {
+          mode: current.mode,
+          beforeCommit: async () => {
+            await assertNoSymlinkInPath(targetRoot, targetPath);
+            await assertExpectedWriteState(targetPath, { ...file, existingContent: normalizeText(file.content) });
+          },
+        });
       }
     } catch (error) {
       failures.push(asError(error));

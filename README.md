@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.16`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.17`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -225,6 +225,7 @@ Commands use `.ssealed-init.lock` to keep reads and writes for the same existing
 `doctor` and `--dry-run` hold the same target lock for their full read so a writer cannot create a mixed in-progress scaffold state. A dry run against a missing target still creates no directory; if that target appears concurrently, the stale read is discarded and the command asks the caller to retry.
 
 Scaffold writes run in bounded parallel batches for regular files, then write `.ssealed/manifest.json` last. If any batched write fails, already written files are rolled back before the lock is released. During write commands, `SIGINT` and `SIGTERM` are handled the same way: ssealed stops starting new batches, rolls back already written files, and releases `.ssealed-init.lock`.
+When restoring an overwritten file, rollback rechecks its path and generated content after staging the original bytes, immediately before restoring them. If it detects a concurrent change, it preserves the changed file and reports incomplete recovery.
 Bounded reads finish already started operations before reporting the first failure. Lock cleanup never turns a failed operation into success; if cleanup also fails, both failures are retained.
 
 The generated `.gitignore` block includes `.ssealed-init.lock` so stale lock metadata is not committed accidentally.

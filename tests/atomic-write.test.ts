@@ -2,7 +2,7 @@ import { mkdtemp, open, readFile, readdir, rm, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { writeTextFileAtomically } from "../src/core/file-writer.js";
+import { writePlannedFiles, writeTextFileAtomically } from "../src/core/file-writer.js";
 
 const { temporaryId } = vi.hoisted(() => ({ temporaryId: "00000000-0000-4000-8000-000000000000" }));
 vi.mock("node:crypto", async (importOriginal) => {
@@ -75,5 +75,66 @@ describe("atomic temporary-file ownership", () => {
     }
     await expect(readFile(target, "utf8")).resolves.toBe("ORIGINAL\n");
     expect(await readdir(dir)).toEqual(["target.txt"]);
+  });
+
+  it("restores the original bytes when the generated file is unchanged during rollback", async () => {
+    const dir = await tempDir();
+    const target = path.join(dir, "victim.txt");
+    const original = "ORIGINAL\r\n";
+    await writeFile(target, original);
+    const failure = new Error("injected manifest publication failure");
+    await expect(writePlannedFiles(dir, [
+      { path: "victim.txt", kind: "document", action: "overwrite", content: "GENERATED\n", existingContent: original },
+      { path: ".ssealed/manifest.json", kind: "manifest", action: "create", content: "{}\n" },
+    ], {
+      beforeCommit: async (relativePath) => {
+        if (relativePath === ".ssealed/manifest.json") throw failure;
+      },
+    })).rejects.toBe(failure);
+    await expect(readFile(target, "utf8")).resolves.toBe(original);
+    expect(await readdir(dir)).toEqual(["victim.txt"]);
+  });
+
+  it("preserves a user replacement made while rollback stages the original content", async () => {
+    const dir = await tempDir();
+    const target = path.join(dir, "victim.txt");
+    await writeFile(target, "ORIGINAL\n");
+    const probePath = path.join(dir, "probe.txt");
+    const probe = await open(probePath, "wx");
+    const prototype = Object.getPrototypeOf(probe) as Pick<typeof probe, "writeFile">;
+    const originalWrite = prototype.writeFile;
+    await probe.close();
+    await rm(probePath);
+    const write = vi.spyOn(prototype, "writeFile").mockImplementation(async function (
+      this: typeof probe,
+      ...args: Parameters<typeof probe.writeFile>
+    ) {
+      await originalWrite.apply(this, args);
+      if (args[0] === "ORIGINAL\n") {
+        await writeFile(target, "USER_REPLACEMENT\n");
+      }
+    });
+    const manifestFailure = new Error("injected manifest publication failure");
+    let failure: unknown;
+    try {
+      await writePlannedFiles(dir, [
+        { path: "victim.txt", kind: "document", action: "overwrite", content: "GENERATED\n", existingContent: "ORIGINAL\n" },
+        { path: ".ssealed/manifest.json", kind: "manifest", action: "create", content: "{}\n" },
+      ], {
+        beforeCommit: async (relativePath) => {
+          if (relativePath === ".ssealed/manifest.json") {
+            throw manifestFailure;
+          }
+        },
+      });
+    } catch (error) {
+      failure = error;
+    } finally {
+      write.mockRestore();
+    }
+    await expect(readFile(target, "utf8")).resolves.toBe("USER_REPLACEMENT\n");
+    expect(failure).toMatchObject({ errors: [manifestFailure, expect.objectContaining({ code: "WRITE_FAILED" })] });
+    expect(String(failure)).toMatch(/recovery was incomplete.*victim\.txt.*changed/iu);
+    expect(await readdir(dir)).toEqual(["victim.txt"]);
   });
 });
