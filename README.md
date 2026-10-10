@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.44`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.45`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -198,7 +198,7 @@ Every write run refreshes `.ssealed/manifest.json` with a schema version, genera
 
 Manifest loading rejects unsafe or reserved file paths, duplicate file paths, and checksum fields that are not lowercase `sha256:` values with 64 hexadecimal digits. Path uniqueness and reserved metadata checks ignore letter case on every platform so a manifest cannot record aliases such as `README.md` and `readme.md`, or `.ssealed/MANIFEST.JSON`. Accepted paths retain their original spelling. Invalid manifests are reported as `INVALID_MANIFEST` before their entries reach planning or doctor checks.
 An addon must differ from the primary repository type, both in CLI options and in recorded manifest settings. A manifest that repeats its primary type as an addon is invalid and must be repaired before commands use it.
-The manifest itself must be a regular file no larger than 1 MiB. Directories and other non-regular entries at `.ssealed/manifest.json` are rejected before reading or parsing their contents.
+The manifest itself must be a regular file no larger than 1 MiB. Directories and other non-regular entries at `.ssealed/manifest.json` are rejected before reading or parsing their contents. The byte limit is checked again after reading. Before accepting ownership metadata, ssealed rechecks the path, device and inode identity, size, and modification and change timestamps. A detected replacement, concurrent edit, or disappearance is reported as an invalid manifest and asks the caller to retry; a detected symlink or junction is a path-safety error. These read consistency checks retain the best-effort filesystem race limitations described above.
 JSON files may begin with a single UTF-8 byte order mark (BOM), including `package.json`, manifests, and lock metadata. Malformed JSON is still rejected. Package merges, manifest updates, and runner ejection preserve an existing BOM; generated JSON without a BOM stays BOM-free.
 Existing scaffold files must contain valid UTF-8. Invalid byte sequences produce a planning conflict, including with `--force`, before any scaffold writes; convert legacy encodings explicitly first. Invalid UTF-8 manifests return `INVALID_MANIFEST`, and `doctor` reports invalid UTF-8 file contents as unreadable. This prevents merges from silently replacing original bytes with replacement characters.
 If a recorded path differs only in letter case from a generated path, `update` and `upgrade` report a conflict before planning file reads or writing any files. Repair the recorded casing first. This prevents duplicate manifest entries and avoids guessing whether differently cased names refer to the same file on the current filesystem.

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { isUtf8 } from "node:buffer";
 import path from "node:path";
-import { lstat, open, readFile, rm, stat } from "node:fs/promises";
+import { lstat, open, readFile, rm } from "node:fs/promises";
 import { hostname } from "node:os";
 import { normalizeText } from "./checksum.js";
 import { filesystemReadConcurrency, mapWithConcurrency } from "./concurrency.js";
@@ -199,7 +199,7 @@ export interface PreviousManifestState {
 export async function readPreviousManifest(targetRoot: string): Promise<PreviousManifestState> {
   const manifestPath = path.join(path.resolve(targetRoot), ".ssealed", "manifest.json");
   await assertNoSymlinkInPath(targetRoot, manifestPath);
-  const manifestStat = await stat(manifestPath).catch((error: unknown) => {
+  const manifestStat = await lstat(manifestPath, { bigint: true }).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
       return undefined;
     }
@@ -211,7 +211,7 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
   if (!manifestStat.isFile()) {
     return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json is not a regular file.")] };
   }
-  if (manifestStat.size > maxManifestBytes) {
+  if (manifestStat.size > BigInt(maxManifestBytes)) {
     return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json exceeds the supported 1 MiB size limit.")] };
   }
   const bytes = await readFile(manifestPath).catch((error: unknown) => {
@@ -221,7 +221,22 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
     throw error;
   });
   if (bytes === undefined) {
-    return { version: undefined, files: new Map(), settings: undefined, warnings: [] };
+    return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json changed while being read. Retry after concurrent edits finish.")] };
+  }
+  if (bytes.length > maxManifestBytes) {
+    return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json exceeds the supported 1 MiB size limit.")] };
+  }
+  await assertNoSymlinkInPath(targetRoot, manifestPath);
+  const currentStat = await lstat(manifestPath, { bigint: true }).catch((error: unknown) => {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (
+    currentStat === undefined || !currentStat.isFile() ||
+    currentStat.dev !== manifestStat.dev || currentStat.ino !== manifestStat.ino ||
+    currentStat.size !== manifestStat.size || currentStat.mtimeNs !== manifestStat.mtimeNs || currentStat.ctimeNs !== manifestStat.ctimeNs
+  ) {
+    return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json changed while being read. Retry after concurrent edits finish.")] };
   }
   if (!isUtf8(bytes)) {
     return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json is not valid UTF-8. Convert its encoding explicitly before running ssealed.")] };

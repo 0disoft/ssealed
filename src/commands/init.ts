@@ -201,7 +201,7 @@ async function resolveScaffoldSettings(
       code: previous.warnings.length > 0 ? "INVALID_MANIFEST" : "MISSING_MANIFEST",
       message:
         previous.warnings.length > 0
-          ? "Existing .ssealed/manifest.json is invalid. Repair or remove it before update or upgrade."
+          ? previous.warnings.map((warning) => warning.message).join("\n")
           : "Missing .ssealed/manifest.json. Use ssealed init to create a new scaffold first.",
     };
   }
@@ -390,7 +390,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
       code: previous.warnings.length > 0 ? "INVALID_MANIFEST" : "MISSING_MANIFEST",
       message:
         previous.warnings.length > 0
-          ? "Existing .ssealed/manifest.json is invalid. Repair or remove it before ejecting runner ownership."
+          ? previous.warnings.map((warning) => warning.message).join("\n")
           : "Missing .ssealed/manifest.json. Use ssealed init to create a new scaffold first.",
     });
   }
