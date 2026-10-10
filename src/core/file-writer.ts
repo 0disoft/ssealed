@@ -715,8 +715,7 @@ async function rollbackWrittenFiles(
     }
     const targetPath = resolveInsideTarget(targetRoot, relativePath);
     try {
-      await assertNoSymlinkInPath(targetRoot, targetPath);
-      if (!(await assertWrittenFileOwnership(targetPath, written))) continue;
+      if (!(await assertWrittenFileOwnership(targetRoot, targetPath, written))) continue;
       const current = await readExistingPath(targetPath);
       if (current.kind === "missing") {
         continue;
@@ -725,14 +724,15 @@ async function rollbackWrittenFiles(
         throw new Error(`Rollback skipped ${relativePath} because it changed after ssealed wrote it.`);
       }
       if (file.existingContent === undefined) {
-        if (await assertWrittenFileOwnership(targetPath, written)) await rm(targetPath);
+        if (await assertWrittenFileOwnership(targetRoot, targetPath, written)) await rm(targetPath);
       } else {
+        if (!(await assertWrittenFileOwnership(targetRoot, targetPath, written))) continue;
         await writeTextFileAtomically(targetPath, file.existingContent, {
           mode: current.mode,
           beforeCommit: async () => {
             await assertNoSymlinkInPath(targetRoot, targetPath);
             await assertExpectedWriteState(targetPath, { ...file, existingContent: normalizeText(file.content) });
-            if (!(await assertWrittenFileOwnership(targetPath, written))) {
+            if (!(await assertWrittenFileOwnership(targetRoot, targetPath, written))) {
               throw new SsealedError("WRITE_FAILED", `Rollback skipped ${relativePath} because it disappeared before restoration.`);
             }
           },
@@ -745,7 +745,8 @@ async function rollbackWrittenFiles(
   return failures;
 }
 
-async function assertWrittenFileOwnership(targetPath: string, written: WrittenFile): Promise<boolean> {
+async function assertWrittenFileOwnership(targetRoot: string, targetPath: string, written: WrittenFile): Promise<boolean> {
+  await assertNoSymlinkInPath(targetRoot, targetPath);
   const current = await lstat(targetPath, { bigint: true }).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") return undefined;
     throw error;
