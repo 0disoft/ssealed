@@ -24,6 +24,35 @@ async function tempDir(): Promise<string> {
 
 describe("CLI argument parsing", () => {
   it.each([
+    { command: "init", usage: "init [target] --scope <scope>", included: ["scope", "runner"], excluded: ["strict", "clear-addons"] },
+    { command: "adopt", usage: "adopt [target] --scope <scope>", included: ["scope", "addon"], excluded: ["strict", "clear-addons"] },
+    { command: "update", usage: "update [target]", included: ["force", "dry-run"], excluded: ["scope", "runner", "strict"] },
+    { command: "upgrade", usage: "upgrade [target]", included: ["scope", "clear-addons"], excluded: ["strict"] },
+    { command: "doctor", usage: "doctor [target]", included: ["strict", "json"], excluded: ["scope", "force", "dry-run"] },
+    { command: "eject", usage: "eject runner [target]", included: ["dry-run", "break-stale-lock"], excluded: ["scope", "force", "strict"] },
+  ])("shows the executable grammar and supported options for $command --help", async ({ command, usage, included, excluded }) => {
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const prompt = vi.spyOn(readline, "createInterface").mockImplementation(() => {
+      throw new Error("Help must not prompt.");
+    });
+    try {
+      await expect(main([command, "--help"])).resolves.toBe(0);
+      const text = stdout.mock.calls.map(([chunk]) => String(chunk)).join("");
+      expect(text).toContain(`Usage:\n  ssealed ${usage}`);
+      expect(text).toContain(`ssealed ${command} `);
+      for (const option of included) expect(text).toMatch(new RegExp(`^  --${option}\\s`, "m"));
+      for (const option of excluded) expect(text).not.toMatch(new RegExp(`^  --${option}\\s`, "m"));
+      expect(prompt).not.toHaveBeenCalled();
+      expect(stderr).not.toHaveBeenCalled();
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+      prompt.mockRestore();
+    }
+  });
+
+  it.each([
     { args: ["unknown", "--", "--json"], json: false, code: "UNKNOWN_COMMAND" },
     { args: ["unknown", "--json", "--", "--json"], json: true, code: "UNKNOWN_COMMAND" },
     { args: ["init", "--unexpected", "--", "--json"], json: false, code: "INVALID_ARGUMENT" },

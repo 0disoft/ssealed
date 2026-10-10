@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { runScaffoldCommand, type CliCommand } from "./commands/init.js";
 import { ScaffoldCleanupError, isScaffoldInterruptedError, isSsealedError } from "./core/errors.js";
 import { toolVersion } from "./core/manifest.js";
+import { addons, densities, profiles, runners, scopes } from "./core/types.js";
 
 const commandNames = ["init", "adopt", "update", "upgrade", "doctor", "eject"] as const satisfies readonly CliCommand[];
 
@@ -34,71 +35,72 @@ Options:
   --json       Print machine-readable JSON without interactive prompts.
 `;
 
-const commandHelpText = `ssealed init|adopt|update|upgrade|doctor|eject [target]
+const optionHelp = {
+  scope: `Scaffold ownership scope: ${scopes.join("|")}.`,
+  "repo-type": `Primary repository shape: ${profiles.join("|")}. Defaults to generic for init/adopt.`,
+  profile: "Alias for --repo-type.",
+  addon: `Extra repository shape: ${addons.join("|")}. Repeatable.`,
+  "clear-addons": "Remove all addons during upgrade; cannot be combined with --addon.",
+  density: `Scaffold density: ${densities.join("|")}. Defaults to standard for init/adopt.`,
+  runner: `Validation runner: ${runners.join("|")}. Defaults to none for init/adopt.`,
+  yes: "Never prompt.",
+  "dry-run": "Print planned operations without writing scaffold files.",
+  force: "Overwrite only when current content matches previous generated checksums.",
+  "break-stale-lock": "Recover an old scaffold lock after verifying it is stale.",
+  strict: "Fail on any accepted-checksum drift.",
+  json: "Print machine-readable JSON without interactive prompts.",
+  help: "Show this command's help.",
+} as const;
 
-Commands:
-  init     Create a new scaffold. Refuses targets with an existing valid manifest.
-  adopt    Add scaffold metadata to an existing repository without taking over differing project files.
-  update   Reapply the existing manifest settings without changing scope, repo type, addons, density, or runner.
-  upgrade  Explicitly change scaffold settings and replan generated files.
-  doctor   Check scaffold lifecycle metadata. Use --strict to require accepted checksums.
-  eject    Mark a managed scaffold surface as explicitly project-owned.
+type OptionName = keyof typeof optionHelp;
+const scaffoldOptions = ["scope", "repo-type", "profile", "addon", "density", "runner", "yes", "dry-run", "force", "break-stale-lock", "json", "help"] as const;
+const allowedByCommand: Readonly<Record<CliCommand, readonly OptionName[]>> = {
+  init: scaffoldOptions,
+  adopt: scaffoldOptions,
+  update: ["yes", "dry-run", "force", "break-stale-lock", "json", "help"],
+  upgrade: [...scaffoldOptions, "clear-addons"],
+  doctor: ["strict", "json", "help"],
+  eject: ["dry-run", "break-stale-lock", "json", "help"],
+};
 
-Scopes:
-  backend
-  frontend
-  fullstack
-  general
-  mobile
-  infra
-  data
+const commandDetails: Readonly<Record<CliCommand, { readonly usage: string; readonly description: string; readonly example: string }>> = {
+  init: {
+    usage: "init [target] --scope <scope>",
+    description: "Create a new scaffold. Refuses targets with an existing valid manifest.",
+    example: "init ./my-service --scope backend --runner none",
+  },
+  adopt: {
+    usage: "adopt [target] --scope <scope>",
+    description: "Add scaffold metadata to an existing repository without taking over differing project files.",
+    example: "adopt ./existing-repo --scope general --repo-type library --density minimal",
+  },
+  update: {
+    usage: "update [target]",
+    description: "Reapply manifest settings. To change scope, repo type, addons, density, or runner, use upgrade.",
+    example: "update ./my-service --dry-run --json",
+  },
+  upgrade: {
+    usage: "upgrade [target]",
+    description: "Explicitly change scaffold settings. Untouched generated files needing replacement require --force; user edits are preserved.",
+    example: "upgrade ./my-service --repo-type api-service --density strict --force",
+  },
+  doctor: {
+    usage: "doctor [target]",
+    description: "Check scaffold lifecycle metadata. Use --strict to require accepted checksums.",
+    example: "doctor ./my-service --strict --json",
+  },
+  eject: {
+    usage: "eject runner [target]",
+    description: "Mark the managed runner surface as explicitly project-owned.",
+    example: "eject runner ./my-service --dry-run",
+  },
+};
 
-Repository Types:
-  generic
-  cli-tool
-  api-service
-  desktop-app
-  library
-  web-app
-  mobile-app
-  sdk
-  worker-service
-  infra-module
-  data-pipeline
-  github-action
-  browser-extension
-  plugin
-  docs-site
-  monorepo
-
-Addons:
-  Any repository type except generic. Repeat --addon for multiple surfaces.
-
-Densities:
-  minimal
-  standard
-  strict
-
-Runners:
-  none
-  make
-  just
-  task
-  npm
-  pnpm
-
-Examples:
-  ssealed init --scope backend --runner none
-  ssealed adopt ./existing-repo --scope general --repo-type library --density minimal --runner none
-  ssealed init --scope frontend --repo-type generic --density minimal --runner just
-  ssealed init --scope general --repo-type cli-tool --addon github-action --dry-run
-  ssealed update ./my-service --yes
-  ssealed upgrade ./my-service --repo-type api-service --density strict --runner make --yes --force
-  ssealed upgrade ./my-service --clear-addons --yes
-  ssealed doctor ./my-service --json
-  ssealed doctor ./my-service --strict
-  ssealed eject runner ./my-service
-`;
+function commandHelpText(command: CliCommand): string {
+  const details = commandDetails[command];
+  const options = allowedByCommand[command].map((name) => `  --${name}  ${optionHelp[name]}`).join("\n");
+  return `ssealed ${command}\n\n${details.description}\n\nUsage:\n  ssealed ${details.usage} [options]\n\nTarget defaults to the current directory.\n\nOptions:\n${options}\n\nExample:\n  ssealed ${details.example}\n`;
+}
 
 interface ParsedScaffoldArgs {
   readonly values: {
@@ -155,7 +157,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 
   if (parsed.values.help) {
-    process.stdout.write(commandHelpText);
+    process.stdout.write(commandHelpText(command));
     return 0;
   }
 
@@ -258,16 +260,8 @@ function parseScaffoldArgs(args: readonly string[]): ParsedScaffoldArgs | Error 
 }
 
 function findUnsupportedOption(command: CliCommand, values: ParsedScaffoldArgs["values"]): string | undefined {
-  const common = ["json", "help"] as const;
-  const allowedByCommand: Readonly<Record<CliCommand, ReadonlySet<string>>> = {
-    init: new Set([...common, "scope", "repo-type", "profile", "addon", "density", "runner", "yes", "dry-run", "force", "break-stale-lock"]),
-    adopt: new Set([...common, "scope", "repo-type", "profile", "addon", "density", "runner", "yes", "dry-run", "force", "break-stale-lock"]),
-    update: new Set([...common, "yes", "dry-run", "force", "break-stale-lock"]),
-    upgrade: new Set([...common, "scope", "repo-type", "profile", "addon", "clear-addons", "density", "runner", "yes", "dry-run", "force", "break-stale-lock"]),
-    doctor: new Set([...common, "strict"]),
-    eject: new Set([...common, "dry-run", "break-stale-lock"]),
-  };
-  return Object.entries(values).find(([name, value]) => value !== undefined && !allowedByCommand[command].has(name))?.[0];
+  const allowed = new Set<string>(allowedByCommand[command]);
+  return Object.entries(values).find(([name, value]) => value !== undefined && !allowed.has(name))?.[0];
 }
 
 function isCliCommand(value: string): value is CliCommand {
