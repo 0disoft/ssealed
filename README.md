@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.41`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.42`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -188,6 +188,7 @@ Existing files are not overwritten by default. Identical files are marked `uncha
 `--force` overwrites conflicting files only when the current file content matches the generated checksum recorded for that path in the previous `.ssealed/manifest.json`. The manifest is a local previous-run record, not a security boundary, and it never authorizes overwriting unrelated user files at the same path. Existing user-authored `.gitignore` patterns are preserved even with `--force`; only the ssealed managed block is replaced. Seeded files with project-owned edits stay project-owned even after `update` accepts their current checksum.
 
 Before each write, `ssealed` rechecks that the target file still matches the state used to create the plan. New files are published with an exclusive same-directory link, so a file that appears after planning is not replaced. Existing files are rechecked after staging and retain their POSIX mode, but Node's path-based replacement APIs cannot provide strict compare-and-swap semantics against a non-cooperating writer or a hostile parent-directory swap on every platform.
+Rollback records each published file's device and inode identity from its owned staging file. It verifies that identity and the written content before deleting a new file or restoring an old one, and rechecks identity immediately before restoration. A detected replacement is preserved even when its bytes match the generated content; the original failure and incomplete recovery are reported together. These checks retain the path-based race limitations described above.
 Temporary files are created exclusively, and failure cleanup removes them only after this write successfully created them. A temporary-path collision preserves the existing file and reports the creation failure. Open handles are closed before cleanup, and cleanup failures retain the original write error.
 Failed scaffold runs remove only empty directories they created exclusively. A directory created by another writer is not claimed for cleanup. Created directories record device and inode identity and are checked for links and replacement before removal, with children cleaned before parents. Replaced or unverifiable directories are preserved and reported as incomplete recovery alongside the original failure. Pre-existing directories and the selected target root are retained. These path and identity checks have the same best-effort race limits as file writes.
 

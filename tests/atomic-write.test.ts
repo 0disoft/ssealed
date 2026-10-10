@@ -130,6 +130,34 @@ describe("atomic temporary-file ownership", () => {
     expect(await readdir(dir)).toEqual(["victim.txt"]);
   });
 
+  it.each(["create", "overwrite"] as const)("preserves an identical-content replacement after %s instead of rolling it back", async (action) => {
+    const dir = await tempDir();
+    const target = path.join(dir, "victim.txt");
+    const held = path.join(dir, "held.txt");
+    if (action === "overwrite") await writeFile(target, "ORIGINAL\n");
+    const manifestFailure = new Error("injected manifest publication failure");
+    let observed: unknown;
+    try {
+      await writePlannedFiles(dir, [
+        { path: "victim.txt", kind: "document", action, content: "GENERATED\n", ...(action === "overwrite" ? { existingContent: "ORIGINAL\n" } : {}) },
+        { path: ".ssealed/manifest.json", kind: "manifest", action: "create", content: "{}\n" },
+      ], {
+        beforeCommit: async (relativePath) => {
+          if (relativePath === ".ssealed/manifest.json") {
+            await rename(target, held);
+            await writeFile(target, "GENERATED\n", { flag: "wx" });
+            throw manifestFailure;
+          }
+        },
+      });
+    } catch (error) { observed = error; }
+    await expect(readFile(target, "utf8")).resolves.toBe("GENERATED\n");
+    await expect(readFile(held, "utf8")).resolves.toBe("GENERATED\n");
+    expect(observed).toMatchObject({ errors: [manifestFailure, expect.objectContaining({ message: expect.stringMatching(/ownership changed/iu) })] });
+    expect(String(observed)).toMatch(/recovery was incomplete.*victim\.txt/iu);
+    expect(await readdir(dir)).toEqual(["held.txt", "victim.txt"]);
+  });
+
   it("retains every failed write in a batch and rolls back its successful writes", async () => {
     const dir = await tempDir();
     const firstFailure = new Error("injected first publication failure");
@@ -156,7 +184,7 @@ describe("atomic temporary-file ownership", () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
-  it("preserves a user replacement made while rollback stages the original content", async () => {
+  it.each(["different", "identical"] as const)("preserves a user replacement with %s content while rollback stages the original", async (variant) => {
     const dir = await tempDir();
     const target = path.join(dir, "victim.txt");
     await writeFile(target, "ORIGINAL\n");
@@ -166,13 +194,15 @@ describe("atomic temporary-file ownership", () => {
     const originalWrite = prototype.writeFile;
     await probe.close();
     await rm(probePath);
+    const replacement = variant === "identical" ? "GENERATED\n" : "USER_REPLACEMENT\n";
     const write = vi.spyOn(prototype, "writeFile").mockImplementation(async function (
       this: typeof probe,
       ...args: Parameters<typeof probe.writeFile>
     ) {
       await originalWrite.apply(this, args);
       if (args[0] === "ORIGINAL\n") {
-        await writeFile(target, "USER_REPLACEMENT\n");
+        if (variant === "identical") await rename(target, path.join(dir, "held.txt"));
+        await writeFile(target, replacement);
       }
     });
     const manifestFailure = new Error("injected manifest publication failure");
@@ -193,10 +223,10 @@ describe("atomic temporary-file ownership", () => {
     } finally {
       write.mockRestore();
     }
-    await expect(readFile(target, "utf8")).resolves.toBe("USER_REPLACEMENT\n");
+    await expect(readFile(target, "utf8")).resolves.toBe(replacement);
     expect(failure).toMatchObject({ errors: [manifestFailure, expect.objectContaining({ code: "WRITE_FAILED" })] });
     expect(String(failure)).toMatch(/recovery was incomplete.*victim\.txt.*changed/iu);
-    expect(await readdir(dir)).toEqual(["victim.txt"]);
+    expect(await readdir(dir)).toEqual(variant === "identical" ? ["held.txt", "victim.txt"] : ["victim.txt"]);
   });
 
   it("rejects a replaced manifest parent before publishing runner ejection", async () => {

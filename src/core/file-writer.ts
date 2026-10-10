@@ -18,9 +18,19 @@ export interface FileWriterHooks {
   readonly beforeCommit?: (relativePath: string, targetPath: string) => Promise<void>;
 }
 
+interface FileIdentity {
+  readonly dev: bigint;
+  readonly ino: bigint;
+}
+
+interface WrittenFile {
+  readonly path: string;
+  readonly identity: FileIdentity;
+}
+
 interface CreatedDirectory {
   readonly path: string;
-  identity: { readonly dev: bigint; readonly ino: bigint } | undefined;
+  identity: FileIdentity | undefined;
 }
 
 export async function planTemplateFile(params: {
@@ -297,7 +307,7 @@ async function writePlannedFilesInterruptibly(
   files: readonly PlannedFile[],
   hooks: FileWriterHooks,
 ): Promise<readonly string[]> {
-  const written: string[] = [];
+  const written: WrittenFile[] = [];
   const createdDirectories: CreatedDirectory[] = [];
   const interrupt = getScaffoldInterruptContext();
   await ensureDirectoryInsideTarget(targetRoot, targetRoot);
@@ -332,13 +342,13 @@ async function writePlannedFilesInterruptibly(
   }
 
   if (written.length > 0) interrupt?.markCommitted();
-  return written;
+  return written.map((file) => file.path);
 }
 
 async function writeFilesInBatches(
   targetRoot: string,
   files: readonly PlannedFile[],
-  written: string[],
+  written: WrittenFile[],
   createdDirectories: CreatedDirectory[],
   interrupt: ScaffoldInterruptContext | undefined,
   hooks: FileWriterHooks,
@@ -369,7 +379,7 @@ async function writeFilesInBatches(
 async function writeOnePlannedFile(
   targetRoot: string,
   file: PlannedFile,
-  written: string[],
+  written: WrittenFile[],
   createdDirectories: CreatedDirectory[],
   hooks: FileWriterHooks,
 ): Promise<void> {
@@ -386,8 +396,8 @@ async function writeOnePlannedFile(
       await assertNoSymlinkInPath(targetRoot, targetPath);
       await assertExpectedWriteState(targetPath, file);
     },
-    onCommit: () => {
-      written.push(file.path);
+    onCommit: (identity) => {
+      written.push({ path: file.path, identity });
     },
   });
 }
@@ -694,10 +704,11 @@ function isJsonComparable(value: unknown): value is JsonComparable {
 async function rollbackWrittenFiles(
   targetRoot: string,
   files: readonly PlannedFile[],
-  writtenPaths: readonly string[],
+  writtenFiles: readonly WrittenFile[],
 ): Promise<Error[]> {
   const failures: Error[] = [];
-  for (const relativePath of [...writtenPaths].reverse()) {
+  for (const written of [...writtenFiles].reverse()) {
+    const relativePath = written.path;
     const file = files.find((candidate) => candidate.path === relativePath);
     if (file === undefined) {
       continue;
@@ -705,6 +716,7 @@ async function rollbackWrittenFiles(
     const targetPath = resolveInsideTarget(targetRoot, relativePath);
     try {
       await assertNoSymlinkInPath(targetRoot, targetPath);
+      if (!(await assertWrittenFileOwnership(targetPath, written))) continue;
       const current = await readExistingPath(targetPath);
       if (current.kind === "missing") {
         continue;
@@ -713,13 +725,16 @@ async function rollbackWrittenFiles(
         throw new Error(`Rollback skipped ${relativePath} because it changed after ssealed wrote it.`);
       }
       if (file.existingContent === undefined) {
-        await rm(targetPath);
+        if (await assertWrittenFileOwnership(targetPath, written)) await rm(targetPath);
       } else {
         await writeTextFileAtomically(targetPath, file.existingContent, {
           mode: current.mode,
           beforeCommit: async () => {
             await assertNoSymlinkInPath(targetRoot, targetPath);
             await assertExpectedWriteState(targetPath, { ...file, existingContent: normalizeText(file.content) });
+            if (!(await assertWrittenFileOwnership(targetPath, written))) {
+              throw new SsealedError("WRITE_FAILED", `Rollback skipped ${relativePath} because it disappeared before restoration.`);
+            }
           },
         });
       }
@@ -728,6 +743,18 @@ async function rollbackWrittenFiles(
     }
   }
   return failures;
+}
+
+async function assertWrittenFileOwnership(targetPath: string, written: WrittenFile): Promise<boolean> {
+  const current = await lstat(targetPath, { bigint: true }).catch((error: unknown) => {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (current === undefined) return false;
+  if (!current.isFile() || current.dev !== written.identity.dev || current.ino !== written.identity.ino) {
+    throw new SsealedError("WRITE_FAILED", `Rollback skipped ${written.path}: ownership changed after ssealed wrote it; preserving the replacement.`);
+  }
+  return true;
 }
 
 async function ensureFileDirectories(targetRoot: string, targetDir: string, createdDirectories: CreatedDirectory[]): Promise<void> {
@@ -797,17 +824,18 @@ export async function writeTextFileAtomically(
     readonly createOnly?: boolean;
     readonly mode?: number;
     readonly beforeCommit?: () => Promise<void>;
-    readonly onCommit?: () => void;
+    readonly onCommit?: (identity: FileIdentity) => void;
   } = {},
 ): Promise<void> {
   const temporaryPath = path.join(path.dirname(targetPath), `.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`);
   let temporaryHandle: Awaited<ReturnType<typeof open>> | undefined;
   let temporaryCreated = false;
-  let temporaryIdentity: { readonly dev: bigint; readonly ino: bigint } | undefined;
+  let temporaryIdentity: FileIdentity | undefined;
   try {
     temporaryHandle = await open(temporaryPath, "wx", 0o600);
     temporaryCreated = true;
-    temporaryIdentity = await temporaryHandle.stat({ bigint: true });
+    const stagedStat = await temporaryHandle.stat({ bigint: true });
+    temporaryIdentity = { dev: stagedStat.dev, ino: stagedStat.ino };
     await temporaryHandle.writeFile(content, "utf8");
     if (options.mode !== undefined) {
       await temporaryHandle.chmod(options.mode & 0o7777);
@@ -820,7 +848,7 @@ export async function writeTextFileAtomically(
     }
     if (options.createOnly) {
       await link(temporaryPath, targetPath);
-      options.onCommit?.();
+      options.onCommit?.(temporaryIdentity);
       if (await assertTemporaryFileOwnership(temporaryPath, temporaryIdentity)) {
         await rm(temporaryPath);
       }
@@ -828,7 +856,7 @@ export async function writeTextFileAtomically(
     } else {
       await rename(temporaryPath, targetPath);
       temporaryCreated = false;
-      options.onCommit?.();
+      options.onCommit?.(temporaryIdentity);
     }
   } catch (error) {
     const cleanupErrors: unknown[] = [];
@@ -860,7 +888,7 @@ export async function writeTextFileAtomically(
 
 async function assertTemporaryFileOwnership(
   temporaryPath: string,
-  identity: { readonly dev: bigint; readonly ino: bigint } | undefined,
+  identity: FileIdentity | undefined,
 ): Promise<boolean> {
   const current = await lstat(temporaryPath, { bigint: true }).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") return undefined;
