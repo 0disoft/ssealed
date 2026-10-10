@@ -15,6 +15,8 @@ import { mobileAppTopics } from "./topics/mobile-app.js";
 import { githubActionTopics } from "./topics/github-action.js";
 import { browserExtensionTopics } from "./topics/browser-extension.js";
 import { pluginTopics } from "./topics/plugin.js";
+import { docsSiteTopics } from "./topics/docs-site.js";
+import { monorepoTopics } from "./topics/monorepo.js";
 
 const topicContracts: Readonly<Record<string, TopicContract>> = {
   ...workerServiceTopics,
@@ -31,6 +33,8 @@ const topicContracts: Readonly<Record<string, TopicContract>> = {
   ...githubActionTopics,
   ...browserExtensionTopics,
   ...pluginTopics,
+  ...docsSiteTopics,
+  ...monorepoTopics,
 };
 
 export function renderTopicDocument(filePath: string, title: string, profile?: Profile): string | undefined {

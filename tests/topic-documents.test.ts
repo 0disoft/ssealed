@@ -1,7 +1,51 @@
 import { describe, expect, it } from "vitest";
 import { templateFilesFor } from "../src/templates/index.js";
+import { profileFilesFor } from "../src/templates/profiles.js";
+import { addons, densities } from "../src/core/types.js";
 
 describe("topic-specific generated documents", () => {
+  it.each([
+    { profile: "docs-site", path: "information-architecture.md", decisions: ["Reader journeys", "Canonical content", "Navigation and discovery"] },
+    { profile: "docs-site", path: "publishing.md", decisions: ["Publication authority", "Preview isolation", "Promotion and rollback"] },
+    { profile: "docs-site", path: "content-quality.md", decisions: ["Accuracy and freshness", "Executable examples", "Accessibility and localization"] },
+    { profile: "monorepo", path: "workspace-boundaries.md", decisions: ["Workspace inventory", "Dependency direction", "Shared infrastructure"] },
+    { profile: "monorepo", path: "package-ownership.md", decisions: ["Package authority", "Public surface", "Ownership handoff"] },
+    { profile: "monorepo", path: "change-coordination.md", decisions: ["Impact analysis", "Release ordering", "Partial rollout recovery"] },
+  ] as const)("gives $profile $path specific publishing and coordination decisions", ({ profile, path, decisions }) => {
+    for (const files of [templateFilesFor("general", "none", profile, "strict"), templateFilesFor("frontend", "none", "generic", "strict", [profile])]) {
+      const content = files.find((file) => file.path === `docs/${profile}/${path}`)?.content;
+      expect(content).toBeDefined();
+      for (const decision of decisions) expect(content).toContain(decision);
+      expect(content).toContain(`docs/${profile}/README.md`);
+      expect(content).toContain(`- Repository Type: ${profile}`);
+      expect(content).toContain("UNDECIDED");
+      expect(content).not.toContain("## Repository Type Contract");
+    }
+  });
+
+  it.each(addons)("keeps %s topic bodies distinct and references available at every density", (profile) => {
+    for (const density of densities) {
+      const documents = profileFilesFor(profile, "general", density).filter((file) => file.kind === "document" && !file.path.endsWith("/README.md"));
+      expect(documents.length).toBeGreaterThan(0);
+      for (const files of [templateFilesFor("general", "none", profile, density), templateFilesFor("general", "none", "generic", density, [profile])]) {
+        const paths = new Set(files.map((file) => file.path));
+        const bodies: string[] = [];
+        for (const document of documents) {
+          const content = files.find((file) => file.path === document.path)?.content;
+          expect(content, document.path).toBeDefined();
+          expect(content, document.path).toContain("## Contract");
+          expect(content, document.path).not.toContain("## Repository Type Contract");
+          expect(content, document.path).toContain(`- Repository Type: ${profile}`);
+          const references = [...(content ?? "").matchAll(/Project-wide decisions: (\S+)/gu)];
+          expect(references, document.path).toHaveLength(1);
+          expect(paths.has(references[0]?.[1] ?? ""), document.path).toBe(true);
+          bodies.push((content ?? "").slice((content ?? "").indexOf("\n")));
+        }
+        expect(new Set(bodies).size).toBe(documents.length);
+      }
+    }
+  });
+
   it.each([
     { profile: "github-action", path: "action-contract.md", decisions: ["Execution boundary", "Untrusted contributions", "Failure and cleanup"] },
     { profile: "github-action", path: "inputs-and-outputs.md", decisions: ["Input schema", "Output contract", "Secret handling"] },

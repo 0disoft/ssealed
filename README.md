@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.37`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.38`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -143,8 +143,8 @@ Repository types describe the shape of the repository. They are intentionally se
 - `github-action`: adds topic-specific execution/cleanup, input/output and secret handling, permission boundaries, checklist, validation, and agent-skill documents.
 - `browser-extension`: adds topic-specific execution/lifecycle, permission grants and revocation, content-script/message boundaries, checklist, validation, and agent-skill documents.
 - `plugin`: adds topic-specific host activation/teardown, extension-point ownership, capability compatibility/migration, checklist, validation, and agent-skill documents.
-- `docs-site`: adds information architecture, publishing, content quality, checklist, validation, and agent-skill documents.
-- `monorepo`: adds workspace boundaries, package ownership, change coordination, checklist, validation, and agent-skill documents.
+- `docs-site`: adds topic-specific reader/navigation decisions, preview/publishing recovery, content accuracy and examples, checklist, validation, and agent-skill documents.
+- `monorepo`: adds topic-specific workspace dependency boundaries, package ownership/handoff, release coordination/recovery, checklist, validation, and agent-skill documents.
 
 `--repo-type` defaults to `generic`, so existing commands keep the same scaffold shape unless a repository type is explicitly selected.
 
