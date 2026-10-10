@@ -265,6 +265,37 @@ describe("managed surface integrity", () => {
     expect((await runJson(["update", dir, "--yes"])).code).toBe(1);
   });
 
+  it.each(["npm", "pnpm"] as const)("keeps an ejected, deleted %s package retired across repeated updates", async (runner) => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", runner, "--yes"])).code).toBe(0);
+    expect((await runJson(["eject", "runner", dir])).code).toBe(0);
+    const packagePath = path.join(dir, "package.json");
+    await rm(packagePath);
+
+    for (const args of [["update"], ["update", "--force"], ["upgrade", "--density", "minimal", "--force"], ["update"]]) {
+      const result = await runJson([...args, dir, "--yes"]);
+      expect(result.code).toBe(0);
+      const packageEntry = (result.payload.files as { path: string }[]).find((file) => file.path === "package.json");
+      expect(packageEntry).toMatchObject({
+        path: "package.json", ownership: "project-owned", action: "retired", status: "retired",
+      });
+      expect(result.payload.written).not.toContain("package.json");
+      await expect(lstat(packagePath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect((await runJson(["doctor", dir, "--strict"])).code).toBe(0);
+    }
+  });
+
+  it("restores a deleted block-managed package file on update", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);
+    const packagePath = path.join(dir, "package.json");
+    const generated = await readFile(packagePath, "utf8");
+    await rm(packagePath);
+    expect((await runJson(["update", dir, "--yes"])).code).toBe(0);
+    await expect(readFile(packagePath, "utf8")).resolves.toBe(generated);
+    expect((await runJson(["doctor", dir, "--strict"])).code).toBe(0);
+  });
+
   it("restores a deleted managed package script on update", async () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);

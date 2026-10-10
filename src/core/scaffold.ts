@@ -89,7 +89,12 @@ async function planScaffoldWithWarnings(
     filesystemReadConcurrency,
     (template) => {
       const previous = previousManifest.files.get(template.path);
-      const reactivateRunner = template.path === "package.json" && previous?.status === "retired";
+      const reactivateRunner =
+        command === "upgrade" &&
+        previousManifest.settings?.runner !== options.runner &&
+        template.path === "package.json" &&
+        previous?.kind === "runner" &&
+        previous.status === "retired";
       return planTemplateFile({
         targetRoot,
         template,

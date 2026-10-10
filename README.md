@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.13`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.14`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -94,6 +94,7 @@ ssealed init --help
 `doctor` checks scaffold lifecycle metadata. It accepts normal project evolution for seeded documents by default. Use `doctor --strict` when you intentionally want checksum drift detection against accepted manifest content.
 `eject runner` marks an npm or pnpm `package.json` runner block as explicitly project-owned in `.ssealed/manifest.json`. Use `--dry-run` to inspect that ownership transfer without changing the manifest.
 Repeating `eject runner` after ownership is already project-owned reports `unchanged` in both human and JSON output and leaves the manifest and package files untouched.
+If an ejected `package.json` is later deleted, repeated updates and upgrades that retain the runner keep it retired, including with `--force`. Retired package runner records are reactivated only by an explicit `upgrade` that changes the runner. A deleted block-managed package file remains required and is restored by `update`.
 
 `--profile` remains accepted as an alias for `--repo-type`.
 `init` and `adopt` validate repository type, addons, density, and runner before asking for a missing scope. Invalid settings fail immediately without opening an interactive prompt or creating scaffold files.
