@@ -1,5 +1,6 @@
 import type { Addon, Density, Profile, Scope } from "../core/types.js";
 import { documentMetadata } from "./document-format.js";
+import { renderTaskSkill } from "./task-skills.js";
 
 export function markdownDoc(title: string): string {
   return `# ${title}
@@ -689,6 +690,8 @@ function checklistContent(lowerTitle: string): {
 }
 
 export function agentSkill(name: string): string {
+  const taskSkill = renderTaskSkill(name);
+  if (taskSkill !== undefined) return taskSkill;
   return `---
 name: ${name}
 description: Use this when working on ${name} changes in this repository scaffold.

@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.58`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.59`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -139,6 +139,8 @@ Engineering documents specify project invariants and topic-specific design, code
 Architecture, backend, engineering, and operations document renderers require explicit topic contracts keyed by file path. A missing contract stops scaffold planning with the affected path instead of silently choosing a generic body from the document title.
 
 Contribution and development guides provide decisions for contribution scope, review evidence, delivery ownership, setup, exact project-owned commands, and safe local state management. Mobile, infrastructure, and data scope READMEs describe their own ownership boundaries and list the decision documents selected for the current density. These guides leave tools, commands, owners, and policies unselected until configured by the project; normal seeded-file protections continue to preserve edits and retired documents.
+
+Common feature, bugfix, refactor, operations-change, dependency-upgrade, and test-hardening skills have distinct discovery descriptions, relevant document links, and task-specific decision guidance. They distinguish requested behavior, demonstrated defects, behavior-preserving restructuring, active operating state, compatibility updates, and independent verification evidence. Validation gaps remain explicit, and these skills do not grant publication or external mutation authority beyond the project task. Existing skill paths, density, and seeded-file protections remain in place.
 
 ## Repository Type Matrix
 
