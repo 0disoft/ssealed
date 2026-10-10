@@ -1,8 +1,6 @@
 import type { Addon, Density, FileKind, Profile, Runner, Scope, TemplateFile } from "../core/types.js";
 import {
   agentSkill,
-  architectureDoc,
-  backendDoc,
   checklistDoc,
   contextMap,
   dbml,
@@ -11,17 +9,15 @@ import {
   frontendDesignDoc,
   renderFrontendTopic,
   githubIssueTemplate,
-  engineeringDoc,
   markdownDoc,
   openApiSkeleton,
-  opsDoc,
   rootAgents,
   rootReadme,
   validationDoc,
 } from "./documents.js";
 import { profileFilesFor } from "./profiles.js";
 import { runnerFiles } from "./runners.js";
-import { renderTopicDocument } from "./topic-documents.js";
+import { renderRequiredTopicDocument, renderTopicDocument } from "./topic-documents.js";
 import { renderAdrDocument } from "./adr-documents.js";
 import { renderDiagram, renderDiagramIndex } from "./diagrams.js";
 import { renderScopeDocumentIndex } from "./scope-document-index.js";
@@ -334,13 +330,10 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "frontend-design":
       return { ...file, content: frontendDesignDoc(scope) };
     case "backend-doc":
-      return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path, undefined, density) ?? backendDoc(file.title ?? file.path, density) };
     case "engineering-doc":
-      return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? engineeringDoc(file.title ?? file.path) };
     case "ops-doc":
-      return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? opsDoc(file.title ?? file.path) };
     case "architecture-doc":
-      return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? architectureDoc(file.title ?? file.path) };
+      return { ...file, content: renderRequiredTopicDocument(file.path, file.title ?? file.path, density) };
     case "mermaid":
       return { ...file, content: renderDiagram(file.path, scope) };
     case "diagram-index":

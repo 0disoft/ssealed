@@ -57,6 +57,12 @@ export function renderTopicDocument(filePath: string, title: string, profile?: P
   return renderTopicContract(topic, title, profile);
 }
 
+export function renderRequiredTopicDocument(filePath: string, title: string, density: Density = "standard"): string {
+  const content = renderTopicDocument(filePath, title, undefined, density);
+  if (content === undefined) throw new Error(`Missing required topic contract: ${filePath}`);
+  return content;
+}
+
 export function renderTopicContract(topic: TopicContract, title: string, profile?: Profile): string {
   return `# ${title}
 
