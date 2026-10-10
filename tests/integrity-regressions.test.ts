@@ -40,6 +40,25 @@ async function runJson(args: readonly string[]): Promise<{ readonly code: number
 }
 
 describe("managed surface integrity", () => {
+  it("rejects Windows superscript device paths before commands accept or rewrite the manifest", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--density", "minimal"])).code).toBe(0);
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.files.find((file: { path: string }) => file.path === "README.md").path = "docs/COM².md";
+    const content = `${JSON.stringify(manifest, null, 2)}\n`;
+    await writeFile(manifestPath, content);
+    const readme = await readFile(path.join(dir, "README.md"), "utf8");
+    const packageContent = await readFile(path.join(dir, "package.json"), "utf8");
+    for (const args of [["doctor", dir], ["update", dir, "--force"], ["upgrade", dir, "--force"], ["eject", "runner", dir]]) {
+      const result = await runJson(args);
+      expect(result).toMatchObject({ code: 1, payload: { ok: false, error: { code: "INVALID_MANIFEST" } } });
+      await expect(readFile(manifestPath, "utf8")).resolves.toBe(content);
+      await expect(readFile(path.join(dir, "README.md"), "utf8")).resolves.toBe(readme);
+      await expect(readFile(path.join(dir, "package.json"), "utf8")).resolves.toBe(packageContent);
+    }
+  });
+
   it.each(["update", "upgrade"] as const)("blocks manifest path case aliases before %s writes", async (command) => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--yes"])).code).toBe(0);

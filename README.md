@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.40`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.41`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -231,6 +231,7 @@ The manifest helps identify previously generated files, but it never authorizes 
 Template paths must be relative, normalized, and contained by the selected target directory.
 
 `ssealed` rejects absolute paths, parent traversal, Windows reserved names, unsafe path characters (including control characters), and `bunfig.toml` generation. Ordinary names containing dots, such as `..notes.md`, remain valid inside the target. Scaffold writes refuse symlinked generated directories and symlinked existing files instead of following them outside the target.
+Portable path checks include the superscript device names `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, and `LPT³` defined by [Microsoft's Windows naming rules](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file). These names are rejected in any path segment, including with extensions, on every platform. Ordinary Unicode filenames are preserved without normalization.
 All commands reject a symlink or Windows junction selected as the target directory itself, including `doctor` and dry runs. Select the real directory instead.
 Scaffold planning checks each generated file's parent directories before reading existing content. Linked generated directories are rejected during dry runs and even when every file would otherwise be unchanged or customized.
 Paths are checked again after staging, immediately before publication, and before rolling back each written file. If rollback detects a symlink or junction introduced during the write, it skips that file and reports incomplete recovery, preserving files behind the link. These path checks remain best effort; they do not eliminate the path-based API race described above.

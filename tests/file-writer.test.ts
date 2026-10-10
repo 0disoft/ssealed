@@ -307,6 +307,20 @@ describe("file writer behavior", () => {
     expect(() => assertSafeTemplatePath("docs/CON.md")).toThrow();
   });
 
+  it.each(["COM¹", "Com²", "com³", "LPT¹", "LpT²", "lpt³"])("rejects the Windows superscript device name %s in every path segment", (device) => {
+    for (const filePath of [device, `${device}.txt`, `docs/${device}.tar.gz`, `docs/${device}/note.md`]) {
+      expect(() => assertSafeTemplatePath(filePath)).toThrow(/platform-unsafe segment/u);
+    }
+  });
+
+  it("preserves ordinary Unicode names near reserved device names", async () => {
+    const dir = await tempDir();
+    const paths = ["docs/COM¹-notes.md", "docs/LPT²-manual.md", "docs/COM⁴.md", "docs/lpt⁹.md"];
+    for (const filePath of paths) expect(() => assertSafeTemplatePath(filePath)).not.toThrow();
+    await writePlannedFiles(dir, paths.map((filePath) => ({ path: filePath, kind: "document", action: "create", content: "USER DOCUMENT\n" })));
+    for (const filePath of paths) await expect(readFile(path.join(dir, filePath), "utf8")).resolves.toBe("USER DOCUMENT\n");
+  });
+
   it.each(["..notes.md", "...notes/README.md", "docs/a..b.md"])("resolves safe names containing dots inside the target: %s", async (filePath) => {
     const dir = await tempDir();
     expect(resolveInsideTarget(dir, filePath)).toBe(path.join(dir, ...filePath.split("/")));
@@ -397,6 +411,15 @@ describe("file writer behavior", () => {
     const reservedDir = await tempDir();
     await writeManifestFiles(reservedDir, [manifestFile({ path: ".ssealed/manifest.json" })]);
     await expectInvalidManifest(reservedDir);
+  });
+
+  it.each(["COM¹", "Com²", "com³", "LPT¹", "LpT²", "lpt³"])("rejects a manifest containing the Windows superscript device name %s", async (device) => {
+    const dir = await tempDir();
+    await writeManifestFiles(dir, [manifestFile({ path: `docs/${device}.md` })]);
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const original = await readFile(manifestPath, "utf8");
+    await expectInvalidManifest(dir);
+    await expect(readFile(manifestPath, "utf8")).resolves.toBe(original);
   });
 
   it("rejects duplicate manifest file paths", async () => {

@@ -2,7 +2,8 @@ import { lstat, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { SsealedError } from "./errors.js";
 
-const windowsDevicePattern = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/iu;
+// Windows also reserves the ISO-8859-1 superscript digits in COM/LPT device names.
+const windowsDevicePattern = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/iu;
 
 export function assertSafeTemplatePath(templatePath: string): void {
   if (templatePath.length === 0) {
