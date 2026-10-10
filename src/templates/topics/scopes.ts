@@ -9,6 +9,39 @@ function scopeContract(topic: TopicContract | undefined, source: string): TopicC
 }
 
 export const scopeTopics: Readonly<Record<string, TopicContract>> = {
+  "docs/mobile/README.md": {
+    purpose: "Orient contributors to the mobile-owned user journeys, platform commitments, and local or remote state decisions without taking ownership of backend implementation.",
+    source: "docs/architecture/00-system-boundary.md",
+    decisions: [
+      "Owned journeys: UNDECIDED. Name supported mobile tasks, user outcomes, entrypoints, exclusions, and the owner of each surface.",
+      "Platform commitments: UNDECIDED. Define supported device and platform capabilities, accessibility needs, lifecycle constraints, and fallback when capabilities are unavailable.",
+      "Local and remote authority: UNDECIDED. Identify local work, consumed services, identity boundaries, offline conflicts, and the owner that reconciles each fact.",
+      "Delivery and recovery: UNDECIDED. Identify release ownership, compatibility assumptions, interrupted-user-work recovery, and evidence required for supported journeys.",
+      "Document ownership: UNDECIDED. Assign owners to the decision documents below and keep their detailed policies aligned with this scope boundary.",
+    ],
+  },
+  "docs/infra/README.md": {
+    purpose: "Orient contributors to declared resource ownership and the state, environment, and execution boundaries needed for safe infrastructure changes.",
+    source: "docs/architecture/00-system-boundary.md",
+    decisions: [
+      "Owned resources: UNDECIDED. Identify resources, input and output contracts, consumers, external owners, and changes outside this module's scope.",
+      "State and execution authority: UNDECIDED. Name state owners, change executors, credentials, concurrency boundaries, and authority needed for effects.",
+      "Environment boundaries: UNDECIDED. Define isolation, supported configurations, shared resources, and effects that cross environment or owner boundaries.",
+      "Change and recovery: UNDECIDED. Identify reviewed evidence, drift detection, interruption states, reversible actions, and forward-recovery responsibility.",
+      "Document ownership: UNDECIDED. Assign owners to the decision documents below; these scaffolds describe contracts and do not provision resources.",
+    ],
+  },
+  "docs/data/README.md": {
+    purpose: "Orient contributors to dataset contracts, publication decisions, and lineage or recovery ownership across the data pipeline boundary.",
+    source: "docs/architecture/00-system-boundary.md",
+    decisions: [
+      "Dataset contracts: UNDECIDED. Name input and output datasets, grain, versions, consumer expectations, and excluded processing responsibilities.",
+      "Lineage and ownership: UNDECIDED. Identify authoritative records, transformations, derived copies, and the owner that can change or repair each fact.",
+      "Publication authority: UNDECIDED. Define acceptance criteria, quality evidence, rejection or quarantine handling, and who decides data is usable by consumers.",
+      "Privacy and recovery: UNDECIDED. Identify retention and deletion responsibility, replay or backfill behavior, and recovery without republishing invalid or deleted records.",
+      "Document ownership: UNDECIDED. Assign owners to the decision documents below and keep their detailed policies aligned with the pipeline contract.",
+    ],
+  },
   "docs/mobile/app-contract.md": {
     purpose: "Define the mobile-owned product surface, user work, and external contracts before choosing an application implementation.",
     source: "docs/mobile/README.md",

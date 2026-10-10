@@ -6,6 +6,39 @@ import { addons, densities, scopes } from "../src/core/types.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { file: "CONTRIBUTING.md", source: "docs/engineering/00-project-invariants.md", decisions: ["Contribution boundary", "Review and evidence", "Delivery ownership"] },
+    { file: "DEVELOPMENT.md", source: "VALIDATION.md", decisions: ["Setup contract", "Command inventory", "Local evidence"] },
+  ])("provides $file with project-specific workflow decisions", ({ file, source, decisions }) => {
+    for (const scope of scopes) for (const density of densities) {
+      const files = templateFilesFor(scope, "none", "generic", density);
+      const content = files.find((candidate) => candidate.path === file)?.content;
+      if (density === "minimal") { expect(content).toBeUndefined(); continue; }
+      for (const decision of decisions) expect(content).toContain(`${decision}: UNDECIDED`);
+      expect(content).toContain(`Project-wide decisions: ${source}`);
+      expect(files.some((candidate) => candidate.path === source)).toBe(true);
+      expect(content).not.toContain("This document captures the durable design contract");
+    }
+  });
+
+  it.each([
+    { scope: "mobile", decisions: ["Owned journeys", "Platform commitments", "Local and remote authority"] },
+    { scope: "infra", decisions: ["Owned resources", "State and execution authority", "Environment boundaries"] },
+    { scope: "data", decisions: ["Dataset contracts", "Lineage and ownership", "Publication authority"] },
+  ] as const)("maps actual $scope documents without referencing higher-density files", ({ scope, decisions }) => {
+    for (const density of densities) {
+      const files = templateFilesFor(scope, "none", "cli-tool", density);
+      const prefix = `docs/${scope}/`;
+      const overview = files.find((candidate) => candidate.path === `${prefix}README.md`)!.content;
+      for (const decision of decisions) expect(overview).toContain(`${decision}: UNDECIDED`);
+      expect(overview).toContain("Project-wide decisions: docs/architecture/00-system-boundary.md");
+      expect(overview).toContain("## Decision Documents");
+      const links = [...overview.matchAll(/\]\(([^)]+\.md)\)/gu)].map((match) => `${prefix}${match[1]}`);
+      expect(links.sort()).toEqual(files.filter((candidate) => candidate.path.startsWith(prefix) && candidate.path !== `${prefix}README.md`).map((candidate) => candidate.path).sort());
+      expect(overview).not.toContain("This document captures the durable design contract");
+    }
+  });
+
+  it.each([
     { file: "00-project-invariants.md", minimum: "minimal", source: "docs/architecture/00-system-boundary.md", decisions: ["Invariant inventory", "Authority boundaries", "Effect completion"] },
     { file: "01-design-review-questions.md", minimum: "standard", source: "docs/engineering/00-project-invariants.md", decisions: ["Problem and alternatives", "Ownership and contracts", "Failure and recovery"] },
     { file: "02-code-review-checklist.md", minimum: "standard", source: "docs/engineering/00-project-invariants.md", decisions: ["Observable change", "Effect correctness", "Evidence quality"] },

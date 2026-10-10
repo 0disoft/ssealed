@@ -24,6 +24,7 @@ import { runnerFiles } from "./runners.js";
 import { renderTopicDocument } from "./topic-documents.js";
 import { renderAdrDocument } from "./adr-documents.js";
 import { renderDiagram, renderDiagramIndex } from "./diagrams.js";
+import { renderScopeDocumentIndex } from "./scope-document-index.js";
 
 interface FileSpec {
   readonly path: string;
@@ -251,8 +252,7 @@ export function templateFilesFor(
     ...(scope === "data" ? dataFiles : []),
   ].filter((file) => includesDensity(file, density));
 
-  const diagramFiles = scopedFiles.filter((file) => file.renderer === "mermaid");
-  const renderedScopedFiles = scopedFiles.map((file) => renderFile(file, scope, profile, addons, density, diagramFiles));
+  const renderedScopedFiles = scopedFiles.map((file) => renderFile(file, scope, profile, addons, density, scopedFiles));
   const scopedPaths = new Set(renderedScopedFiles.map((file) => file.path));
   const files = [...renderedScopedFiles, ...profileFilesFor(profile, scope, density, addons).filter((file) => !scopedPaths.has(file.path)), ...runnerFiles(runner)];
   assertUniqueTemplatePaths(files);
@@ -284,7 +284,7 @@ function assertUniqueTemplatePaths(files: readonly TemplateFile[]): void {
   }
 }
 
-function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: readonly Addon[], density: Density, diagramFiles: readonly FileSpec[]): TemplateFile {
+function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: readonly Addon[], density: Density, fileSpecs: readonly FileSpec[]): TemplateFile {
   switch (file.renderer) {
     case "editorconfig":
       return { ...file, content: editorconfig() };
@@ -344,7 +344,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "mermaid":
       return { ...file, content: renderDiagram(file.path, scope) };
     case "diagram-index":
-      return { ...file, content: renderDiagramIndex(diagramFiles, scope) };
+      return { ...file, content: renderDiagramIndex(fileSpecs.filter((candidate) => candidate.renderer === "mermaid"), scope) };
     case "pull-request-template":
       return { ...file, content: pullRequestTemplate() };
     case "codeowners":
@@ -352,7 +352,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "issue-template":
       return { ...file, content: githubIssueTemplate(file.title ?? "Issue") };
     case "markdown":
-      return { ...file, content: renderAdrDocument(file.path, file.title ?? file.path) ?? renderFrontendTopic(file.path, file.title ?? file.path, scope) ?? renderTopicDocument(file.path, file.title ?? file.path) ?? markdownDoc(file.title ?? file.path) };
+      return { ...file, content: (renderAdrDocument(file.path, file.title ?? file.path) ?? renderFrontendTopic(file.path, file.title ?? file.path, scope) ?? renderTopicDocument(file.path, file.title ?? file.path) ?? markdownDoc(file.title ?? file.path)) + renderScopeDocumentIndex(file.path, fileSpecs) };
   }
 }
 

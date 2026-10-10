@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.56`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.57`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -135,6 +135,8 @@ Frontend design leaves component layers and shared-state policies as project dec
 Operations documents turn critical journeys and recovery budgets into specific decisions for telemetry, CI scope and cost, artifact promotion, recovery eligibility, active configuration, secret lifecycle, demonstrated restoration, and incident response. Each detailed policy, including strict disaster-recovery and service-level documents, points to the common operational contract. All values and owners remain unresolved until the project supplies decisions and evidence; document density and seeded-file protections are preserved.
 
 Engineering documents specify project invariants and topic-specific design, code-review, performance, security, testing, dependency, and failure-recovery decisions. Performance budgets point to measurable architecture quality scenarios; failure standards point to the operational contract; other engineering policies, including strict threat-model and data-integrity documents, point to project invariants. Testing prompts emphasize independent expected results, relevant failure cases, support gaps, and avoiding redundant evidence. These documents remain drafts with project-specific thresholds and choices unresolved, and updates preserve edited or retired seeded files.
+
+Contribution and development guides provide decisions for contribution scope, review evidence, delivery ownership, setup, exact project-owned commands, and safe local state management. Mobile, infrastructure, and data scope READMEs describe their own ownership boundaries and list the decision documents selected for the current density. These guides leave tools, commands, owners, and policies unselected until configured by the project; normal seeded-file protections continue to preserve edits and retired documents.
 
 ## Repository Type Matrix
 
