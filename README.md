@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.36`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.37`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -140,9 +140,9 @@ Repository types describe the shape of the repository. They are intentionally se
   Individual documents define resource and state authority, environment isolation and promotion, and reviewed reconciliation of declared and actual state.
 - `data-pipeline`: adds lineage, quality gates, retention/privacy, checklist, validation, and agent-skill documents.
   Individual documents define dataset grain and backfills, measurable publication gates and quarantine, and retention or deletion across derived and recovery copies.
-- `github-action`: adds action contract, inputs/outputs, permissions, checklist, validation, and agent-skill documents.
-- `browser-extension`: adds extension contract, permissions, content-script boundaries, checklist, validation, and agent-skill documents.
-- `plugin`: adds host contract, extension points, compatibility, checklist, validation, and agent-skill documents.
+- `github-action`: adds topic-specific execution/cleanup, input/output and secret handling, permission boundaries, checklist, validation, and agent-skill documents.
+- `browser-extension`: adds topic-specific execution/lifecycle, permission grants and revocation, content-script/message boundaries, checklist, validation, and agent-skill documents.
+- `plugin`: adds topic-specific host activation/teardown, extension-point ownership, capability compatibility/migration, checklist, validation, and agent-skill documents.
 - `docs-site`: adds information architecture, publishing, content quality, checklist, validation, and agent-skill documents.
 - `monorepo`: adds workspace boundaries, package ownership, change coordination, checklist, validation, and agent-skill documents.
 

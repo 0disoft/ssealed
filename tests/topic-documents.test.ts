@@ -3,6 +3,28 @@ import { templateFilesFor } from "../src/templates/index.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { profile: "github-action", path: "action-contract.md", decisions: ["Execution boundary", "Untrusted contributions", "Failure and cleanup"] },
+    { profile: "github-action", path: "inputs-and-outputs.md", decisions: ["Input schema", "Output contract", "Secret handling"] },
+    { profile: "github-action", path: "permissions.md", decisions: ["Permission inventory", "Credential scope", "Untrusted execution"] },
+    { profile: "browser-extension", path: "extension-contract.md", decisions: ["Execution contexts", "Lifecycle and storage", "Distribution and updates"] },
+    { profile: "browser-extension", path: "permissions.md", decisions: ["Capability inventory", "Grant and revocation", "Origin scope"] },
+    { profile: "browser-extension", path: "content-script-boundaries.md", decisions: ["Injection boundary", "Message validation", "Page-controlled data"] },
+    { profile: "plugin", path: "host-contract.md", decisions: ["Host capabilities", "Activation and teardown", "Failure isolation"] },
+    { profile: "plugin", path: "extension-points.md", decisions: ["Registration ownership", "Invocation contract", "Reentrancy and concurrency"] },
+    { profile: "plugin", path: "compatibility.md", decisions: ["Compatibility matrix", "Capability negotiation", "Migration and rollback"] },
+  ] as const)("gives $profile $path specific host integration decisions", ({ profile, path, decisions }) => {
+    for (const files of [templateFilesFor("general", "none", profile, "strict"), templateFilesFor("frontend", "none", "generic", "strict", [profile])]) {
+      const content = files.find((file) => file.path === `docs/${profile}/${path}`)?.content;
+      expect(content).toBeDefined();
+      for (const decision of decisions) expect(content).toContain(decision);
+      expect(content).toContain(`docs/${profile}/README.md`);
+      expect(content).toContain(`- Repository Type: ${profile}`);
+      expect(content).toContain("UNDECIDED");
+      expect(content).not.toContain("## Repository Type Contract");
+    }
+  });
+
+  it.each([
     { profile: "web-app", path: "routing-and-rendering.md", decisions: ["Route ownership", "Rendering boundary", "Navigation failures"] },
     { profile: "web-app", path: "browser-state.md", decisions: ["State authority", "Persistence and expiry", "Multiple tabs"] },
     { profile: "web-app", path: "frontend-observability.md", decisions: ["User journey signals", "Error correlation", "Collection boundaries"] },

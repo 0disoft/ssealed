@@ -12,6 +12,9 @@ import { engineeringOperationsTopics } from "./topics/engineering-operations.js"
 import { cliToolTopics } from "./topics/cli-tool.js";
 import { webAppTopics } from "./topics/web-app.js";
 import { mobileAppTopics } from "./topics/mobile-app.js";
+import { githubActionTopics } from "./topics/github-action.js";
+import { browserExtensionTopics } from "./topics/browser-extension.js";
+import { pluginTopics } from "./topics/plugin.js";
 
 const topicContracts: Readonly<Record<string, TopicContract>> = {
   ...workerServiceTopics,
@@ -25,6 +28,9 @@ const topicContracts: Readonly<Record<string, TopicContract>> = {
   ...cliToolTopics,
   ...webAppTopics,
   ...mobileAppTopics,
+  ...githubActionTopics,
+  ...browserExtensionTopics,
+  ...pluginTopics,
 };
 
 export function renderTopicDocument(filePath: string, title: string, profile?: Profile): string | undefined {
