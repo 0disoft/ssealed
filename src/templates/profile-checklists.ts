@@ -66,6 +66,58 @@ const profileChecklists: Readonly<Record<string, ChecklistDefinition>> = {
     ],
     validations: ["contract", "test", "smoke", "check"],
   },
+  ".agents/checklists/desktop-app.md": {
+    sources: ["docs/desktop/README.md", "docs/desktop/installers.md"],
+    failureModes: "Untrusted artifacts, wrong install privileges or ownership, incompatible local data, interrupted updates, late work mutating closed views, and unverified installed behavior.",
+    items: [
+      "Supported platforms, distribution artifacts, publisher authority, required privileges, and owned paths agree with the installation contract.",
+      "Install, repair, update, and removal preserve user data and shared components according to the affected lifecycle and retention choices.",
+      "Artifact delivery, installed state, and application activation are distinguished, with interrupted or partial transitions and actual recovery limits explicit.",
+      "Affected app and data versions are compatible; restoring an older binary is not assumed to restore migrated user state.",
+      "Owned resources and pending work have cleanup and application-time identity checks where needed to protect closed or replaced views and recoverable user work.",
+      "Relevant installed-application journeys, failures, and recovery have supported-platform evidence, with remaining cleanup or distribution work recorded.",
+    ],
+    validations: ["test", "smoke", "docs", "check"],
+  },
+  ".agents/checklists/web-app.md": {
+    sources: ["docs/web-app/README.md", "docs/web-app/routing-and-rendering.md"],
+    failureModes: "Direct-load and navigation disagreement, unsafe rendering or URL data, stale responses replacing intent, lost browser state, identity leakage, and inaccessible task recovery.",
+    items: [
+      "Affected tasks, URL and route owners, rendering choices, and data-loading boundaries match the agreed web application contract.",
+      "Direct loads and client navigation preserve compatible access, loading, and error behavior across the relevant rendering boundaries.",
+      "Delayed navigation, loading, or hydration results respect current operation, view, and account identity before replacing state or user input.",
+      "Affected form, focus, scroll, and back/forward restoration preserves usable tasks and recoverable work through failed loads or expired sessions.",
+      "Cache and persisted state account for sensitive data, identity switches, multiple tabs, and failed or stale storage where affected.",
+      "Relevant browser journeys and recovery have rendered and accessibility evidence, with automated checks and unsupported environments distinguished.",
+    ],
+    validations: ["lint", "typecheck", "test", "smoke", "check"],
+  },
+  ".agents/checklists/browser-extension.md": {
+    sources: ["docs/browser-extension/README.md", "docs/browser-extension/extension-contract.md"],
+    failureModes: "Execution-context confusion, excessive or revoked capabilities, untrusted page messages gaining authority, unsafe replay after suspension, and incompatible extension-state updates.",
+    items: [
+      "Supported browsers, extension UI, background execution, content scripts, and external integrations have explicit responsibilities and lifetimes.",
+      "Affected page and message effects are bound to appropriate caller, origin, frame, and current capability grants.",
+      "Untrusted page data and denied or revoked access are handled at the responsible boundary without expanding authority to bypass an error.",
+      "Suspension, restart, migration, or update preserves appropriate state and reconciles uncertain effects before replay.",
+      "Listeners, registrations, pending work, and persisted or collected data have ownership, cleanup, and deletion behavior where affected.",
+      "Relevant supported-browser contexts, unrelated origins, denied grants, and interruption paths have evidence, with distribution or compatibility gaps explicit.",
+    ],
+    validations: ["lint", "test", "smoke", "docs", "check"],
+  },
+  ".agents/checklists/plugin.md": {
+    sources: ["docs/plugin/README.md", "docs/plugin/host-contract.md"],
+    failureModes: "Unsupported host assumptions, excessive capabilities, duplicate registrations, ambiguous resource ownership, late callbacks after unload, and incomplete teardown or state migration.",
+    items: [
+      "Supported host interfaces, capabilities, extension points, and state authority agree with the documented host contract.",
+      "Activation owners control their registrations, listeners, tasks, handles, and persisted state without taking over another instance's resources.",
+      "Repeated activation, overlapping invocation, and failure preserve the agreed ordering, effect authority, and host availability.",
+      "Disable or unload handles pending callbacks and late completions, prevents invalidated work from changing host state, and releases owned resources.",
+      "Cancellation requests are distinguished from completed teardown, and affected update or migration preserves valid user configuration and recoverable state.",
+      "Relevant host activation, capability denial, failure, and teardown paths have evidence, with unsupported versions and remaining cleanup work explicit.",
+    ],
+    validations: ["contract", "test", "smoke", "docs", "check"],
+  },
 };
 
 export function renderProfileChecklist(filePath: string, title: string): string | undefined {

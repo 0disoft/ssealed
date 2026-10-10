@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.67`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.68`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -158,6 +158,8 @@ Backend API, DB migration, frontend UI, mobile app, infrastructure change, and d
 Security, performance, operations change, dependency, accessibility, and release-readiness checklists also use file-path routing and evidence items. They connect trust boundaries, comparable measurements, active operating state, compatibility policy, accessible task completion, and distributed-artifact readiness to documents present at their emitted density. Accessibility and release readiness distinguish actual user or delivery evidence from automated or build-only checks.
 
 CLI tool, API service, library package, SDK, and worker service checklists cover their caller contracts, effect completion, consumer compatibility, and recovery boundaries. Their required links remain valid at minimal density for repository types and addons, including the owned API service contract across scopes. Validation choices follow the affected contracts and supported-consumer evidence rather than a fixed full-suite requirement.
+
+Desktop, web app, browser extension, and plugin checklists connect installation and data compatibility, browser navigation and state, context-specific capabilities, and host teardown to evidence for supported environments. They preserve user work and make interruption, revocation, late completion, and unfinished recovery or cleanup explicit. Their document links remain valid for minimal repository types and addons.
 
 ## Repository Type Matrix
 
