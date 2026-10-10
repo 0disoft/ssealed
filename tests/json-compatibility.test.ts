@@ -9,6 +9,7 @@ let workdirs: string[] = [];
 beforeEach(() => {
   workdirs = [];
 });
+
 afterEach(async () => {
   await Promise.all(workdirs.map((dir) => rm(dir, { recursive: true, force: true })));
 });
@@ -85,5 +86,23 @@ describe("UTF-8 BOM compatibility", () => {
     expect(await runJson(["doctor", dir])).toMatchObject({
       code: 1, payload: { ok: false, error: { code: "INVALID_MANIFEST" } },
     });
+  });
+});
+
+describe("manifest setting consistency", () => {
+  it("rejects an addon that repeats the primary repository type before commands use it", async () => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--repo-type", "library", "--yes"])).code).toBe(0);
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { addons: string[] };
+    manifest.addons = ["library"];
+    const invalidContent = `${JSON.stringify(manifest, null, 2)}\n`;
+    await writeFile(manifestPath, invalidContent);
+    for (const args of [["doctor"], ["update"], ["upgrade"], ["update", "--dry-run"], ["upgrade", "--dry-run"]]) {
+      expect(await runJson([...args, dir])).toMatchObject({
+        code: 1, payload: { ok: false, error: { code: "INVALID_MANIFEST" } },
+      });
+      await expect(readFile(manifestPath, "utf8")).resolves.toBe(invalidContent);
+    }
   });
 });

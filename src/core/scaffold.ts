@@ -309,7 +309,7 @@ function isManifestLike(value: unknown): value is {
     typeof candidate.scope === "string" &&
     normalizeScope(candidate.scope) !== undefined &&
     (candidate.profile === undefined || isProfile(candidate.profile)) &&
-    (candidate.addons === undefined || (Array.isArray(candidate.addons) && candidate.addons.every((addon) => isAddon(addon)))) &&
+    (candidate.addons === undefined || (Array.isArray(candidate.addons) && candidate.addons.every((addon) => isAddon(addon) && addon !== candidate.profile))) &&
     (candidate.density === undefined || isDensity(candidate.density)) &&
     isRunner(candidate.runner) &&
     Array.isArray(candidate.files) &&
