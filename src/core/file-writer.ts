@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, link, lstat, mkdir, readFile, rename, rm, rmdir, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, open, readFile, rename, rm, rmdir } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { SsealedError } from "./errors.js";
@@ -734,8 +734,14 @@ export async function writeTextFileAtomically(
   } = {},
 ): Promise<void> {
   const temporaryPath = path.join(path.dirname(targetPath), `.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`);
+  let temporaryHandle: Awaited<ReturnType<typeof open>> | undefined;
+  let temporaryCreated = false;
   try {
-    await writeFile(temporaryPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    temporaryHandle = await open(temporaryPath, "wx", 0o600);
+    temporaryCreated = true;
+    await temporaryHandle.writeFile(content, "utf8");
+    await temporaryHandle.close();
+    temporaryHandle = undefined;
     if (options.mode !== undefined) {
       await chmod(temporaryPath, options.mode & 0o7777);
     }
@@ -749,10 +755,23 @@ export async function writeTextFileAtomically(
       options.onCommit?.();
     }
   } catch (error) {
-    try {
-      await rm(temporaryPath, { force: true });
-    } catch (cleanupError) {
-      throw new AggregateError([error, cleanupError], `Atomic write failed and temporary-file cleanup also failed for ${targetPath}.`);
+    const cleanupErrors: unknown[] = [];
+    if (temporaryHandle !== undefined) {
+      try {
+        await temporaryHandle.close();
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+    if (temporaryCreated) {
+      try {
+        await rm(temporaryPath, { force: true });
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError([error, ...cleanupErrors], `Atomic write failed and temporary-file cleanup also failed for ${targetPath}.`);
     }
     throw error;
   }
