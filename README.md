@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.72`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.73`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -168,6 +168,8 @@ Every emitted `.agents/checklists/` document requires an explicit registered def
 Backend API, DB migration, frontend UI, mobile app, infrastructure change, and data pipeline validation guides select task-specific evidence from root `VALIDATION.md` instead of declaring separate validation-name authorities. Their file-path routing selects the owned or consumed API and scope or repository-type documents that actually exist. They distinguish contract review from observed runtime results and leave unconfigured checks, unsupported environments, and incomplete recovery explicit.
 
 Default, operations change, dependency upgrade, and release-readiness validation guides also use root `VALIDATION.md` and task-specific evidence. They connect the requested outcome and preserved invariants, observed active state, installed-consumer compatibility, and identifiable release artifacts or recovery to their authoritative documents. Check selection follows affected behavior, and passing a build or unrelated command does not establish completed operation or publication.
+
+CLI tool, API service, library package, SDK, and worker service validation guides cover installed command results, service lifecycle, packaged public entrypoints, upstream integration, and job acknowledgment or recovery. Required references select existing contracts and checklists for repository types and addons. Root `VALIDATION.md` remains authoritative, and the guides keep simulated integration, untested consumers, and incomplete effects distinct from verified results.
 
 ## Repository Type Matrix
 

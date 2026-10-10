@@ -4,6 +4,7 @@ import { renderCommonChecklist } from "./common-checklists.js";
 import { renderCommonValidation } from "./common-validations.js";
 import { renderProfileChecklist } from "./profile-checklists.js";
 import { renderProfileSkill } from "./profile-skills.js";
+import { renderProfileValidation } from "./profile-validations.js";
 import { renderScopeChecklist } from "./scope-checklists.js";
 import { renderScopeSkill } from "./scope-skills.js";
 import { renderScopeValidation } from "./scope-validations.js";
@@ -276,7 +277,7 @@ ${routes.join("\n")}
 }
 
 export function validationDoc(title: string, scope: Scope, profile: Profile, addons: readonly Addon[] = [], filePath = "VALIDATION.md"): string {
-  const taskValidation = renderScopeValidation(filePath, title, scope) ?? renderCommonValidation(filePath, title);
+  const taskValidation = renderScopeValidation(filePath, title, scope) ?? renderCommonValidation(filePath, title) ?? renderProfileValidation(filePath, title);
   if (taskValidation !== undefined) return taskValidation;
   const repositoryShape = profileList(profile, addons);
   const repositoryShapeBlock =
