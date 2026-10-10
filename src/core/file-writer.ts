@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, link, lstat, mkdir, open, readFile, rename, rm, rmdir } from "node:fs/promises";
+import { link, lstat, mkdir, open, readFile, rename, rm, rmdir } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { SsealedError } from "./errors.js";
@@ -753,22 +753,31 @@ export async function writeTextFileAtomically(
   const temporaryPath = path.join(path.dirname(targetPath), `.${path.basename(targetPath)}.${process.pid}.${randomUUID()}.tmp`);
   let temporaryHandle: Awaited<ReturnType<typeof open>> | undefined;
   let temporaryCreated = false;
+  let temporaryIdentity: { readonly dev: bigint; readonly ino: bigint } | undefined;
   try {
     temporaryHandle = await open(temporaryPath, "wx", 0o600);
     temporaryCreated = true;
+    temporaryIdentity = await temporaryHandle.stat({ bigint: true });
     await temporaryHandle.writeFile(content, "utf8");
+    if (options.mode !== undefined) {
+      await temporaryHandle.chmod(options.mode & 0o7777);
+    }
     await temporaryHandle.close();
     temporaryHandle = undefined;
-    if (options.mode !== undefined) {
-      await chmod(temporaryPath, options.mode & 0o7777);
-    }
     await options.beforeCommit?.();
+    if (!(await assertTemporaryFileOwnership(temporaryPath, temporaryIdentity))) {
+      throw new SsealedError("WRITE_FAILED", `Temporary file disappeared before publication: ${temporaryPath}`);
+    }
     if (options.createOnly) {
       await link(temporaryPath, targetPath);
       options.onCommit?.();
-      await rm(temporaryPath);
+      if (await assertTemporaryFileOwnership(temporaryPath, temporaryIdentity)) {
+        await rm(temporaryPath);
+      }
+      temporaryCreated = false;
     } else {
       await rename(temporaryPath, targetPath);
+      temporaryCreated = false;
       options.onCommit?.();
     }
   } catch (error) {
@@ -782,16 +791,36 @@ export async function writeTextFileAtomically(
     }
     if (temporaryCreated) {
       try {
-        await rm(temporaryPath, { force: true });
+        if (await assertTemporaryFileOwnership(temporaryPath, temporaryIdentity)) {
+          await rm(temporaryPath, { force: true });
+        }
       } catch (cleanupError) {
         cleanupErrors.push(cleanupError);
       }
     }
     if (cleanupErrors.length > 0) {
-      throw new AggregateError([error, ...cleanupErrors], `Atomic write failed and temporary-file cleanup also failed for ${targetPath}.`);
+      throw new AggregateError(
+        [error, ...cleanupErrors],
+        `Atomic write failed: ${asError(error).message}; temporary-file cleanup also failed for ${targetPath}: ${cleanupErrors.map((failure) => asError(failure).message).join("; ")}`,
+      );
     }
     throw error;
   }
+}
+
+async function assertTemporaryFileOwnership(
+  temporaryPath: string,
+  identity: { readonly dev: bigint; readonly ino: bigint } | undefined,
+): Promise<boolean> {
+  const current = await lstat(temporaryPath, { bigint: true }).catch((error: unknown) => {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (current === undefined) return false;
+  if (identity === undefined || !current.isFile() || current.dev !== identity.dev || current.ino !== identity.ino) {
+    throw new SsealedError("WRITE_FAILED", `Temporary file ownership changed; preserving the replacement: ${temporaryPath}`);
+  }
+  return true;
 }
 
 function asError(error: unknown): Error {

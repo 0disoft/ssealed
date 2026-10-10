@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.19`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.20`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -220,6 +220,7 @@ All commands reject a symlink or Windows junction selected as the target directo
 Scaffold planning checks each generated file's parent directories before reading existing content. Linked generated directories are rejected during dry runs and even when every file would otherwise be unchanged or customized.
 Paths are checked again after staging, immediately before publication, and before rolling back each written file. If rollback detects a symlink or junction introduced during the write, it skips that file and reports incomplete recovery, preserving files behind the link. These path checks remain best effort; they do not eliminate the path-based API race described above.
 `eject runner` also rechecks the manifest path for symlinks and junctions immediately before publishing the ownership change, before comparing the manifest contents.
+Atomic writes record the exclusively opened temporary file's device and inode identity. Publication and cleanup recheck that identity and preserve a detected replacement, even if its contents match. Permission changes use the opened handle. If cleanup cannot verify ownership, the error includes both the write failure and cleanup failure; the temporary file is left for inspection. These identity checks also remain best effort against concurrent path changes.
 
 Commands use `.ssealed-init.lock` to keep reads and writes for the same existing target mutually exclusive. If a previous process crashed and left an old lock, rerun a write command with `--break-stale-lock`; the lock is removed only when its metadata is old enough and the recorded local process is confirmed absent. Locks recorded on another host, locks without a valid process ID, and locks whose process status cannot be checked are preserved. Legacy locks without a hostname continue to use the local process check.
 

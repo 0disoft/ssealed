@@ -55,6 +55,39 @@ describe("atomic temporary-file ownership", () => {
     expect(await readdir(dir)).toEqual(["target.txt"]);
   });
 
+  it("preserves a replacement temporary file when publication fails", async () => {
+    const dir = await tempDir();
+    const target = path.join(dir, "target.txt");
+    const temporary = path.join(dir, `.target.txt.${process.pid}.${temporaryId}.tmp`);
+    await writeFile(target, "ORIGINAL\n");
+    const failure = new Error("injected publication failure");
+    const operation = writeTextFileAtomically(target, "GENERATED\n", {
+      beforeCommit: async () => {
+        await rename(temporary, path.join(dir, "held.txt"));
+        await writeFile(temporary, "USER_TEMPORARY\n", { flag: "wx" });
+        throw failure;
+      },
+    });
+    await expect(operation).rejects.toMatchObject({ errors: [failure, expect.objectContaining({ code: "WRITE_FAILED" })] });
+    await expect(readFile(temporary, "utf8")).resolves.toBe("USER_TEMPORARY\n");
+    await expect(readFile(target, "utf8")).resolves.toBe("ORIGINAL\n");
+  });
+
+  it("refuses to publish a replacement temporary file even when its contents match", async () => {
+    const dir = await tempDir();
+    const target = path.join(dir, "target.txt");
+    const temporary = path.join(dir, `.target.txt.${process.pid}.${temporaryId}.tmp`);
+    await writeFile(target, "ORIGINAL\n");
+    await expect(writeTextFileAtomically(target, "GENERATED\n", {
+      beforeCommit: async () => {
+        await rename(temporary, path.join(dir, "held.txt"));
+        await writeFile(temporary, "GENERATED\n", { flag: "wx" });
+      },
+    })).rejects.toThrow(/temporary-file.*failed/iu);
+    await expect(readFile(temporary, "utf8")).resolves.toBe("GENERATED\n");
+    await expect(readFile(target, "utf8")).resolves.toBe("ORIGINAL\n");
+  });
+
   it("closes and removes its partially written file when writing fails", async () => {
     const dir = await tempDir();
     const target = path.join(dir, "target.txt");
@@ -211,9 +244,13 @@ describe("atomic temporary-file ownership", () => {
         await rename(held, metadata);
       }
     }
-    expect(payload, JSON.stringify(payload)).toMatchObject({ ok: false, error: { code: "PATH_SAFETY_ERROR" } });
+    expect(payload, JSON.stringify(payload)).toMatchObject({
+      ok: false,
+      error: { code: "WRITE_FAILED", message: expect.stringMatching(/symlinked directory.*temporary-file cleanup.*ownership changed/iu) },
+    });
     expect(code).toBe(1);
     await expect(readFile(path.join(external, "manifest.json"), "utf8")).resolves.toBe(originalManifest);
+    expect(await readdir(external)).toContain(`.manifest.json.${process.pid}.${temporaryId}.tmp`);
     await expect(readFile(path.join(metadata, "manifest.json"), "utf8")).resolves.toBe(originalManifest);
   });
 });
