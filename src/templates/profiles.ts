@@ -220,7 +220,7 @@ function renderProfileFile(file: ProfileFileSpec, profile: Addon, scope: Scope):
     case "paginated-json":
       return { ...file, content: `${JSON.stringify({ data: [], page: { limit: 25, nextCursor: null } }, null, 2)}\n` };
     case "profile-doc":
-      return { ...file, content: renderTopicDocument(file.path, file.title) ?? profileDoc(file.title, profile) };
+      return { ...file, content: renderTopicDocument(file.path, file.title, profile) ?? profileDoc(file.title, profile) };
   }
 }
 

@@ -3,6 +3,30 @@ import { templateFilesFor } from "../src/templates/index.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { profile: "library", path: "public-api.md", decisions: ["Supported entry points", "Inputs and defaults", "Ownership and lifecycle"] },
+    { profile: "library", path: "semver.md", decisions: ["Compatibility promise", "Change classification", "Deprecation and removal"] },
+    { profile: "library", path: "compatibility.md", decisions: ["Consumer matrix", "Dependency constraints", "Compatibility evidence"] },
+    { profile: "library", path: "package-surface.md", decisions: ["Published contents", "Entry-point metadata", "Artifact validation"] },
+    { profile: "library", path: "migration-guide.md", decisions: ["Before and after usage", "Migration ordering", "Completion evidence"] },
+    { profile: "sdk", path: "public-api.md", decisions: ["Initialization and configuration", "Operation mapping", "Errors and cancellation"] },
+    { profile: "sdk", path: "compatibility.md", decisions: ["Supported environments", "Upstream interface versions", "Unknown capabilities and fields"] },
+    { profile: "sdk", path: "examples-and-samples.md", decisions: ["Scenario inventory", "Public import rules", "Example synchronization"] },
+  ] as const)("gives $profile $path its own consumer decisions", ({ profile, path, decisions }) => {
+    for (const files of [
+      templateFilesFor("general", "none", profile, "strict"),
+      templateFilesFor("frontend", "none", "generic", "strict", [profile]),
+    ]) {
+      const content = files.find((file) => file.path === `docs/${profile}/${path}`)?.content;
+      expect(content).toBeDefined();
+      for (const decision of decisions) expect(content).toContain(decision);
+      expect(content).toContain(`docs/${profile}/README.md`);
+      expect(content).toContain(`- Repository Type: ${profile}`);
+      expect(content).toContain("UNDECIDED");
+      expect(content).not.toContain("## Repository Type Contract");
+    }
+  });
+
+  it.each([
     { path: "docs/desktop/installers.md", decisions: ["Distribution matrix", "Privileges and paths", "Uninstall and cleanup"] },
     { path: "docs/desktop/auto-update.md", decisions: ["Update lifecycle", "Metadata and artifact trust", "Recovery and rollback"] },
     { path: "docs/desktop/crash-reporting.md", decisions: ["Privacy and consent", "Symbolication", "Triage ownership"] },
