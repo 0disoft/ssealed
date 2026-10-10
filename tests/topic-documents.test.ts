@@ -6,6 +6,29 @@ import { addons, densities, scopes } from "../src/core/types.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { file: "00-project-invariants.md", minimum: "minimal", source: "docs/architecture/00-system-boundary.md", decisions: ["Invariant inventory", "Authority boundaries", "Effect completion"] },
+    { file: "01-design-review-questions.md", minimum: "standard", source: "docs/engineering/00-project-invariants.md", decisions: ["Problem and alternatives", "Ownership and contracts", "Failure and recovery"] },
+    { file: "02-code-review-checklist.md", minimum: "standard", source: "docs/engineering/00-project-invariants.md", decisions: ["Observable change", "Effect correctness", "Evidence quality"] },
+    { file: "03-performance-budget.md", minimum: "standard", source: "docs/architecture/03-quality-attributes.md", decisions: ["Representative workload", "Measurement contract", "Limits and tradeoffs"] },
+    { file: "04-security-baseline.md", minimum: "standard", source: "docs/engineering/00-project-invariants.md", decisions: ["Protected operations", "Trust crossings", "Control evidence"] },
+    { file: "05-testing-standard.md", minimum: "standard", source: "docs/engineering/00-project-invariants.md", decisions: ["Risk coverage", "Independent oracle", "Evidence cost"] },
+    { file: "06-dependency-and-change-policy.md", minimum: "standard", source: "docs/engineering/00-project-invariants.md", decisions: ["Necessity and alternatives", "Compatibility updates", "Replacement and exit"] },
+    { file: "07-operability-and-failure-standard.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["Failure state", "Completion reporting", "Recovery ownership"] },
+    { file: "08-threat-model.md", minimum: "strict", source: "docs/engineering/00-project-invariants.md", decisions: ["Assets", "Trust boundaries", "Attacker capabilities"] },
+    { file: "09-data-integrity.md", minimum: "strict", source: "docs/engineering/00-project-invariants.md", decisions: ["Invariants", "Transaction boundaries", "Reconciliation"] },
+  ] as const)("provides engineering decisions and a valid source for $file", ({ file, minimum, source, decisions }) => {
+    for (const scope of scopes) for (const density of densities) {
+      const files = templateFilesFor(scope, "none", "generic", density);
+      const content = files.find((candidate) => candidate.path === `docs/engineering/${file}`)?.content;
+      if (densities.indexOf(density) < densities.indexOf(minimum)) { expect(content).toBeUndefined(); continue; }
+      for (const decision of decisions) expect(content).toContain(`${decision}: UNDECIDED`);
+      expect(content).toContain(`Project-wide decisions: ${source}`);
+      expect(files.some((candidate) => candidate.path === source)).toBe(true);
+      expect(content).toContain("- Required evidence and remaining gaps: UNDECIDED");
+    }
+  });
+
+  it.each([
     { file: "00-operational-contract.md", minimum: "minimal", source: "docs/product/02-spec.md", decisions: ["Critical journeys", "Operating ownership", "Recovery budgets"] },
     { file: "observability.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["Diagnosis questions", "Signal interpretation", "Actionable response"] },
     { file: "ci.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["Verification scope", "Evidence identity", "Cost and duplication"] },

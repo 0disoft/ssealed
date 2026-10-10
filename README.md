@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.55`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.56`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -133,6 +133,8 @@ Backend and fullstack documents contain distinct decision prompts for server bou
 Frontend design leaves component layers and shared-state policies as project decisions. API integration documents point to the consumed `contracts/backend-api/openapi.yaml` in frontend scope and the owned `api/openapi.yaml` in fullstack scope. The consumed-contract guide records provenance and update ownership; strict accessibility and state/cache documents cover task completion, evidence limits, response freshness, identity isolation, and recovery. Existing paths and density remain unchanged, and scaffold updates continue to preserve edited or retired seeded documents.
 
 Operations documents turn critical journeys and recovery budgets into specific decisions for telemetry, CI scope and cost, artifact promotion, recovery eligibility, active configuration, secret lifecycle, demonstrated restoration, and incident response. Each detailed policy, including strict disaster-recovery and service-level documents, points to the common operational contract. All values and owners remain unresolved until the project supplies decisions and evidence; document density and seeded-file protections are preserved.
+
+Engineering documents specify project invariants and topic-specific design, code-review, performance, security, testing, dependency, and failure-recovery decisions. Performance budgets point to measurable architecture quality scenarios; failure standards point to the operational contract; other engineering policies, including strict threat-model and data-integrity documents, point to project invariants. Testing prompts emphasize independent expected results, relevant failure cases, support gaps, and avoiding redundant evidence. These documents remain drafts with project-specific thresholds and choices unresolved, and updates preserve edited or retired seeded files.
 
 ## Repository Type Matrix
 

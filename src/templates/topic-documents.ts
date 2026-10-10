@@ -22,6 +22,7 @@ import { productTopics } from "./topics/product.js";
 import { architectureTopics } from "./topics/architecture.js";
 import { backendOverviewFor, backendTopics } from "./topics/backend.js";
 import { operationsTopics } from "./topics/operations.js";
+import { engineeringTopics } from "./topics/engineering.js";
 
 const topicContracts: Readonly<Record<string, TopicContract>> = {
   ...workerServiceTopics,
@@ -45,6 +46,7 @@ const topicContracts: Readonly<Record<string, TopicContract>> = {
   ...architectureTopics,
   ...backendTopics,
   ...operationsTopics,
+  ...engineeringTopics,
 };
 
 export function renderTopicDocument(filePath: string, title: string, profile?: Profile, density: Density = "standard"): string | undefined {

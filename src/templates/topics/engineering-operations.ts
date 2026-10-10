@@ -3,6 +3,7 @@ import type { TopicContract } from "./contract.js";
 export const engineeringOperationsTopics: Readonly<Record<string, TopicContract>> = {
   "docs/engineering/08-threat-model.md": {
     purpose: "Describe how an actor with specific capabilities could cross a trust boundary, affect an asset, and defeat the intended controls.",
+    source: "docs/engineering/00-project-invariants.md",
     decisions: [
       "Assets: UNDECIDED. Identify sensitive data, critical operations, and their owners.",
       "Trust boundaries: UNDECIDED. Map identities, components, external services, and data flows.",
@@ -14,6 +15,7 @@ export const engineeringOperationsTopics: Readonly<Record<string, TopicContract>
   },
   "docs/engineering/09-data-integrity.md": {
     purpose: "Define which data properties must remain true through concurrent changes, retries, migrations, and recovery.",
+    source: "docs/engineering/00-project-invariants.md",
     decisions: [
       "Invariants: UNDECIDED. Record identity, uniqueness, referential integrity, and valid state transitions.",
       "Transaction boundaries: UNDECIDED. Specify atomic changes and the state allowed after partial failure.",
