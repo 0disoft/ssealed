@@ -156,6 +156,14 @@ async function planScaffoldWithWarnings(
     command,
     previous: previousManifest.files.get(".ssealed/manifest.json")?.kind === "manifest" ? previousManifest.files.get(".ssealed/manifest.json") : undefined,
   });
+  const manifestSnapshotConflict: PlannedFile | undefined =
+    manifestPlan.action !== "conflict" && manifestPlan.existingContent !== previousManifest.sourceContent
+      ? {
+          ...manifestPlan,
+          action: "conflict",
+          reason: "Manifest changed after its ownership metadata was read. Retry after concurrent edits finish.",
+        }
+      : undefined;
 
   const settingsConflict = planManifestSettingsConflict(command, previousManifest.settings, {
     scope: options.scope,
@@ -166,7 +174,7 @@ async function planScaffoldWithWarnings(
     manifestContent,
   });
 
-  return { files: [...manifestFiles, settingsConflict ?? manifestPlan], warnings: previousManifest.warnings };
+  return { files: [...manifestFiles, settingsConflict ?? manifestSnapshotConflict ?? manifestPlan], warnings: previousManifest.warnings };
 }
 
 export interface PreviousManifestSettings {
@@ -178,6 +186,7 @@ export interface PreviousManifestSettings {
 }
 
 export interface PreviousManifestState {
+  readonly sourceContent?: string;
   readonly version: string | undefined;
   readonly files: ReadonlyMap<
     string,
@@ -242,12 +251,14 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
     return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json is not valid UTF-8. Convert its encoding explicitly before running ssealed.")] };
   }
 
+  const sourceContent = bytes.toString("utf8");
   try {
-    const parsed = parseJsonObject(bytes.toString("utf8"));
+    const parsed = parseJsonObject(sourceContent);
     if (!isManifestLike(parsed)) {
       return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
     }
     return {
+      sourceContent,
       version: parsed.generatorVersion ?? parsed.version,
       files: new Map(
         parsed.files.map((file) => [

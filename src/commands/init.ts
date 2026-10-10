@@ -422,14 +422,11 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
 
   const manifestPath = resolveInsideTarget(target, ".ssealed/manifest.json");
   await assertNoSymlinkInPath(target, manifestPath);
-  const manifestBytes = await readFile(manifestPath);
-  if (!isUtf8(manifestBytes)) {
-    return formatEjectError(json, {
-      code: "INVALID_MANIFEST",
-      message: "Existing .ssealed/manifest.json is not valid UTF-8. Convert its encoding explicitly before ejecting runner ownership.",
-    });
+  const manifestContent = previous.sourceContent;
+  if (manifestContent === undefined) {
+    throw new SsealedError("WRITE_FAILED", "Validated manifest source is unavailable for runner ejection.");
   }
-  const manifestContent = manifestBytes.toString("utf8");
+  const manifestBytes = Buffer.from(manifestContent, "utf8");
   const manifest = parseJsonObject(manifestContent);
   if (manifest === undefined || !Array.isArray(manifest.files)) {
     return formatEjectError(json, {
