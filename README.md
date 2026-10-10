@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.54`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.55`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -131,6 +131,8 @@ Backend scope does not generate frontend docs because ownership drift makes agen
 Backend and fullstack documents contain distinct decision prompts for server boundaries, identity verification, resource permissions, stored-state authority, HTTP effects and completion, public errors, telemetry, migrations, security, API evolution, and data integrity. Minimal overviews keep unresolved error policy in the documents that exist; higher densities point to the dedicated error policy. Strict evolution and integrity documents point to their applicable API and persistence policies. These prompts do not select a framework, identity provider, database, or accepted project policy, and existing seeded-file protections remain in place.
 
 Frontend design leaves component layers and shared-state policies as project decisions. API integration documents point to the consumed `contracts/backend-api/openapi.yaml` in frontend scope and the owned `api/openapi.yaml` in fullstack scope. The consumed-contract guide records provenance and update ownership; strict accessibility and state/cache documents cover task completion, evidence limits, response freshness, identity isolation, and recovery. Existing paths and density remain unchanged, and scaffold updates continue to preserve edited or retired seeded documents.
+
+Operations documents turn critical journeys and recovery budgets into specific decisions for telemetry, CI scope and cost, artifact promotion, recovery eligibility, active configuration, secret lifecycle, demonstrated restoration, and incident response. Each detailed policy, including strict disaster-recovery and service-level documents, points to the common operational contract. All values and owners remain unresolved until the project supplies decisions and evidence; document density and seeded-file protections are preserved.
 
 ## Repository Type Matrix
 

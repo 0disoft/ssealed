@@ -25,6 +25,7 @@ export const engineeringOperationsTopics: Readonly<Record<string, TopicContract>
   },
   "docs/ops/disaster-recovery.md": {
     purpose: "Plan recovery of critical user journeys after loss of a service, region, dependency, or persistent state.",
+    source: "docs/ops/00-operational-contract.md",
     decisions: [
       "Disaster scenarios and activation authority: UNDECIDED. Define triggers and decision owners.",
       "RTO: UNDECIDED. Set the maximum acceptable recovery time for each critical journey.",
@@ -37,6 +38,7 @@ export const engineeringOperationsTopics: Readonly<Record<string, TopicContract>
   },
   "docs/ops/service-levels.md": {
     purpose: "Make service reliability objectives measurable and connect their failure to operational decisions.",
+    source: "docs/ops/00-operational-contract.md",
     decisions: [
       "Critical user journeys: UNDECIDED. Define which experiences each objective protects.",
       "SLI: UNDECIDED. Specify the numerator, denominator, data source, exclusions, and measurement owner.",

@@ -6,6 +6,31 @@ import { addons, densities, scopes } from "../src/core/types.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { file: "00-operational-contract.md", minimum: "minimal", source: "docs/product/02-spec.md", decisions: ["Critical journeys", "Operating ownership", "Recovery budgets"] },
+    { file: "observability.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["Diagnosis questions", "Signal interpretation", "Actionable response"] },
+    { file: "ci.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["Verification scope", "Evidence identity", "Cost and duplication"] },
+    { file: "release.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["Release unit", "Promotion evidence", "Partial release recovery"] },
+    { file: "rollback.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["Observed state", "Recovery eligibility", "Restoration evidence"] },
+    { file: "config-and-env.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["Configuration inventory", "Source precedence", "Activation and drift"] },
+    { file: "secrets.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["Secret inventory", "Access boundary", "Rotation and revocation"] },
+    { file: "backup-and-restore.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["Protected state", "Restore prerequisites", "Restore evidence"] },
+    { file: "incident-response.md", minimum: "standard", source: "docs/ops/00-operational-contract.md", decisions: ["User impact and severity", "Containment decisions", "Recovery confirmation"] },
+    { file: "disaster-recovery.md", minimum: "strict", source: "docs/ops/00-operational-contract.md", decisions: ["RTO", "RPO", "Restore exercise"] },
+    { file: "service-levels.md", minimum: "strict", source: "docs/ops/00-operational-contract.md", decisions: ["SLI", "Measurement window", "Error budget"] },
+  ] as const)("provides actionable operations decisions for $file at its supported densities", ({ file, minimum, source, decisions }) => {
+    for (const scope of scopes) for (const density of densities) {
+      const files = templateFilesFor(scope, "none", "generic", density);
+      const content = files.find((candidate) => candidate.path === `docs/ops/${file}`)?.content;
+      if (densities.indexOf(density) < densities.indexOf(minimum)) { expect(content).toBeUndefined(); continue; }
+      for (const decision of decisions) expect(content).toContain(`${decision}: UNDECIDED`);
+      expect(content).toContain(`Project-wide decisions: ${source}`);
+      expect(files.some((candidate) => candidate.path === source)).toBe(true);
+      expect(content).toContain("- Owner: UNASSIGNED");
+      expect(content).toContain("- Required evidence and remaining gaps: UNDECIDED");
+    }
+  });
+
+  it.each([
     { file: "contracts/backend-api/README.md", scope: "frontend", minimum: "standard", source: "docs/integrations/backend-api.md", decisions: ["Contract provenance", "Copy ownership", "Compatibility evidence"] },
     { file: "docs/frontend/accessibility.md", scope: "frontend", minimum: "strict", source: "docs/frontend/FRONTEND_DESIGN.md", decisions: ["Semantic controls", "Keyboard and focus", "Evidence limits"] },
     { file: "docs/frontend/state-and-cache.md", scope: "fullstack", minimum: "strict", source: "docs/frontend/FRONTEND_DESIGN.md", decisions: ["State authority", "Response freshness", "Identity isolation"] },
