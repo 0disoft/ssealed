@@ -929,5 +929,5 @@ about: Track a ${title.toLowerCase()} without inventing product facts.
 }
 
 export { documentMetadata } from "./document-format.js";
-export { frontendDesignDoc } from "./frontend-document.js";
+export { frontendDesignDoc, renderFrontendTopic } from "./frontend-document.js";
 export { dbml, openApiSkeleton } from "./api-contracts.js";

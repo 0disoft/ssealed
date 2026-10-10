@@ -1,6 +1,14 @@
 import { documentMetadata } from "./document-format.js";
+import type { Scope } from "../core/types.js";
+import { renderTopicContract } from "./topic-documents.js";
+import { frontendApiSource, frontendTopicFor } from "./topics/frontend.js";
 
-export function frontendDesignDoc(): string {
+export function renderFrontendTopic(filePath: string, title: string, scope: Scope): string | undefined {
+  const topic = frontendTopicFor(filePath, scope);
+  return topic === undefined ? undefined : renderTopicContract(topic, title);
+}
+
+export function frontendDesignDoc(scope: Scope = "frontend"): string {
   const sections = [
     "0. Decision Summary",
     "1. Product Surface and Scope",
@@ -24,6 +32,14 @@ export function frontendDesignDoc(): string {
 
 ${documentMetadata([["Status", "Draft"]])}
 
+This document is a design scaffold. Record project-specific choices and evidence before treating them as accepted architecture or implemented behavior.
+
+## Decision Sources
+
+- Product requirements: docs/product/02-spec.md
+- API contract: ${frontendApiSource(scope)}
+- API consumption and recovery: docs/integrations/backend-api.md
+
 ${sections
   .map(
     (section) => `## ${section}
@@ -42,22 +58,17 @@ ${frontendSectionPrompt(section)}
 
 ## Global State Allowlist
 
-- Auth session summary when required.
-- Current tenant or organization selection when required.
-- Feature flags when required.
+- Allowed shared state: UNDECIDED. Name each shared category, its authoritative owner, consumers, lifetime, identity boundary, and reason it cannot remain local or derived.
 
 ## Global State Denylist
 
-- Server response copies.
-- Form drafts.
-- One-off modal state.
-- Derived values that can be computed locally.
+- Excluded shared state: UNDECIDED. Record which categories must stay outside a shared store, their actual owners, and the reason for each restriction.
+- Derived or cached state must not become a second authority; define synchronization, invalidation, and recovery wherever projections are retained.
 
 ## Component Layers
 
-app -> pages -> features -> entities -> shared.
-
-Imports may point downward only. Shared must not import entities, features, pages, or app.
+- Layer model: UNDECIDED. Choose responsibility boundaries suited to this project and record the rationale and alternatives; no particular layering scheme is selected by this scaffold.
+- Import direction: UNDECIDED. Define allowed dependencies, shared-module responsibilities, and ownership of exceptional crossings.
 
 ## State Categories
 
@@ -96,7 +107,7 @@ function frontendSectionPrompt(section: string): string {
     return "Define fetch timing, cache keys, invalidation, retry, optimistic updates, and stale data behavior.";
   }
   if (section.includes("Component Boundary")) {
-    return "Describe app/pages/features/entities/shared layers, import direction, and reusable component limits.";
+    return "Choose component responsibilities, state owners, input and event contracts, dependency direction, lifetime cleanup, and reusable component limits.";
   }
   if (section.includes("Design Token")) {
     return "Name semantic token roles for color, spacing, typography, surfaces, status, and interaction states.";

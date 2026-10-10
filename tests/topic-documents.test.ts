@@ -6,6 +6,45 @@ import { addons, densities, scopes } from "../src/core/types.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { file: "contracts/backend-api/README.md", scope: "frontend", minimum: "standard", source: "docs/integrations/backend-api.md", decisions: ["Contract provenance", "Copy ownership", "Compatibility evidence"] },
+    { file: "docs/frontend/accessibility.md", scope: "frontend", minimum: "strict", source: "docs/frontend/FRONTEND_DESIGN.md", decisions: ["Semantic controls", "Keyboard and focus", "Evidence limits"] },
+    { file: "docs/frontend/state-and-cache.md", scope: "fullstack", minimum: "strict", source: "docs/frontend/FRONTEND_DESIGN.md", decisions: ["State authority", "Response freshness", "Identity isolation"] },
+  ] as const)("gives $file decisions matching its frontend responsibility", ({ file, scope, minimum, source, decisions }) => {
+    for (const density of densities) {
+      const files = templateFilesFor(scope, "none", "web-app", density);
+      const content = files.find((candidate) => candidate.path === file)?.content;
+      if (densities.indexOf(density) < densities.indexOf(minimum)) { expect(content).toBeUndefined(); continue; }
+      for (const decision of decisions) expect(content).toContain(`${decision}: UNDECIDED`);
+      expect(content).toContain(`Project-wide decisions: ${source}`);
+      expect(files.some((candidate) => candidate.path === source)).toBe(true);
+      expect(content).not.toContain("This document captures the durable design contract");
+    }
+  });
+
+  it.each(["frontend", "fullstack"] as const)("uses the actual %s API authority without selecting a frontend architecture", (scope) => {
+    for (const density of densities) {
+      const files = templateFilesFor(scope, "none", "generic", density);
+      const apiSource = scope === "fullstack" ? "api/openapi.yaml" : "contracts/backend-api/openapi.yaml";
+      const integration = files.find((file) => file.path === "docs/integrations/backend-api.md")!.content;
+      expect(integration).toContain(`Project-wide decisions: ${apiSource}`);
+      for (const decision of ["Contract provenance", "Client mapping", "Unknown outcomes"]) expect(integration).toContain(`${decision}: UNDECIDED`);
+      expect(files.some((file) => file.path === apiSource)).toBe(true);
+      const design = files.find((file) => file.path === "docs/frontend/FRONTEND_DESIGN.md")!.content;
+      expect(design).toContain(`API contract: ${apiSource}`);
+      expect(design).toContain("Layer model: UNDECIDED");
+      expect(design).toContain("Allowed shared state: UNDECIDED");
+      expect(design).toContain("Excluded shared state: UNDECIDED");
+      expect(design).not.toContain("app -> pages -> features -> entities -> shared");
+      expect(design).not.toContain("- Server response copies.");
+      if (scope === "fullstack") {
+        expect(integration).not.toContain("contracts/backend-api/");
+        expect(design).not.toContain("contracts/backend-api/");
+        expect(files.some((file) => file.path === "contracts/backend-api/README.md")).toBe(false);
+      }
+    }
+  });
+
+  it.each([
     { file: "README.md", minimum: "minimal", source: "docs/architecture/00-system-boundary.md", decisions: ["Backend responsibilities", "Contract owners", "Decision map"] },
     { file: "00-api-server-boundary.md", minimum: "minimal", source: "docs/backend/README.md", decisions: ["Owned entrypoints", "External authority", "Effect completion"] },
     { file: "01-authentication.md", minimum: "standard", source: "docs/backend/README.md", decisions: ["Identity evidence", "Identity lifetime", "Verifier failure"] },

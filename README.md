@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.53`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.54`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -129,6 +129,8 @@ Mobile, infrastructure, and data scope documents contain topic-specific decision
 Backend scope does not generate frontend docs because ownership drift makes agents edit the wrong surface. Frontend scope does not generate backend internals because database, migration, and authorization implementation details belong to backend owners.
 
 Backend and fullstack documents contain distinct decision prompts for server boundaries, identity verification, resource permissions, stored-state authority, HTTP effects and completion, public errors, telemetry, migrations, security, API evolution, and data integrity. Minimal overviews keep unresolved error policy in the documents that exist; higher densities point to the dedicated error policy. Strict evolution and integrity documents point to their applicable API and persistence policies. These prompts do not select a framework, identity provider, database, or accepted project policy, and existing seeded-file protections remain in place.
+
+Frontend design leaves component layers and shared-state policies as project decisions. API integration documents point to the consumed `contracts/backend-api/openapi.yaml` in frontend scope and the owned `api/openapi.yaml` in fullstack scope. The consumed-contract guide records provenance and update ownership; strict accessibility and state/cache documents cover task completion, evidence limits, response freshness, identity isolation, and recovery. Existing paths and density remain unchanged, and scaffold updates continue to preserve edited or retired seeded documents.
 
 ## Repository Type Matrix
 

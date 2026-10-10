@@ -9,6 +9,7 @@ import {
   documentMetadata,
   docsReadme,
   frontendDesignDoc,
+  renderFrontendTopic,
   githubIssueTemplate,
   engineeringDoc,
   markdownDoc,
@@ -331,7 +332,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "dbml":
       return { ...file, content: dbml() };
     case "frontend-design":
-      return { ...file, content: frontendDesignDoc() };
+      return { ...file, content: frontendDesignDoc(scope) };
     case "backend-doc":
       return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path, undefined, density) ?? backendDoc(file.title ?? file.path, density) };
     case "engineering-doc":
@@ -351,7 +352,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "issue-template":
       return { ...file, content: githubIssueTemplate(file.title ?? "Issue") };
     case "markdown":
-      return { ...file, content: renderAdrDocument(file.path, file.title ?? file.path) ?? renderTopicDocument(file.path, file.title ?? file.path) ?? markdownDoc(file.title ?? file.path) };
+      return { ...file, content: renderAdrDocument(file.path, file.title ?? file.path) ?? renderFrontendTopic(file.path, file.title ?? file.path, scope) ?? renderTopicDocument(file.path, file.title ?? file.path) ?? markdownDoc(file.title ?? file.path) };
   }
 }
 

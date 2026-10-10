@@ -48,6 +48,10 @@ const topicContracts: Readonly<Record<string, TopicContract>> = {
 export function renderTopicDocument(filePath: string, title: string, profile?: Profile, density: Density = "standard"): string | undefined {
   const topic = backendOverviewFor(filePath, density) ?? topicContracts[filePath];
   if (topic === undefined) return undefined;
+  return renderTopicContract(topic, title, profile);
+}
+
+export function renderTopicContract(topic: TopicContract, title: string, profile?: Profile): string {
   return `# ${title}
 
 ${documentMetadata([["Status", "Draft"], ...(profile === undefined ? [] : [["Repository Type", profile] as const])])}
