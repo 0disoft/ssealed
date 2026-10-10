@@ -18,6 +18,11 @@ export interface FileWriterHooks {
   readonly beforeCommit?: (relativePath: string, targetPath: string) => Promise<void>;
 }
 
+interface CreatedDirectory {
+  readonly path: string;
+  identity: { readonly dev: bigint; readonly ino: bigint } | undefined;
+}
+
 export async function planTemplateFile(params: {
   readonly targetRoot: string;
   readonly template: TemplateFile;
@@ -293,7 +298,7 @@ async function writePlannedFilesInterruptibly(
   hooks: FileWriterHooks,
 ): Promise<readonly string[]> {
   const written: string[] = [];
-  const createdDirectories: string[] = [];
+  const createdDirectories: CreatedDirectory[] = [];
   const interrupt = getScaffoldInterruptContext();
   await ensureDirectoryInsideTarget(targetRoot, targetRoot);
   interrupt?.throwIfInterrupted();
@@ -315,7 +320,7 @@ async function writePlannedFilesInterruptibly(
   } catch (error) {
     const recoveryErrors = [
       ...(await rollbackWrittenFiles(targetRoot, writableFiles, written)),
-      ...(await cleanupCreatedDirectories(createdDirectories)),
+      ...(await cleanupCreatedDirectories(targetRoot, createdDirectories)),
     ];
     if (recoveryErrors.length > 0) {
       throw new AggregateError(
@@ -334,7 +339,7 @@ async function writeFilesInBatches(
   targetRoot: string,
   files: readonly PlannedFile[],
   written: string[],
-  createdDirectories: string[],
+  createdDirectories: CreatedDirectory[],
   interrupt: ScaffoldInterruptContext | undefined,
   hooks: FileWriterHooks,
 ): Promise<void> {
@@ -365,13 +370,12 @@ async function writeOnePlannedFile(
   targetRoot: string,
   file: PlannedFile,
   written: string[],
-  createdDirectories: string[],
+  createdDirectories: CreatedDirectory[],
   hooks: FileWriterHooks,
 ): Promise<void> {
   const targetPath = resolveInsideTarget(targetRoot, file.path);
   const targetDir = path.dirname(targetPath);
-  createdDirectories.push(...(await missingDirectoryChain(targetRoot, targetDir)));
-  await mkdir(targetDir, { recursive: true });
+  await ensureFileDirectories(targetRoot, targetDir, createdDirectories);
   await assertNoSymlinkInPath(targetRoot, targetPath);
   const expectedState = await assertExpectedWriteState(targetPath, file);
   await writeTextFileAtomically(targetPath, normalizeText(file.content), {
@@ -726,36 +730,50 @@ async function rollbackWrittenFiles(
   return failures;
 }
 
-async function missingDirectoryChain(targetRoot: string, targetDir: string): Promise<string[]> {
+async function ensureFileDirectories(targetRoot: string, targetDir: string, createdDirectories: CreatedDirectory[]): Promise<void> {
   const root = path.resolve(targetRoot);
   const resolvedDir = path.resolve(targetDir);
   const relative = path.relative(root, resolvedDir);
   const parts = relative === "" ? [] : relative.split(path.sep).filter(Boolean);
-  const missing: string[] = [];
   let current = root;
 
   for (const part of parts) {
     current = path.join(current, part);
-    const stat = await lstat(current).catch((error: unknown) => {
+    let stat = await lstat(current, { bigint: true }).catch((error: unknown) => {
       if (isNodeError(error) && error.code === "ENOENT") {
         return undefined;
       }
       throw error;
     });
+    let created: CreatedDirectory | undefined;
     if (stat === undefined) {
-      missing.push(current);
+      try {
+        await mkdir(current);
+        created = { path: current, identity: undefined };
+        createdDirectories.push(created);
+      } catch (error) {
+        if (!isNodeError(error) || error.code !== "EEXIST") throw error;
+      }
+      stat = await lstat(current, { bigint: true });
     }
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new SsealedError("PATH_SAFETY_ERROR", `Refusing to use a linked or non-directory scaffold parent: ${current}`);
+    }
+    if (created !== undefined) created.identity = { dev: stat.dev, ino: stat.ino };
   }
-
-  return missing;
 }
 
-async function cleanupCreatedDirectories(directories: readonly string[]): Promise<Error[]> {
+async function cleanupCreatedDirectories(targetRoot: string, directories: readonly CreatedDirectory[]): Promise<Error[]> {
   const failures: Error[] = [];
-  const unique = [...new Set(directories)];
-  for (const directory of unique.reverse()) {
+  const deepestFirst = [...directories].sort((left, right) => right.path.length - left.path.length);
+  for (const directory of deepestFirst) {
     try {
-      await rmdir(directory);
+      await assertNoSymlinkInPath(targetRoot, directory.path);
+      const current = await lstat(directory.path, { bigint: true });
+      if (directory.identity === undefined || !current.isDirectory() || current.dev !== directory.identity.dev || current.ino !== directory.identity.ino) {
+        throw new Error(`Directory cleanup skipped ${directory.path}: ownership changed or could not be verified; preserving the current path.`);
+      }
+      await rmdir(directory.path);
     } catch (error) {
       if (!isNodeError(error) || (error.code !== "ENOENT" && error.code !== "ENOTEMPTY" && error.code !== "EEXIST")) {
         failures.push(asError(error));

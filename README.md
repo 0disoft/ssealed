@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.39`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.40`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -189,6 +189,7 @@ Existing files are not overwritten by default. Identical files are marked `uncha
 
 Before each write, `ssealed` rechecks that the target file still matches the state used to create the plan. New files are published with an exclusive same-directory link, so a file that appears after planning is not replaced. Existing files are rechecked after staging and retain their POSIX mode, but Node's path-based replacement APIs cannot provide strict compare-and-swap semantics against a non-cooperating writer or a hostile parent-directory swap on every platform.
 Temporary files are created exclusively, and failure cleanup removes them only after this write successfully created them. A temporary-path collision preserves the existing file and reports the creation failure. Open handles are closed before cleanup, and cleanup failures retain the original write error.
+Failed scaffold runs remove only empty directories they created exclusively. A directory created by another writer is not claimed for cleanup. Created directories record device and inode identity and are checked for links and replacement before removal, with children cleaned before parents. Replaced or unverifiable directories are preserved and reported as incomplete recovery alongside the original failure. Pre-existing directories and the selected target root are retained. These path and identity checks have the same best-effort race limits as file writes.
 
 ## Manifest Behavior
 
