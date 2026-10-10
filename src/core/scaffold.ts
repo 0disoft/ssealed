@@ -34,6 +34,7 @@ import {
 import { templateFilesFor } from "../templates/index.js";
 import { validationScripts } from "../templates/runners.js";
 import { renderValidationGuideIndex } from "../templates/validation-guide-index.js";
+import { renderChecklistIndex } from "../templates/checklist-index.js";
 
 const staleLockAgeMs = 60 * 60 * 1000;
 const maxManifestBytes = 1024 * 1024;
@@ -112,16 +113,19 @@ async function planScaffoldWithWarnings(
       });
     },
   );
-  const retiredGuides = new Set(planned
-    .filter((file) => file.kind === "validation" && file.path.startsWith(".agents/validations/") && file.action === "retired")
+  const retiredPaths = new Set(planned
+    .filter((file) => file.action === "retired")
     .map((file) => file.path));
-  if (retiredGuides.size > 0) {
-    const routerIndex = templates.findIndex((file) => file.path === "VALIDATION.md");
-    const router = templates[routerIndex];
-    if (router !== undefined) {
-      const originalIndex = renderValidationGuideIndex(templates);
-      if (!router.content.endsWith(originalIndex)) throw new Error("Generated validation router index changed during planning.");
-      const activeIndex = renderValidationGuideIndex(templates.filter((file) => !retiredGuides.has(file.path)));
+  if (retiredPaths.size > 0) {
+    const activeTemplates = templates.filter((file) => !retiredPaths.has(file.path));
+    for (const [routerPath, renderIndex] of [["VALIDATION.md", renderValidationGuideIndex], ["CHECKLIST.md", renderChecklistIndex]] as const) {
+      const routerIndex = templates.findIndex((file) => file.path === routerPath);
+      const router = templates[routerIndex];
+      if (router === undefined) continue;
+      const originalIndex = renderIndex(templates);
+      const activeIndex = renderIndex(activeTemplates);
+      if (originalIndex === activeIndex) continue;
+      if (!router.content.endsWith(originalIndex)) throw new Error(`Generated ${routerPath} index changed during planning.`);
       const previous = previousManifest.files.get(router.path);
       planned[routerIndex] = await planTemplateFile({
         targetRoot,

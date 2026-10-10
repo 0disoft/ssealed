@@ -22,6 +22,7 @@ import { renderAdrDocument } from "./adr-documents.js";
 import { renderDiagram, renderDiagramIndex } from "./diagrams.js";
 import { renderScopeDocumentIndex } from "./scope-document-index.js";
 import { renderValidationGuideIndex } from "./validation-guide-index.js";
+import { renderChecklistIndex } from "./checklist-index.js";
 
 interface FileSpec {
   readonly path: string;
@@ -254,7 +255,12 @@ export function templateFilesFor(
   const files = [...renderedScopedFiles, ...profileFilesFor(profile, scope, density, addons).filter((file) => !scopedPaths.has(file.path)), ...runnerFiles(runner)];
   assertUniqueTemplatePaths(files);
   const validationGuideIndex = renderValidationGuideIndex(files);
-  return files.map((file) => file.path === "VALIDATION.md" ? { ...file, content: file.content + validationGuideIndex } : file);
+  const checklistIndex = renderChecklistIndex(files);
+  return files.map((file) => {
+    if (file.path === "VALIDATION.md") return { ...file, content: file.content + validationGuideIndex };
+    if (file.path === "CHECKLIST.md") return { ...file, content: file.content + checklistIndex };
+    return file;
+  });
 }
 
 function frontendFilesFor(scope: Scope): readonly FileSpec[] {
@@ -297,7 +303,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "validation":
       return { ...file, content: validationDoc(file.title ?? "Validation", file.path, scope, profile, addons) };
     case "checklist-router":
-      return { ...file, content: checklistRouter(scope, profile, addons, density) };
+      return { ...file, content: checklistRouter() };
     case "docs-readme":
       return { ...file, content: docsReadme(scope, profile, addons, density) };
     case "context-map":
@@ -428,64 +434,14 @@ tmp/
 `;
 }
 
-function checklistRouter(scope: Scope, profile: Profile, addons: readonly Addon[], density: Density): string {
-  const isMinimal = density === "minimal";
-  const scopedRoutes = [
-    ...(scope === "backend" || scope === "fullstack"
-      ? ["- Backend API changes: .agents/checklists/backend-api.md", ...(isMinimal ? [] : ["- DB migration changes: .agents/checklists/db-migration.md"])]
-      : []),
-    ...(scope === "frontend" || scope === "fullstack"
-      ? ["- Frontend UI changes: .agents/checklists/frontend-ui.md", ...(isMinimal ? [] : ["- Accessibility changes: .agents/checklists/accessibility.md"])]
-      : []),
-    ...(scope === "mobile" ? ["- Mobile app changes: .agents/checklists/mobile-app.md"] : []),
-    ...(scope === "infra" ? ["- Infrastructure changes: .agents/checklists/infra-change.md"] : []),
-    ...(scope === "data" ? ["- Data pipeline changes: .agents/checklists/data-pipeline.md"] : []),
-    ...profileChecklistRoutes(profile, addons),
-  ];
-  const scopedRoutesBlock = scopedRoutes.length === 0 ? "" : `${scopedRoutes.join("\n")}\n`;
-
+function checklistRouter(): string {
   return `# Checklist Router
 
 ${documentMetadata([["Status", "Draft"]])}
 
-Use this file as a router. Do not turn it into one giant checklist.
-
-- Feature work: .agents/skills/feature/SKILL.md and .agents/checklists/security.md${isMinimal ? "" : ", plus .agents/checklists/performance.md when performance is touched"}
-- Bug fixes: .agents/skills/bugfix/SKILL.md and .agents/checklists/security.md when data or access is touched
-- Ops changes: .agents/checklists/ops-change.md${isMinimal ? "" : " and .agents/skills/ops-change/SKILL.md"}
-- Dependency changes: ${isMinimal ? "record the dependency risk here unless a project-owned dependency checklist exists" : ".agents/checklists/dependency.md and .agents/skills/dependency-upgrade/SKILL.md"}
-- Repository hygiene changes: .agents/checklists/security.md and .agents/checklists/ops-change.md
-${scopedRoutesBlock}`;
-}
-
-function profileChecklistRoutes(profile: Profile, addons: readonly Addon[]): readonly string[] {
-  return profileList(profile, addons).map((value) => `- ${profileChecklistLabel(value)} changes: .agents/checklists/${profileChecklistSlug(value)}.md`);
-}
-
-function profileList(profile: Profile, addons: readonly Addon[]): readonly Addon[] {
-  return [profile, ...addons].filter((value): value is Addon => value !== "generic");
-}
-
-function profileChecklistSlug(profile: Addon): string {
-  return profile === "library" ? "library-package" : profile;
-}
-
-function profileChecklistLabel(profile: Addon): string {
-  if (profile === "cli-tool") return "CLI tool";
-  if (profile === "api-service") return "API service";
-  if (profile === "desktop-app") return "Desktop app";
-  if (profile === "library") return "Library package";
-  if (profile === "web-app") return "Web app";
-  if (profile === "mobile-app") return "Mobile app";
-  if (profile === "sdk") return "SDK";
-  if (profile === "worker-service") return "Worker service";
-  if (profile === "infra-module") return "Infrastructure module";
-  if (profile === "data-pipeline") return "Data pipeline";
-  if (profile === "github-action") return "GitHub Action";
-  if (profile === "browser-extension") return "Browser extension";
-  if (profile === "plugin") return "Plugin";
-  if (profile === "docs-site") return "Docs site";
-  return "Monorepo";
+Use this file as a router. Choose checklists for affected contracts and failure paths, combining common, scope, and repository-type guidance when their responsibilities overlap.
+Use the project's task routing and validation policy to select procedures and configured checks. This list does not require every checklist for every task or grant additional execution authority.
+`;
 }
 
 function pullRequestTemplate(): string {

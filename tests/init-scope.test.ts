@@ -216,6 +216,26 @@ describe("scope generation", () => {
     }
   });
 
+  it.each([false, true])("keeps retired checklists out of regenerated routers while preserving project edits (%s)", async (customized) => {
+    const dir = await scaffold("general", "none", "sdk", "strict");
+    const routerPath = path.join(dir, "CHECKLIST.md");
+    const original = await readFile(routerPath, "utf8");
+    const custom = `${original}\nUser instruction: preserve this decision.\n`;
+    if (customized) await writeFile(routerPath, custom);
+    await rm(path.join(dir, ".agents", "checklists", "sdk.md"));
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await executeScaffold({ command: "update", target: dir, scope: "general", profile: "sdk", density: "strict", runner: "none", dryRun: false, force: true });
+      expect(result.conflicts).toEqual([]);
+      await expect(exists(dir, ".agents/checklists/sdk.md")).resolves.toBe(false);
+      const router = await readFile(routerPath, "utf8");
+      if (customized) expect(router).toBe(custom);
+      else expect(router).not.toContain(".agents/checklists/sdk.md");
+      expect(router).toContain(".agents/checklists/security.md");
+      const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+      expect(manifest.files).toContainEqual(expect.objectContaining({ path: ".agents/checklists/sdk.md", status: "retired" }));
+    }
+  });
+
   it("generates CLI tool profile contracts without changing the selected scope", async () => {
     const dir = await scaffold("general", "none", "cli-tool");
     await expect(exists(dir, "docs/cli/command-contract.md")).resolves.toBe(true);
@@ -366,7 +386,7 @@ describe("scope generation", () => {
     }
   });
 
-  it("keeps control-document routes valid and makes every task validation guide discoverable", () => {
+  it("keeps control-document routes valid and makes every task checklist and validation guide discoverable", () => {
     for (const scope of scopes) {
       for (const density of densities) {
         const cases: Array<{ readonly profile: Profile; readonly addons: readonly Addon[]; readonly label: string }> = [
@@ -382,6 +402,12 @@ describe("scope generation", () => {
           const validationRoutes = new Set(referencedGeneratedPaths(rootValidation?.content ?? ""));
           for (const guide of files.filter((file) => file.kind === "validation" && file.path !== "VALIDATION.md")) {
             expect(validationRoutes.has(guide.path), `${testCase.label}:VALIDATION.md -> ${guide.path}`).toBe(true);
+          }
+          const rootChecklist = files.find((file) => file.path === "CHECKLIST.md");
+          expect(rootChecklist, testCase.label).toBeDefined();
+          const checklistRoutes = new Set(referencedGeneratedPaths(rootChecklist?.content ?? ""));
+          for (const checklist of files.filter((file) => file.kind === "checklist" && file.path !== "CHECKLIST.md")) {
+            expect(checklistRoutes.has(checklist.path), `${testCase.label}:CHECKLIST.md -> ${checklist.path}`).toBe(true);
           }
 
           for (const file of files) {
