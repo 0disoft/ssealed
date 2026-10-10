@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.28`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.29`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -209,6 +209,7 @@ Manifest file ownership has four meanings:
 
 For npm and pnpm runners, each `package.json` manifest entry also records `managedScripts`: only the validation scripts actually supplied by ssealed. Pre-existing user scripts remain outside that set. `update` restores a deleted managed script but refuses to replace one whose value was edited. Legacy entries without `managedScripts` remain readable and gain the field on an accepted update.
 Merging runner scripts preserves existing tab or space indentation and keeps compact, single-line package files compact. When no validation script changes are needed, `package.json` is preserved byte for byte, including custom spacing, line layout, and line endings, even with `--force`. The manifest still accepts its current normalized checksum without rewriting the package file.
+When script changes are needed, only supplied validation script values are inserted or replaced. Other package fields and user script values retain their original JSON tokens, including large integers, long decimals, exponent notation, key spelling, and string escapes. Writes still normalize line endings to LF. The JSON is validated before any token edits; duplicate property names retain the last-value semantics used by `JSON.parse`.
 
 Seeded files use `presence: optional`; missing seeded files can be retained as `status: retired`. Active files keep `initialChecksum`, `generatedChecksum`, and `acceptedChecksum` so tooling can distinguish original template content, the last generated scaffold content, and project-accepted content. The legacy `checksum` field remains as the accepted checksum for compatibility.
 

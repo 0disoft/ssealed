@@ -46,6 +46,38 @@ async function scaffold(runner: Runner): Promise<string> {
 }
 
 describe("runner generation", () => {
+  it("adds a runner to an empty BOM object without stripping the BOM", async () => {
+    const dir = await tempDir();
+    const packagePath = path.join(dir, "package.json");
+    await writeFile(packagePath, "\uFEFF{  \n}\n");
+    const result = await executeScaffold({ target: dir, scope: "general", runner: "npm", dryRun: false, force: false });
+    expect(result.conflicts).toHaveLength(0);
+    const content = await readFile(packagePath, "utf8");
+    expect(content.startsWith("\uFEFF")).toBe(true);
+    expect(JSON.parse(content.slice(1)).scripts).toEqual(validationScripts("npm"));
+  });
+
+  const metadata = '"config" : {"externalId":9007199254740993,"tiny":1e-400,"huge":1e400,"decimal":0.123456789012345678901,"negativeZero":-0,"nested":{"scripts":{"test":"configuration-only"}},"array":[{"label":"} ]"}]}';
+  it.each([
+    { name: "missing scripts", content: `{\n    "name" : "example",\n    ${metadata}\n}\n`, preserved: [] },
+    { name: "escaped property and strings", content: `{${metadata},"\\u0073cripts" : {"start" : "echo \\\"nested } ]\\\"","custom\\u002dname":"value"},"note":"\\\"scripts\\\": { [ }"}\n`, preserved: ['"\\u0073cripts" : ', '"start" : "echo \\\"nested } ]\\\""', '"custom\\u002dname":"value"', '"note":"\\\"scripts\\\": { [ }"'] },
+    { name: "duplicate scripts properties", content: `{${metadata},"scripts" : {"test" : "ignored"},"scripts":{"start":"node app.js"}}\n`, preserved: ['"scripts" : {"test" : "ignored"}', '"start":"node app.js"'] },
+  ])("preserves unrelated JSON tokens across runner merges with $name", async ({ content, preserved }) => {
+    const dir = await tempDir();
+    const packagePath = path.join(dir, "package.json");
+    await writeFile(packagePath, content);
+    for (const runner of ["npm", "pnpm"] as const) {
+      const result = await executeScaffold({ command: runner === "npm" ? "init" : "upgrade", target: dir, scope: "general", runner, dryRun: false, force: runner === "pnpm" });
+      expect(result.conflicts).toHaveLength(0);
+      const actual = await readFile(packagePath, "utf8");
+      expect(actual).toContain(metadata);
+      for (const token of preserved) expect(actual).toContain(token);
+      const parsed = JSON.parse(actual) as PackageJsonForTest;
+      expect(parsed.scripts.test).toBe(validationScripts(runner).test);
+      expect(parsed.scripts.lint).toBe(validationScripts(runner).lint);
+    }
+  });
+
   it("runner none generates no task runner files", async () => {
     const dir = await scaffold("none");
     await expect(exists(dir, "Makefile")).resolves.toBe(false);

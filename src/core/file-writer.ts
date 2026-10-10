@@ -5,7 +5,7 @@ import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { SsealedError } from "./errors.js";
 import { findGitignoreManagedBlocks } from "./gitignore-block.js";
-import { parseJsonObject, preserveJsonBom } from "./json.js";
+import { findJsonObjectProperty, parseJsonObject, preserveJsonBom, setJsonObjectProperty } from "./json.js";
 import { assertNoSymlinkInParentPath, assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
 import { getScaffoldInterruptContext, withScaffoldSignalHandling, type ScaffoldInterruptContext } from "./signals.js";
 import type { FileOwnership, FilePresence, ManifestFileStatus, PlannedFile, ScaffoldCommand, TemplateFile } from "./types.js";
@@ -585,9 +585,17 @@ function planPackageJson(
   if (!scriptsChanged) {
     return { ...template, action: "unchanged", content: normalizeText(existingContent), existingContent, previouslyGenerated, managedScripts };
   }
-  const nextPackage = { ...parsed, scripts: nextScripts };
   const indent = detectJsonIndent(existingContent);
-  const nextContent = preserveJsonBom(existingContent, normalizeText(JSON.stringify(nextPackage, null, indent)));
+  const scriptRange = findJsonObjectProperty(existingContent, "scripts");
+  let scriptsContent = scriptRange === undefined ? JSON.stringify(nextScripts, null, indent) : existingContent.slice(scriptRange.start, scriptRange.end);
+  if (scriptRange !== undefined) {
+    for (const [name, value] of Object.entries(managedScripts)) {
+      if (currentScripts[name] !== value) {
+        scriptsContent = setJsonObjectProperty(scriptsContent, name, JSON.stringify(value), detectJsonIndent(scriptsContent));
+      }
+    }
+  }
+  const nextContent = normalizeText(setJsonObjectProperty(existingContent, "scripts", scriptsContent, indent));
   if (normalizeText(existingContent) === nextContent) {
     return { ...template, action: "unchanged", content: nextContent, existingContent, previouslyGenerated, managedScripts };
   }
