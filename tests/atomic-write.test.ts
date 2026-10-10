@@ -1,8 +1,10 @@
-import { mkdtemp, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, open, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { writePlannedFiles, writeTextFileAtomically } from "../src/core/file-writer.js";
+import { executeScaffold } from "../src/core/scaffold.js";
+import { main } from "../src/cli-main.js";
 
 const { temporaryId } = vi.hoisted(() => ({ temporaryId: "00000000-0000-4000-8000-000000000000" }));
 vi.mock("node:crypto", async (importOriginal) => {
@@ -162,5 +164,56 @@ describe("atomic temporary-file ownership", () => {
     expect(failure).toMatchObject({ errors: [manifestFailure, expect.objectContaining({ code: "WRITE_FAILED" })] });
     expect(String(failure)).toMatch(/recovery was incomplete.*victim\.txt.*changed/iu);
     expect(await readdir(dir)).toEqual(["victim.txt"]);
+  });
+
+  it("rejects a replaced manifest parent before publishing runner ejection", async () => {
+    const dir = await tempDir();
+    await executeScaffold({ target: dir, scope: "general", runner: "npm", dryRun: false, force: false });
+    const metadata = path.join(dir, ".ssealed");
+    const held = path.join(dir, "held-metadata");
+    const external = await tempDir();
+    const originalManifest = await readFile(path.join(metadata, "manifest.json"), "utf8");
+    await writeFile(path.join(external, "manifest.json"), originalManifest);
+    const probe = await open(path.join(dir, "probe.txt"), "wx");
+    const prototype = Object.getPrototypeOf(probe) as Pick<typeof probe, "writeFile">;
+    const originalWrite = prototype.writeFile;
+    await probe.close();
+    let replaced = false;
+    const write = vi.spyOn(prototype, "writeFile").mockImplementation(async function (
+      this: typeof probe,
+      ...args: Parameters<typeof probe.writeFile>
+    ) {
+      await originalWrite.apply(this, args);
+      if (typeof args[0] === "string" && args[0].includes('"ownership": "project-owned"')) {
+        const originalClose = this.close;
+        this.close = async () => {
+          this.close = originalClose;
+          await originalClose.call(this);
+          await rename(metadata, held);
+          replaced = true;
+          await symlink(external, metadata, process.platform === "win32" ? "junction" : "dir");
+          const temporaryName = `.manifest.json.${process.pid}.${temporaryId}.tmp`;
+          await copyFile(path.join(held, temporaryName), path.join(external, temporaryName));
+        };
+      }
+    });
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    let code: number;
+    let payload: unknown;
+    try {
+      code = await main(["eject", "runner", dir, "--json"]);
+      payload = JSON.parse(stdout.mock.calls.map(([chunk]) => String(chunk)).join(""));
+    } finally {
+      write.mockRestore();
+      stdout.mockRestore();
+      if (replaced) {
+        await rm(metadata, { recursive: true });
+        await rename(held, metadata);
+      }
+    }
+    expect(payload, JSON.stringify(payload)).toMatchObject({ ok: false, error: { code: "PATH_SAFETY_ERROR" } });
+    expect(code).toBe(1);
+    await expect(readFile(path.join(external, "manifest.json"), "utf8")).resolves.toBe(originalManifest);
+    await expect(readFile(path.join(metadata, "manifest.json"), "utf8")).resolves.toBe(originalManifest);
   });
 });

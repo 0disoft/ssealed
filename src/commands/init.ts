@@ -461,6 +461,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
     await writeTextFileAtomically(manifestPath, preserveJsonBom(manifestContent, `${JSON.stringify(nextManifest, null, 2)}\n`), {
       mode: manifestMode,
       beforeCommit: async () => {
+        await assertNoSymlinkInPath(target, manifestPath);
         if ((await readFile(manifestPath, "utf8")) !== manifestContent) {
           throw new SsealedError("WRITE_FAILED", "Refusing to eject runner ownership because the manifest changed while the command was running.");
         }
