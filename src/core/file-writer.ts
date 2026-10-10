@@ -323,9 +323,20 @@ async function writeFilesInBatches(
     interrupt?.throwIfInterrupted();
     const batch = files.slice(start, start + writeConcurrency);
     const results = await Promise.allSettled(batch.map((file) => writeOnePlannedFile(targetRoot, file, written, createdDirectories, hooks)));
-    const failure = results.find((result) => result.status === "rejected");
-    if (failure?.status === "rejected") {
-      throw failure.reason;
+    const failures: { readonly path: string; readonly error: unknown }[] = [];
+    for (const [index, result] of results.entries()) {
+      if (result.status === "rejected") {
+        failures.push({ path: (batch[index] as PlannedFile).path, error: result.reason });
+      }
+    }
+    if (failures.length === 1) {
+      throw failures[0]?.error;
+    }
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures.map((failure) => failure.error),
+        `Scaffold writes failed: ${failures.map((failure) => `${failure.path}: ${asError(failure.error).message}`).join("; ")}`,
+      );
     }
     interrupt?.throwIfInterrupted();
   }

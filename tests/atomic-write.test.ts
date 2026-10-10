@@ -95,6 +95,32 @@ describe("atomic temporary-file ownership", () => {
     expect(await readdir(dir)).toEqual(["victim.txt"]);
   });
 
+  it("retains every failed write in a batch and rolls back its successful writes", async () => {
+    const dir = await tempDir();
+    const firstFailure = new Error("injected first publication failure");
+    const secondFailure = new Error("injected second publication failure");
+    let failure: unknown;
+    try {
+      await writePlannedFiles(dir, [
+        { path: "first.txt", kind: "document", action: "create", content: "FIRST\n" },
+        { path: "second.txt", kind: "document", action: "create", content: "SECOND\n" },
+        { path: "nested/success.txt", kind: "document", action: "create", content: "SUCCESS\n" },
+      ], {
+        beforeCommit: async (relativePath) => {
+          if (relativePath === "first.txt") throw firstFailure;
+          if (relativePath === "second.txt") throw secondFailure;
+        },
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toEqual([firstFailure, secondFailure]);
+    expect(String(failure)).toContain("first.txt: injected first publication failure");
+    expect(String(failure)).toContain("second.txt: injected second publication failure");
+    expect(await readdir(dir)).toEqual([]);
+  });
+
   it("preserves a user replacement made while rollback stages the original content", async () => {
     const dir = await tempDir();
     const target = path.join(dir, "victim.txt");
