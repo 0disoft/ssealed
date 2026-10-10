@@ -553,45 +553,9 @@ function profileReviewBlockers(profile: Profile): readonly string[] {
 }
 
 export function checklistDoc(title: string, filePath: string, scope: Scope = "general"): string {
-  const registeredChecklist = renderScopeChecklist(filePath, title, scope) ?? renderCommonChecklist(filePath, title) ?? renderProfileChecklist(filePath, title);
-  if (registeredChecklist !== undefined) return registeredChecklist;
-  const checklist = genericChecklistContent();
-
-  return `# ${title}
-
-${documentMetadata([["Status", "Draft"]])}
-
-## Failure Modes
-
-${checklist.failureModes}
-
-## Checklist
-
-${checklist.items.map((item) => `- ${item}`).join("\n")}
-
-## Validation
-
-- Required validation names: ${checklist.validations.join(", ")}
-- Skipped validation must include a reason and remaining risk.
-`;
-}
-
-function genericChecklistContent(): {
-  readonly failureModes: string;
-  readonly items: readonly string[];
-  readonly validations: readonly string[];
-} {
-  return {
-    failureModes: "Source-of-truth drift, missing validation, missing tests, rollback gaps, and ownership ambiguity.",
-    items: [
-      "The source of truth is named before editing.",
-      "Ownership boundaries and out-of-scope surfaces are respected.",
-      "Required validation names from `VALIDATION.md` are selected.",
-      "Tests or explicit skipped-check reasons are recorded.",
-      "Rollback, recovery, or undo behavior is documented when risk is not trivial.",
-    ],
-    validations: ["test", "docs", "check"],
-  };
+  const checklist = renderScopeChecklist(filePath, title, scope) ?? renderCommonChecklist(filePath, title) ?? renderProfileChecklist(filePath, title);
+  if (checklist === undefined) throw new Error(`Missing required checklist: ${filePath}`);
+  return checklist;
 }
 
 export function agentSkill(name: string, scope: Scope = "general"): string {

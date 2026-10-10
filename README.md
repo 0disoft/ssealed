@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.69`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.70`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -162,6 +162,8 @@ CLI tool, API service, library package, SDK, and worker service checklists cover
 Desktop, web app, browser extension, and plugin checklists connect installation and data compatibility, browser navigation and state, context-specific capabilities, and host teardown to evidence for supported environments. They preserve user work and make interruption, revocation, late completion, and unfinished recovery or cleanup explicit. Their document links remain valid for minimal repository types and addons.
 
 Infrastructure module, GitHub Action, docs site, and monorepo checklists cover resource and state ownership, caller inputs and execution authority, accurate reader guidance and visible publication, and package dependencies or coordinated releases. They distinguish plans and builds from completed effects, use document links available at minimal density, and leave untested consumers or incomplete recovery explicit.
+
+Every emitted `.agents/checklists/` document requires an explicit registered definition. A missing definition stops scaffold planning with the affected checklist path before scaffold files are written; it is never replaced by a generic checklist. Existing checklist paths, density, and seeded-file protections remain in place.
 
 ## Repository Type Matrix
 

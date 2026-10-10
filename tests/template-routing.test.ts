@@ -5,6 +5,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const omittedTopic = vi.hoisted(() => ({ path: "" }));
 const omittedSkill = vi.hoisted(() => ({ name: "" }));
+const omittedChecklist = vi.hoisted(() => ({ path: "" }));
+
+vi.mock("../src/templates/common-checklists.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/templates/common-checklists.js")>();
+  return { ...original, renderCommonChecklist: (...args: Parameters<typeof original.renderCommonChecklist>) =>
+    args[0] === omittedChecklist.path ? undefined : original.renderCommonChecklist(...args) };
+});
+vi.mock("../src/templates/scope-checklists.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/templates/scope-checklists.js")>();
+  return { ...original, renderScopeChecklist: (...args: Parameters<typeof original.renderScopeChecklist>) =>
+    args[0] === omittedChecklist.path ? undefined : original.renderScopeChecklist(...args) };
+});
+vi.mock("../src/templates/profile-checklists.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/templates/profile-checklists.js")>();
+  return { ...original, renderProfileChecklist: (...args: Parameters<typeof original.renderProfileChecklist>) =>
+    args[0] === omittedChecklist.path ? undefined : original.renderProfileChecklist(...args) };
+});
 
 vi.mock("../src/templates/task-skills.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("../src/templates/task-skills.js")>();
@@ -51,6 +68,7 @@ const workdirs: string[] = [];
 afterEach(async () => {
   omittedTopic.path = "";
   omittedSkill.name = "";
+  omittedChecklist.path = "";
   vi.resetModules();
   await Promise.all(workdirs.splice(0).map((dir) => {
     const resolved = path.resolve(dir);
@@ -73,6 +91,23 @@ describe("required agent skill routing", () => {
     const target = await mkdtemp(path.join(tmpdir(), "ssealed-routing-"));
     workdirs.push(target);
     await expect(executeScaffold({ target, scope, profile, addons, runner: "none", density: "strict", dryRun: false, force: false })).rejects.toThrow(`Missing required agent skill: .agents/skills/${missing}/SKILL.md`);
+    expect(await readdir(target)).toEqual([]);
+  });
+});
+
+describe("required checklist routing", () => {
+  it.each([
+    { scope: "general", profile: "generic", addons: [], missing: ".agents/checklists/security.md" },
+    { scope: "backend", profile: "generic", addons: [], missing: ".agents/checklists/backend-api.md" },
+    { scope: "general", profile: "library", addons: [], missing: ".agents/checklists/library-package.md" },
+    { scope: "general", profile: "generic", addons: ["sdk"], missing: ".agents/checklists/sdk.md" },
+  ] as const)("rejects a missing $missing definition without leaving scaffold files or locks", async ({ scope, profile, addons, missing }) => {
+    omittedChecklist.path = missing;
+    vi.resetModules();
+    const { executeScaffold } = await import("../src/core/scaffold.js");
+    const target = await mkdtemp(path.join(tmpdir(), "ssealed-routing-"));
+    workdirs.push(target);
+    await expect(executeScaffold({ target, scope, profile, addons, runner: "none", density: "strict", dryRun: false, force: false })).rejects.toThrow(`Missing required checklist: ${missing}`);
     expect(await readdir(target)).toEqual([]);
   });
 });
