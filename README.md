@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.43`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.44`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -241,6 +241,7 @@ Atomic writes record the exclusively opened temporary file's device and inode id
 
 Commands use `.ssealed-init.lock` to keep reads and writes for the same existing target mutually exclusive. If a previous process crashed and left an old lock, rerun a write command with `--break-stale-lock`; the lock is removed only when its metadata is old enough and the recorded local process is confirmed absent. Lock metadata must be valid UTF-8 JSON in a regular file no larger than 1 MiB, identify `tool: ssealed`, and contain a positive integer process ID and a valid creation timestamp. Present `hostname` and `lockId` fields must be nonempty strings; malformed fields are not treated as missing legacy fields. Foreign or malformed locks, locks recorded on another host, and locks whose process status cannot be checked are preserved. Valid legacy locks without a hostname or lock ID remain supported; an absent hostname uses the local process check.
 Stale recovery acquires `.ssealed-recovery.lock` exclusively, then rereads the main lock and holds the recovery lock through main-lock reacquisition. It releases the recovery lock before entering the command's write section, preventing another recovery caller from deleting a newly acquired main lock. If a crash leaves the recovery lock behind, ssealed refuses automatic removal: verify no recovery process is running before manually removing that file and retrying. Both lock paths are reserved and ignored by generated projects.
+Normal release and stale recovery recheck the lock path and its device and inode identity after reading metadata, before removal. Recovery captures the identity before reading stale metadata. Detected replacements are preserved even when their metadata is identical, and a symlink or junction introduced at the target path prevents lock removal and reacquisition through that link. These checks remain best effort against changes between the final check and filesystem operation.
 If writing lock metadata fails, cleanup verifies the exclusively opened file's device and inode identity instead of requiring complete JSON. A verified partial lock is removed so a normal retry can proceed; replacements and locks whose identity cannot be verified are preserved. Errors retain the original write failure and any cleanup failures. JSON aggregate errors expose nested `causes` so manifest publication, rollback, and lock-release failures are not hidden by the last cleanup error.
 
 `doctor` and `--dry-run` hold the same target lock for their full read so a writer cannot create a mixed in-progress scaffold state. A dry run against a missing target still creates no directory; if that target appears concurrently, the stale read is discarded and the command asks the caller to retry.

@@ -38,6 +38,11 @@ const staleLockAgeMs = 60 * 60 * 1000;
 const maxManifestBytes = 1024 * 1024;
 const maxLockMetadataBytes = 1024 * 1024;
 
+interface ScaffoldLockIdentity {
+  readonly dev: bigint;
+  readonly ino: bigint;
+}
+
 export async function planScaffold(options: InitOptions & { readonly previousManifest?: PreviousManifestState }): Promise<readonly PlannedFile[]> {
   return withScaffoldReadLock(path.resolve(options.target), async () => (await planScaffoldWithWarnings(options, options.previousManifest)).files);
 }
@@ -620,7 +625,7 @@ async function acquireScaffoldLock<T>(
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let acquired = false;
   let initialized = false;
-  let identity: { readonly dev: bigint; readonly ino: bigint } | undefined;
+  let identity: ScaffoldLockIdentity | undefined;
   let result: T | undefined;
   let taskFailed = false;
   let taskError: unknown;
@@ -719,22 +724,32 @@ async function recoverScaffoldLock<T>(
 async function releaseScaffoldLock(
   lockPath: string,
   lockId: string,
-  identity: { readonly dev: bigint; readonly ino: bigint } | undefined,
+  identity: ScaffoldLockIdentity | undefined,
   initialized: boolean,
 ): Promise<void> {
+  if (!(await assertScaffoldLockOwnership(lockPath, identity, !initialized))) return;
+  if (initialized && (await readScaffoldLockMetadata(lockPath))?.lockId !== lockId) {
+    throw new SsealedError("LOCK_EXISTS", "Scaffold lock ownership changed while the command was running; the replacement lock was preserved.");
+  }
+  await assertScaffoldLockOwnership(lockPath, identity);
+  await rm(lockPath);
+}
+
+async function assertScaffoldLockOwnership(
+  lockPath: string,
+  identity: ScaffoldLockIdentity | undefined,
+  allowMissing = false,
+): Promise<boolean> {
   await assertNoSymlinkInPath(path.dirname(lockPath), lockPath);
   const current = await lstat(lockPath, { bigint: true }).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") return undefined;
     throw error;
   });
-  if (current === undefined && !initialized) return;
+  if (current === undefined && allowMissing) return false;
   if (identity === undefined || current === undefined || !current.isFile() || current.dev !== identity.dev || current.ino !== identity.ino) {
     throw new SsealedError("LOCK_EXISTS", `Scaffold lock ownership cannot be verified; preserving ${lockPath}.`);
   }
-  if (initialized && (await readScaffoldLockMetadata(lockPath))?.lockId !== lockId) {
-    throw new SsealedError("LOCK_EXISTS", "Scaffold lock ownership changed while the command was running; the replacement lock was preserved.");
-  }
-  await rm(lockPath);
+  return true;
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {
@@ -748,11 +763,18 @@ async function pathExists(targetPath: string): Promise<boolean> {
 }
 
 async function removeStaleScaffoldLock(lockPath: string): Promise<boolean> {
+  await assertNoSymlinkInPath(path.dirname(lockPath), lockPath);
+  const identity = await lstat(lockPath, { bigint: true }).catch((error: unknown) => {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (identity === undefined || !identity.isFile()) return false;
   const metadata = await readScaffoldLockMetadata(lockPath);
   if (!isStaleScaffoldLock(metadata)) {
     return false;
   }
-  await rm(lockPath, { force: true });
+  await assertScaffoldLockOwnership(lockPath, identity);
+  await rm(lockPath);
   return true;
 }
 
