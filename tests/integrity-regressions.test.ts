@@ -128,6 +128,29 @@ describe("managed surface integrity", () => {
     await expect(lstat(path.join(missing, ".ssealed"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("explains unreadable linked directories in doctor JSON and human output", async () => {
+    const dir = await tempDir();
+    const outside = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--yes"])).code).toBe(0);
+    const productDir = path.join(dir, "docs", "product");
+    const moved = path.join(outside, "product");
+    await rename(productDir, moved);
+    await symlink(moved, productDir, process.platform === "win32" ? "junction" : "dir");
+
+    const result = await runJson(["doctor", dir]);
+    expect(result.code).toBe(1);
+    const checks = result.payload.checks as { path: string; reason?: string }[];
+    const roadmap = checks.find((check) => check.path === "docs/product/01-roadmap.md");
+    expect(roadmap).toMatchObject({ status: "unreadable", reason: expect.stringMatching(/symlinked directory: docs\/product/u) });
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      expect(await main(["doctor", dir])).toBe(1);
+      expect(stdout.mock.calls.map(([chunk]) => String(chunk)).join("")).toMatch(/symlinked directory: docs\/product/u);
+    } finally {
+      stdout.mockRestore();
+    }
+  });
+
   it("reports INVALID_MANIFEST when doctor encounters a directory at the manifest path", async () => {
     const dir = await tempDir();
     await mkdir(path.join(dir, ".ssealed", "manifest.json"), { recursive: true });

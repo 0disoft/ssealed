@@ -101,7 +101,7 @@ export async function assertNoSymlinkInParentPath(targetRoot: string, filePath: 
       throw error;
     });
     if (stat?.isSymbolicLink()) {
-      throw new SsealedError("PATH_SAFETY_ERROR", `Refusing to write through symlinked directory: ${toDisplayPath(path.relative(root, current))}`);
+      throw new SsealedError("PATH_SAFETY_ERROR", `Refusing to access symlinked directory: ${toDisplayPath(path.relative(root, current))}`);
     }
   }
 }
@@ -116,7 +116,7 @@ export async function assertNoSymlinkInPath(targetRoot: string, filePath: string
     throw error;
   });
   if (existing?.isSymbolicLink()) {
-    throw new SsealedError("PATH_SAFETY_ERROR", `Refusing to overwrite symlink: ${toDisplayPath(path.relative(root, filePath))}`);
+    throw new SsealedError("PATH_SAFETY_ERROR", `Refusing to access symlink: ${toDisplayPath(path.relative(root, filePath))}`);
   }
 }
 

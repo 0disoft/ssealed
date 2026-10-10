@@ -692,6 +692,7 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
           presence: file.presence,
           status: "unreadable",
           expectedChecksum: file.checksum,
+          reason: error instanceof Error ? error.message : String(error),
         };
       }
     },
