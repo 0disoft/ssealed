@@ -7,6 +7,7 @@ import { filesystemReadConcurrency, mapWithConcurrency } from "../core/concurren
 import { SsealedError } from "../core/errors.js";
 import { findGitignoreManagedBlocks } from "../core/gitignore-block.js";
 import { writeTextFileAtomically } from "../core/file-writer.js";
+import { parseJsonObject, preserveJsonBom } from "../core/json.js";
 import { executeScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock, type PreviousManifestSettings, type PreviousManifestState } from "../core/scaffold.js";
 import { assertNoSymlinkInPath, resolveInsideTarget } from "../core/path-safety.js";
 import { gitignoreBlock } from "../templates/index.js";
@@ -457,7 +458,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
 
   if (!dryRun) {
     const manifestMode = (await lstat(manifestPath)).mode;
-    await writeTextFileAtomically(manifestPath, `${JSON.stringify(nextManifest, null, 2)}\n`, {
+    await writeTextFileAtomically(manifestPath, preserveJsonBom(manifestContent, `${JSON.stringify(nextManifest, null, 2)}\n`), {
       mode: manifestMode,
       beforeCommit: async () => {
         if ((await readFile(manifestPath, "utf8")) !== manifestContent) {
@@ -884,15 +885,6 @@ function parseVersion(value: string): readonly number[] | undefined {
 
 function isFailedDoctorCheck(check: DoctorCheck): boolean {
   return check.status === "modified" || check.status === "block-modified" || check.status === "kind-mismatch" || check.status === "unreadable" || check.status === "missing";
-}
-
-function parseJsonObject(content: string): Record<string, unknown> | undefined {
-  try {
-    const parsed: unknown = JSON.parse(content);
-    return isRecord(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.12`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.13`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -182,6 +182,7 @@ Every write run refreshes `.ssealed/manifest.json` with a schema version, genera
 
 Manifest loading rejects unsafe or reserved file paths, duplicate file paths, and checksum fields that are not lowercase `sha256:` values with 64 hexadecimal digits. Path uniqueness and reserved metadata checks ignore letter case on every platform so a manifest cannot record aliases such as `README.md` and `readme.md`, or `.ssealed/MANIFEST.JSON`. Accepted paths retain their original spelling. Invalid manifests are reported as `INVALID_MANIFEST` before their entries reach planning or doctor checks.
 The manifest itself must be a regular file no larger than 1 MiB. Directories and other non-regular entries at `.ssealed/manifest.json` are rejected before reading or parsing their contents.
+JSON files may begin with a single UTF-8 byte order mark (BOM), including `package.json`, manifests, and lock metadata. Malformed JSON is still rejected. Package merges, manifest updates, and runner ejection preserve an existing BOM; generated JSON without a BOM stays BOM-free.
 If a recorded path differs only in letter case from a generated path, `update` and `upgrade` report a conflict before planning file reads or writing any files. Repair the recorded casing first. This prevents duplicate manifest entries and avoids guessing whether differently cased names refer to the same file on the current filesystem.
 `update`, `upgrade`, `eject`, and `doctor` distinguish an absent manifest (`MISSING_MANIFEST`) from an invalid one (`INVALID_MANIFEST`) in their JSON error envelopes. Invalid manifests must be repaired or removed; these commands do not replace them, including during dry runs.
 

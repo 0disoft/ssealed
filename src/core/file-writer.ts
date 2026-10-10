@@ -4,6 +4,7 @@ import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
 import { SsealedError } from "./errors.js";
 import { findGitignoreManagedBlocks } from "./gitignore-block.js";
+import { parseJsonObject, preserveJsonBom } from "./json.js";
 import { assertNoSymlinkInParentPath, assertNoSymlinkInPath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
 import { getScaffoldInterruptContext, withScaffoldSignalHandling, type ScaffoldInterruptContext } from "./signals.js";
 import type { FileOwnership, FilePresence, ManifestFileStatus, PlannedFile, ScaffoldCommand, TemplateFile } from "./types.js";
@@ -551,7 +552,7 @@ function planPackageJson(
   }
   const nextPackage = { ...parsed, scripts: nextScripts };
   const indent = detectJsonIndent(existingContent);
-  const nextContent = normalizeText(JSON.stringify(nextPackage, null, indent));
+  const nextContent = preserveJsonBom(existingContent, normalizeText(JSON.stringify(nextPackage, null, indent)));
   if (normalizeText(existingContent) === nextContent) {
     return { ...template, action: "unchanged", content: nextContent, existingContent, previouslyGenerated, managedScripts };
   }
@@ -577,20 +578,11 @@ function planManifest(
     return { ...template, action: "unchanged", content: normalizeText(existingContent), existingContent, previouslyGenerated };
   }
 
-  return { ...template, action: force ? "overwrite" : "merge", content: generatedContent, existingContent, previouslyGenerated };
+  return { ...template, action: force ? "overwrite" : "merge", content: preserveJsonBom(existingContent, generatedContent), existingContent, previouslyGenerated };
 }
 
 function checksumExisting(content: string): string {
   return sha256(content);
-}
-
-function parseJsonObject(content: string): Record<string, unknown> | undefined {
-  try {
-    const parsed: unknown = JSON.parse(content);
-    return isRecord(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function detectJsonIndent(content: string): string | number {

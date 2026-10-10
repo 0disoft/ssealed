@@ -5,6 +5,7 @@ import { hostname } from "node:os";
 import { normalizeText } from "./checksum.js";
 import { filesystemReadConcurrency, mapWithConcurrency } from "./concurrency.js";
 import { SsealedError } from "./errors.js";
+import { parseJsonObject } from "./json.js";
 import { formatManifest, createManifest } from "./manifest.js";
 import { planTemplateFile, writePlannedFiles } from "./file-writer.js";
 import { assertNoSymlinkInPath, assertSafeTemplatePath, ensureDirectoryInsideTarget, resolveInsideTarget } from "./path-safety.js";
@@ -212,7 +213,7 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
   }
 
   try {
-    const parsed: unknown = JSON.parse(content);
+    const parsed = parseJsonObject(content);
     if (!isManifestLike(parsed)) {
       return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
     }
@@ -719,7 +720,7 @@ async function readScaffoldLockMetadata(lockPath: string): Promise<ScaffoldLockM
     return undefined;
   }
   try {
-    const parsed: unknown = JSON.parse(content);
+    const parsed = parseJsonObject(content);
     if (typeof parsed !== "object" || parsed === null) {
       return undefined;
     }
