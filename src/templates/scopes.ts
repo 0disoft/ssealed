@@ -21,6 +21,7 @@ import {
 import { profileFilesFor } from "./profiles.js";
 import { runnerFiles } from "./runners.js";
 import { renderTopicDocument } from "./topic-documents.js";
+import { renderAdrDocument } from "./adr-documents.js";
 
 interface FileSpec {
   readonly path: string;
@@ -345,7 +346,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "issue-template":
       return { ...file, content: githubIssueTemplate(file.title ?? "Issue") };
     case "markdown":
-      return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? markdownDoc(file.title ?? file.path) };
+      return { ...file, content: renderAdrDocument(file.path, file.title ?? file.path) ?? renderTopicDocument(file.path, file.title ?? file.path) ?? markdownDoc(file.title ?? file.path) };
   }
 }
 

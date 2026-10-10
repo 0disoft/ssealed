@@ -1,9 +1,45 @@
 import { describe, expect, it } from "vitest";
+import path from "node:path";
 import { templateFilesFor } from "../src/templates/index.js";
 import { profileFilesFor } from "../src/templates/profiles.js";
 import { addons, densities, scopes } from "../src/core/types.js";
 
 describe("topic-specific generated documents", () => {
+  it.each([
+    { file: "0000-template.md", prompts: ["Problem and evidence", "Chosen option", "Do nothing", "Revisit trigger"] },
+    { file: "0001-initial-architecture-boundaries.md", prompts: ["Owned responsibilities", "External authority", "Trust crossings", "Failure containment"] },
+    { file: "0002-contract-source-of-truth.md", prompts: ["Contract inventory", "Canonical authority", "Derived consumers", "Drift detection"] },
+  ])("provides a draft decision record for $file without changing density or references", ({ file, prompts }) => {
+    for (const scope of scopes) for (const density of densities) {
+      const files = templateFilesFor(scope, "none", "cli-tool", density);
+      const document = files.find((candidate) => candidate.path === `docs/adr/${file}`);
+      if (density === "minimal") { expect(document).toBeUndefined(); continue; }
+      expect(document?.content).toContain("- Status: Draft\n- Owner: UNASSIGNED\n- Decision date: UNDECIDED");
+      for (const section of ["Context", "Decision", "Alternatives", "Consequences", "Verification", "Lifecycle"]) {
+        expect(document?.content).toContain(`## ${section}\n`);
+      }
+      for (const prompt of prompts) expect(document?.content).toContain(`${prompt}: UNDECIDED`);
+      expect(document?.content).toContain("Superseded");
+      expect(document?.content).not.toContain("This document captures the durable design contract");
+      for (const reference of document!.content.matchAll(/\]\(([^)]+\.md)\)/gu)) {
+        const target = path.posix.normalize(path.posix.join("docs/adr", reference[1]!));
+        expect(files.some((candidate) => candidate.path === target), `${file} references missing ${target}`).toBe(true);
+      }
+    }
+  });
+
+  it("indexes the seeded ADRs as drafts and explains recording and superseding decisions", () => {
+    const files = templateFilesFor("general", "none", "generic", "standard");
+    const content = files.find((file) => file.path === "docs/adr/README.md")!.content;
+    expect(content).toContain("not accepted architecture decisions");
+    expect(content).toContain("[ADR template](0000-template.md)");
+    expect(content).toMatch(/\[Initial Architecture Boundaries\]\(0001-initial-architecture-boundaries\.md\) \| Draft/u);
+    expect(content).toMatch(/\[Contract Source of Truth\]\(0002-contract-source-of-truth\.md\) \| Draft/u);
+    expect(content).toContain("Acceptance does not prove implementation");
+    expect(content).toContain("preserve the previous rationale");
+    expect(content).toContain("update this index");
+  });
+
   it.each([
     { path: "docs/product/00-product-brief.md", minimum: "minimal", source: "README.md", decisions: ["User outcome", "Target users", "Scope and exclusions"] },
     { path: "docs/product/01-roadmap.md", minimum: "standard", source: "docs/product/02-spec.md", decisions: ["Milestone outcomes", "Dependency ordering", "Stop or revise"] },

@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.50`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.51`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -111,6 +111,8 @@ When `upgrade --repo-type` promotes an inherited addon to the primary repository
 Scopes describe the ownership area of the repository.
 
 Every scope includes product brief, specification, and system-boundary documents with concrete decision prompts. Standard and strict density add roadmap and risk decisions, domain identities and invariants, runtime effect ordering and recovery, measurable quality scenarios, and an architecture overview that points to the detailed decision owners. Existing document paths and seeded-file ownership behavior are preserved.
+
+Standard and strict density also include an ADR index, a reusable decision-record template, and initial drafts for architecture boundaries and contract sources of truth. Each record captures context, the proposed decision, alternatives, consequences, verification, and supersession. Generated ADRs remain drafts until the project records its own decisions; acceptance is separate from implementation evidence. These existing seeded paths continue to preserve project edits and retired documents during updates.
 
 - `backend`: common scaffold plus backend docs, `api/openapi.yaml`, DBML, backend skills, backend checklists, and backend validations.
 - `frontend`: common scaffold plus `docs/frontend/FRONTEND_DESIGN.md`, consumed backend API contracts, frontend skills, frontend checklists, and frontend validations.
