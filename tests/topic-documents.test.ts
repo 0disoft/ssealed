@@ -1,9 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { templateFilesFor } from "../src/templates/index.js";
 import { profileFilesFor } from "../src/templates/profiles.js";
-import { addons, densities } from "../src/core/types.js";
+import { addons, densities, scopes } from "../src/core/types.js";
 
 describe("topic-specific generated documents", () => {
+  it.each([
+    { path: "docs/product/00-product-brief.md", minimum: "minimal", source: "README.md", decisions: ["User outcome", "Target users", "Scope and exclusions"] },
+    { path: "docs/product/01-roadmap.md", minimum: "standard", source: "docs/product/02-spec.md", decisions: ["Milestone outcomes", "Dependency ordering", "Stop or revise"] },
+    { path: "docs/product/02-spec.md", minimum: "minimal", source: "docs/product/00-product-brief.md", decisions: ["Observable behavior", "Acceptance criteria", "Failure and recovery"] },
+    { path: "docs/product/03-risk-register.md", minimum: "standard", source: "docs/product/00-product-brief.md", decisions: ["Risk scenario", "Impact and likelihood", "Mitigation owner"] },
+    { path: "docs/architecture/00-system-boundary.md", minimum: "minimal", source: "docs/product/00-product-brief.md", decisions: ["Owned responsibilities", "External authority", "Trust crossings"] },
+    { path: "docs/architecture/01-domain-model.md", minimum: "standard", source: "docs/architecture/00-system-boundary.md", decisions: ["Domain vocabulary", "Identity and lifecycle", "Invariants"] },
+    { path: "docs/architecture/02-runtime-flow.md", minimum: "standard", source: "docs/architecture/00-system-boundary.md", decisions: ["Entry and completion", "Effect ordering", "Interruption and retry"] },
+    { path: "docs/architecture/03-quality-attributes.md", minimum: "standard", source: "docs/product/02-spec.md", decisions: ["Quality scenarios", "Measurement contract", "Thresholds and tradeoffs"] },
+    { path: "ARCHITECTURE.md", minimum: "standard", source: "docs/architecture/00-system-boundary.md", decisions: ["Architecture map", "Decision status", "Change impact"] },
+  ] as const)("gives common $path its own product or architecture decisions", ({ path, minimum, source, decisions }) => {
+    for (const scope of scopes) for (const density of densities) {
+      const files = templateFilesFor(scope, "none", "generic", density);
+      const document = files.find((candidate) => candidate.path === path);
+      if (densities.indexOf(density) < densities.indexOf(minimum)) { expect(document).toBeUndefined(); continue; }
+      expect(document?.content).toContain("## Contract");
+      for (const decision of decisions) expect(document?.content).toContain(`${decision}: UNDECIDED`);
+      expect(document?.content).toContain(`Project-wide decisions: ${source}`);
+      expect(files.some((candidate) => candidate.path === source)).toBe(true);
+      expect(document?.content).not.toContain("This document captures the durable design contract");
+    }
+  });
+
   it.each([
     { scope: "mobile", file: "app-contract.md", minimum: "minimal", decisions: ["Surface boundary", "User work and state", "External contracts"] },
     { scope: "mobile", file: "platform-support.md", minimum: "standard", decisions: ["Support matrix", "Capability differences", "End of support"] },

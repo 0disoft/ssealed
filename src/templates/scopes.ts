@@ -335,7 +335,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "ops-doc":
       return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? opsDoc(file.title ?? file.path) };
     case "architecture-doc":
-      return { ...file, content: architectureDoc(file.title ?? file.path) };
+      return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? architectureDoc(file.title ?? file.path) };
     case "mermaid":
       return { ...file, content: mermaid(file.title ?? "diagram") };
     case "pull-request-template":
