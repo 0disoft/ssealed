@@ -33,6 +33,7 @@ import {
 } from "./types.js";
 import { templateFilesFor } from "../templates/index.js";
 import { validationScripts } from "../templates/runners.js";
+import { renderValidationGuideIndex } from "../templates/validation-guide-index.js";
 
 const staleLockAgeMs = 60 * 60 * 1000;
 const maxManifestBytes = 1024 * 1024;
@@ -111,6 +112,26 @@ async function planScaffoldWithWarnings(
       });
     },
   );
+  const retiredGuides = new Set(planned
+    .filter((file) => file.kind === "validation" && file.path.startsWith(".agents/validations/") && file.action === "retired")
+    .map((file) => file.path));
+  if (retiredGuides.size > 0) {
+    const routerIndex = templates.findIndex((file) => file.path === "VALIDATION.md");
+    const router = templates[routerIndex];
+    if (router !== undefined) {
+      const originalIndex = renderValidationGuideIndex(templates);
+      if (!router.content.endsWith(originalIndex)) throw new Error("Generated validation router index changed during planning.");
+      const activeIndex = renderValidationGuideIndex(templates.filter((file) => !retiredGuides.has(file.path)));
+      const previous = previousManifest.files.get(router.path);
+      planned[routerIndex] = await planTemplateFile({
+        targetRoot,
+        template: { ...router, content: router.content.slice(0, -originalIndex.length) + activeIndex },
+        force: options.force,
+        command,
+        previous: previous?.kind === router.kind ? previous : undefined,
+      });
+    }
+  }
   const plannedPaths = new Set(planned.map((file) => file.path));
   const retiredPreviousFiles =
     isFreshScaffoldCommand(command)

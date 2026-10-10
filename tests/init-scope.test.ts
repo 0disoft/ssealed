@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -195,6 +195,27 @@ describe("scope generation", () => {
     await expect(exists(dir, ".agents/validations/release-readiness.md")).resolves.toBe(true);
   });
 
+  it.each([false, true])("keeps retired validation guides out of regenerated indexes while preserving customized routers (%s)", async (customized) => {
+    const dir = await scaffold("general", "none", "sdk", "strict");
+    const routerPath = path.join(dir, "VALIDATION.md");
+    const original = await readFile(routerPath, "utf8");
+    const custom = `${original}\nUser instruction: preserve this decision.\n`;
+    if (customized) await writeFile(routerPath, custom);
+    await rm(path.join(dir, ".agents", "validations", "sdk.md"));
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await executeScaffold({ command: "update", target: dir, scope: "general", profile: "sdk", density: "strict", runner: "none", dryRun: false, force: true });
+      expect(result.conflicts).toEqual([]);
+      await expect(exists(dir, ".agents/validations/sdk.md")).resolves.toBe(false);
+      const router = await readFile(routerPath, "utf8");
+      if (customized) expect(router).toBe(custom);
+      else expect(router).not.toContain(".agents/validations/sdk.md");
+      expect(router).toContain(".agents/validations/default.md");
+      expect(router).toContain("## Standard Validation Names");
+      const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+      expect(manifest.files).toContainEqual(expect.objectContaining({ path: ".agents/validations/sdk.md", status: "retired" }));
+    }
+  });
+
   it("generates CLI tool profile contracts without changing the selected scope", async () => {
     const dir = await scaffold("general", "none", "cli-tool");
     await expect(exists(dir, "docs/cli/command-contract.md")).resolves.toBe(true);
@@ -345,7 +366,7 @@ describe("scope generation", () => {
     }
   });
 
-  it("keeps control-document route references inside the generated file set", () => {
+  it("keeps control-document routes valid and makes every task validation guide discoverable", () => {
     for (const scope of scopes) {
       for (const density of densities) {
         const cases: Array<{ readonly profile: Profile; readonly addons: readonly Addon[]; readonly label: string }> = [
@@ -356,6 +377,12 @@ describe("scope generation", () => {
         for (const testCase of cases) {
           const files = templateFilesFor(scope, "none", testCase.profile, density, testCase.addons);
           const generatedPaths = new Set(files.map((file) => file.path));
+          const rootValidation = files.find((file) => file.path === "VALIDATION.md");
+          expect(rootValidation, testCase.label).toBeDefined();
+          const validationRoutes = new Set(referencedGeneratedPaths(rootValidation?.content ?? ""));
+          for (const guide of files.filter((file) => file.kind === "validation" && file.path !== "VALIDATION.md")) {
+            expect(validationRoutes.has(guide.path), `${testCase.label}:VALIDATION.md -> ${guide.path}`).toBe(true);
+          }
 
           for (const file of files) {
             if (!controlDocumentPaths.has(file.path)) {

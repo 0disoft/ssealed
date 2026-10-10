@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.76`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.77`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -176,6 +176,8 @@ Desktop, web app, browser extension, and plugin validation guides cover installe
 Infrastructure module, GitHub Action, docs site, and monorepo validation guides cover resource transitions and consumer compatibility, runner authority and output timing, accurate reader guidance and visible publication, and package dependency or release coordination. They link the interface, environment, permission, publishing, or ownership decisions available at their emitted density. Plans, root commands, and builds remain distinct from applied state, independent consumer behavior, and completed delivery.
 
 Root `VALIDATION.md` is rendered separately as the validation-name authority. Every emitted `.agents/validations/` guide requires an explicit registered definition; a missing definition stops planning with the affected guide path before scaffold files are written. Root policy is never substituted for a missing guide, and existing paths, density, and seeded-file protections remain in place.
+
+Root `VALIDATION.md` also lists the task validation guides actually generated for the selected configuration. The list uses the final emitted file set, so scope and repository-type overlap, library naming, addons, and density do not require a second hand-maintained route table. Updates exclude retired guides from regenerated indexes, while preserving customized root documents. Minimal scaffolds with no task guides omit the list; normal seeded-file protections continue to preserve project edits.
 
 ## Repository Type Matrix
 

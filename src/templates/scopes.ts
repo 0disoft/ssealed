@@ -21,6 +21,7 @@ import { renderRequiredTopicDocument, renderTopicDocument } from "./topic-docume
 import { renderAdrDocument } from "./adr-documents.js";
 import { renderDiagram, renderDiagramIndex } from "./diagrams.js";
 import { renderScopeDocumentIndex } from "./scope-document-index.js";
+import { renderValidationGuideIndex } from "./validation-guide-index.js";
 
 interface FileSpec {
   readonly path: string;
@@ -252,7 +253,8 @@ export function templateFilesFor(
   const scopedPaths = new Set(renderedScopedFiles.map((file) => file.path));
   const files = [...renderedScopedFiles, ...profileFilesFor(profile, scope, density, addons).filter((file) => !scopedPaths.has(file.path)), ...runnerFiles(runner)];
   assertUniqueTemplatePaths(files);
-  return files;
+  const validationGuideIndex = renderValidationGuideIndex(files);
+  return files.map((file) => file.path === "VALIDATION.md" ? { ...file, content: file.content + validationGuideIndex } : file);
 }
 
 function frontendFilesFor(scope: Scope): readonly FileSpec[] {
