@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.47`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.48`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -212,6 +212,7 @@ If a recorded path differs only in letter case from a generated path, `update` a
 - `generatorVersion` controls generator-specific compatibility behavior. Legacy manifests fall back to `version`.
 - `eject` changes only the selected ownership record and preserves schema and generator compatibility metadata.
 - Runner ejection edits the package record's ownership, lifecycle, and checksum fields plus the manifest update timestamp. Other records and extension metadata retain their original JSON tokens, whitespace, line endings, and BOM. All occurrences of `managedScripts` are removed from the ejected record so an earlier duplicate cannot regain ownership.
+- Before transferring a managed package runner, `eject` requires an existing `package.json` to be a regular UTF-8 file. Invalid encoding or non-regular entries return `INVALID_PACKAGE_FILE`, including in dry runs, without changing ownership. A missing optional package may still be ejected. Before publishing the ownership change, ejection rechecks package contents or absence and the manifest source, and rechecks their paths after reads. A detected package change, deletion, or appearance returns `WRITE_FAILED` and preserves the previous ownership record. These checks have the same best-effort filesystem race limits as scaffold writes.
 
 Manifest file ownership has four meanings:
 

@@ -407,7 +407,7 @@ type ExistingPath =
   | { readonly kind: "file"; readonly content: string; readonly mode: number }
   | { readonly kind: "symlink" | "directory" | "other" | "invalid-encoding" };
 
-async function readExistingPath(filePath: string): Promise<ExistingPath> {
+export async function readExistingPath(filePath: string): Promise<ExistingPath> {
   const stat = await lstat(filePath).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
       return undefined;

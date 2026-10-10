@@ -7,7 +7,7 @@ import { normalizeText, sha256 } from "../core/checksum.js";
 import { filesystemReadConcurrency, mapWithConcurrency } from "../core/concurrency.js";
 import { SsealedError } from "../core/errors.js";
 import { findGitignoreManagedBlocks } from "../core/gitignore-block.js";
-import { writeTextFileAtomically } from "../core/file-writer.js";
+import { readExistingPath, writeTextFileAtomically } from "../core/file-writer.js";
 import { findJsonArrayElement, findJsonObjectProperty, parseJsonObject, removeJsonObjectProperty, setJsonObjectProperty } from "../core/json.js";
 import { executeScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock, type PreviousManifestSettings, type PreviousManifestState } from "../core/scaffold.js";
 import { assertNoSymlinkInPath, resolveInsideTarget } from "../core/path-safety.js";
@@ -163,6 +163,7 @@ type InitErrorCode =
   | "INVALID_MANIFEST"
   | "SETTINGS_CHANGE_REQUIRES_UPGRADE"
   | "INVALID_EJECT_TARGET"
+  | "INVALID_PACKAGE_FILE"
   | "RUNNER_NOT_BLOCK_MANAGED";
 
 interface InitError {
@@ -437,12 +438,16 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
 
   const packagePath = resolveInsideTarget(target, "package.json");
   await assertNoSymlinkInPath(target, packagePath);
-  const packageContent = await readFile(packagePath, "utf8").catch((error: unknown) => {
-    if (isNodeError(error) && error.code === "ENOENT") {
-      return undefined;
-    }
-    throw error;
-  });
+  const packageState = await readExistingPath(packagePath);
+  if (packageState.kind !== "file" && packageState.kind !== "missing") {
+    return formatEjectError(json, {
+      code: "INVALID_PACKAGE_FILE",
+      message: packageState.kind === "invalid-encoding"
+        ? "Existing package.json is not valid UTF-8. Convert its encoding explicitly before ejecting runner ownership."
+        : "Existing package.json is not a regular file. Runner ejection does not read non-regular entries.",
+    });
+  }
+  const packageContent = packageState.kind === "file" ? packageState.content : undefined;
   const acceptedChecksum = packageContent === undefined ? previousPackage.checksum : sha256(packageContent);
   const packageFile = manifest.files.find(isPackageManifestFile);
   if (packageFile === undefined) {
@@ -484,10 +489,19 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
       mode: manifestMode,
       onCommit: () => getScaffoldInterruptContext()?.markCommitted(),
       beforeCommit: async () => {
+        await assertNoSymlinkInPath(target, packagePath);
+        const currentPackage = await readExistingPath(packagePath);
+        if (packageState.kind === "missing"
+          ? currentPackage.kind !== "missing"
+          : currentPackage.kind !== "file" || currentPackage.content !== packageContent) {
+          throw new SsealedError("WRITE_FAILED", "Refusing to eject runner ownership because package.json changed while the command was running.");
+        }
+        await assertNoSymlinkInPath(target, packagePath);
         await assertNoSymlinkInPath(target, manifestPath);
         if (!(await readFile(manifestPath)).equals(manifestBytes)) {
           throw new SsealedError("WRITE_FAILED", "Refusing to eject runner ownership because the manifest changed while the command was running.");
         }
+        await assertNoSymlinkInPath(target, manifestPath);
       },
     });
   }
