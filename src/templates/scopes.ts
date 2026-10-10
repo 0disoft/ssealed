@@ -333,7 +333,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "frontend-design":
       return { ...file, content: frontendDesignDoc() };
     case "backend-doc":
-      return { ...file, content: backendDoc(file.title ?? file.path, density) };
+      return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path, undefined, density) ?? backendDoc(file.title ?? file.path, density) };
     case "engineering-doc":
       return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? engineeringDoc(file.title ?? file.path) };
     case "ops-doc":

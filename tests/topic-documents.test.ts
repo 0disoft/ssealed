@@ -6,6 +6,43 @@ import { addons, densities, scopes } from "../src/core/types.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { file: "README.md", minimum: "minimal", source: "docs/architecture/00-system-boundary.md", decisions: ["Backend responsibilities", "Contract owners", "Decision map"] },
+    { file: "00-api-server-boundary.md", minimum: "minimal", source: "docs/backend/README.md", decisions: ["Owned entrypoints", "External authority", "Effect completion"] },
+    { file: "01-authentication.md", minimum: "standard", source: "docs/backend/README.md", decisions: ["Identity evidence", "Identity lifetime", "Verifier failure"] },
+    { file: "02-authorization.md", minimum: "standard", source: "docs/backend/README.md", decisions: ["Principal and resource", "Decision enforcement", "Policy failure"] },
+    { file: "03-persistence-model.md", minimum: "standard", source: "docs/backend/README.md", decisions: ["State authority", "Identity and invariants", "Consistency boundary"] },
+    { file: "04-http-api-policy.md", minimum: "standard", source: "docs/backend/README.md", decisions: ["Request grammar", "Side effects and retries", "Completion and timeout"] },
+    { file: "05-error-response.md", minimum: "standard", source: "docs/backend/README.md", decisions: ["Public error shape", "Stable error codes", "Unknown outcomes"] },
+    { file: "06-logging-and-observability.md", minimum: "standard", source: "docs/backend/README.md", decisions: ["Observation questions", "Correlation identity", "Sensitive fields"] },
+    { file: "07-migration-strategy.md", minimum: "standard", source: "docs/backend/README.md", decisions: ["Before and after state", "Transition ordering", "Recovery eligibility"] },
+    { file: "08-backend-security.md", minimum: "standard", source: "docs/backend/README.md", decisions: ["Protected assets", "Trust boundaries", "Abuse and exhaustion"] },
+    { file: "09-api-evolution.md", minimum: "strict", source: "docs/backend/04-http-api-policy.md", decisions: ["Consumer inventory", "Compatibility definition", "Retirement evidence"] },
+    { file: "10-data-integrity.md", minimum: "strict", source: "docs/backend/03-persistence-model.md", decisions: ["Invariant inventory", "Concurrent changes", "Reconciliation evidence"] },
+  ] as const)("gives backend $file its own decisions while retaining scope and density", ({ file, minimum, source, decisions }) => {
+    for (const scope of ["backend", "fullstack"] as const) for (const density of densities) {
+      for (const profile of ["generic", "api-service"] as const) {
+        const files = templateFilesFor(scope, "none", profile, density);
+        const content = files.find((candidate) => candidate.path === `docs/backend/${file}`)?.content;
+        if (densities.indexOf(density) < densities.indexOf(minimum)) { expect(content).toBeUndefined(); continue; }
+        expect(content).toContain("- Status: Draft");
+        for (const decision of decisions) expect(content).toContain(`${decision}: UNDECIDED`);
+        expect(content).toContain(`Project-wide decisions: ${source}`);
+        expect(files.some((candidate) => candidate.path === source)).toBe(true);
+        expect(content).not.toContain("This backend document covers API server boundary");
+      }
+    }
+    expect(templateFilesFor("frontend", "none", "api-service", "strict").some((candidate) => candidate.path === `docs/backend/${file}`)).toBe(false);
+  });
+
+  it("directs higher-density backend overviews to the separate error policy without self-references", () => {
+    const files = templateFilesFor("backend", "none", "generic", "standard");
+    for (const file of ["README.md", "00-api-server-boundary.md"]) {
+      expect(files.find((candidate) => candidate.path === `docs/backend/${file}`)?.content).toContain("Error response policy: docs/backend/05-error-response.md");
+    }
+    expect(files.find((candidate) => candidate.path === "docs/backend/05-error-response.md")?.content).not.toContain("docs/backend/05-error-response.md");
+  });
+
+  it.each([
     { file: "0000-template.md", prompts: ["Problem and evidence", "Chosen option", "Do nothing", "Revisit trigger"] },
     { file: "0001-initial-architecture-boundaries.md", prompts: ["Owned responsibilities", "External authority", "Trust crossings", "Failure containment"] },
     { file: "0002-contract-source-of-truth.md", prompts: ["Contract inventory", "Canonical authority", "Derived consumers", "Drift detection"] },

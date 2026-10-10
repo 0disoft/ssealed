@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.52`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.53`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -127,6 +127,8 @@ Mermaid diagrams at standard and strict density contain topic-specific draft vie
 Mobile, infrastructure, and data scope documents contain topic-specific decisions. Mobile documents cover product boundaries, supported platforms, offline conflicts, and release recovery; infrastructure documents cover resource and state authority, environment isolation, reviewed execution, drift, and recoverability; data documents cover delivery guarantees, lineage, publication gates, and deletion across derived and recovery copies. Each topic points to its scope's README. Density controls which documents exist, and normal seeded-file protections continue to preserve project edits and retired documents.
 
 Backend scope does not generate frontend docs because ownership drift makes agents edit the wrong surface. Frontend scope does not generate backend internals because database, migration, and authorization implementation details belong to backend owners.
+
+Backend and fullstack documents contain distinct decision prompts for server boundaries, identity verification, resource permissions, stored-state authority, HTTP effects and completion, public errors, telemetry, migrations, security, API evolution, and data integrity. Minimal overviews keep unresolved error policy in the documents that exist; higher densities point to the dedicated error policy. Strict evolution and integrity documents point to their applicable API and persistence policies. These prompts do not select a framework, identity provider, database, or accepted project policy, and existing seeded-file protections remain in place.
 
 ## Repository Type Matrix
 

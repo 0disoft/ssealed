@@ -1,5 +1,5 @@
 import { documentMetadata } from "./document-format.js";
-import type { Profile } from "../core/types.js";
+import type { Density, Profile } from "../core/types.js";
 import type { TopicContract } from "./topics/contract.js";
 import { workerServiceTopics } from "./topics/worker-service.js";
 import { infraModuleTopics } from "./topics/infra-module.js";
@@ -20,6 +20,7 @@ import { monorepoTopics } from "./topics/monorepo.js";
 import { scopeTopics } from "./topics/scopes.js";
 import { productTopics } from "./topics/product.js";
 import { architectureTopics } from "./topics/architecture.js";
+import { backendOverviewFor, backendTopics } from "./topics/backend.js";
 
 const topicContracts: Readonly<Record<string, TopicContract>> = {
   ...workerServiceTopics,
@@ -41,10 +42,11 @@ const topicContracts: Readonly<Record<string, TopicContract>> = {
   ...scopeTopics,
   ...productTopics,
   ...architectureTopics,
+  ...backendTopics,
 };
 
-export function renderTopicDocument(filePath: string, title: string, profile?: Profile): string | undefined {
-  const topic = topicContracts[filePath];
+export function renderTopicDocument(filePath: string, title: string, profile?: Profile, density: Density = "standard"): string | undefined {
+  const topic = backendOverviewFor(filePath, density) ?? topicContracts[filePath];
   if (topic === undefined) return undefined;
   return `# ${title}
 
