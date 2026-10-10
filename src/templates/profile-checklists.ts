@@ -118,6 +118,58 @@ const profileChecklists: Readonly<Record<string, ChecklistDefinition>> = {
     ],
     validations: ["contract", "test", "smoke", "docs", "check"],
   },
+  ".agents/checklists/infra-module.md": {
+    sources: ["docs/infra-module/README.md", "docs/infra-module/module-interface.md"],
+    failureModes: "Incompatible module interfaces, unintended resource replacement, shared-state takeover, wrong environment authority, unmanaged drift, and uncertain or irreversible partial effects.",
+    items: [
+      "Owned resources, shared dependencies, public inputs and outputs, defaults, and supported consumers agree with the affected module interface.",
+      "Reviewed changes identify actual creation, replacement, import, or removal effects, including retained data and irreversible operations.",
+      "Target environment, credential scope, state ownership, and concurrent-writer controls are verified before authorized resource changes.",
+      "Observed drift and interrupted or partial effects have reconciliation ownership and recovery limits without taking over shared or user-owned state.",
+      "Interface and dependency evolution preserves supported consumers or provides an explicit compatibility and migration sequence.",
+      "Relevant consumer and lifecycle evidence supports the claimed outcome; successful planning is distinguished from applied state and unresolved recovery.",
+    ],
+    validations: ["contract", "test", "smoke", "check"],
+  },
+  ".agents/checklists/github-action.md": {
+    sources: ["docs/github-action/README.md", "docs/github-action/action-contract.md", "docs/github-action/inputs-and-outputs.md"],
+    failureModes: "Input or output drift, contributor data becoming executable syntax, excessive credential authority, secret disclosure, conflicting runner state, and misleading partial completion or cleanup.",
+    items: [
+      "Supported callers, runner environments, execution model, and permitted workspace or external effects agree with the action contract.",
+      "Affected absent, empty, multiline, numeric, boolean, and path inputs are parsed explicitly and remain data when passed to commands or output channels.",
+      "Contributor-controlled events and code cannot inherit privileged effects beyond the agreed boundary; denied authority has explicit failure behavior.",
+      "Credentials and private values stay within their intended scope and are excluded from logs, outputs, summaries, caches, and artifacts.",
+      "Concurrent runs, retries, interruption, and cleanup respect owned resources and uncertain effects, with output publication and exit status matching actual completion.",
+      "Representative caller workflows cover affected supported runners and rejection or recovery paths, with release compatibility and untested combinations explicit.",
+    ],
+    validations: ["lint", "contract", "test", "smoke", "check"],
+  },
+  ".agents/checklists/docs-site.md": {
+    sources: ["docs/docs-site/README.md", "docs/docs-site/information-architecture.md"],
+    failureModes: "Conflicting or stale guidance, unusable reader journeys, broken addresses or assets, misleading examples, mixed versions or locales, and incomplete or unverified publication.",
+    items: [
+      "Affected reader tasks, canonical pages, content owners, and supported version or locale boundaries agree with the information architecture.",
+      "Claims, prerequisites, examples, and procedures match authoritative product behavior, with draft or unimplemented guidance identified and private values excluded.",
+      "Navigation, search, links, anchors, and assets lead to valid destinations; moved or removed content follows the agreed redirect and retention policy.",
+      "Relevant reader journeys remain understandable and accessible, including keyboard navigation or alternative text where applicable and stale translation handling.",
+      "When publication is authorized, reviewed source, artifact identity, preview isolation, promotion, and partial-publication recovery are accounted for.",
+      "Relevant content, link, and example evidence supports accuracy; publication claims additionally cover visible pages, redirects, caches, and search state where affected.",
+    ],
+    validations: ["docs", "test", "smoke", "check"],
+  },
+  ".agents/checklists/monorepo.md": {
+    sources: ["docs/monorepo/README.md", "docs/monorepo/workspace-boundaries.md"],
+    failureModes: "Package authority drift, private cross-package imports, dependency cycles, overlooked shared-change consumers, conflicting artifacts or caches, and incompatible partial releases.",
+    items: [
+      "Affected package roots, public surfaces, maintainers, nearest working rules, and independent release or deployment units are identified.",
+      "Dependency direction and public import boundaries are respected, with affected direct and transitive consumers of shared configuration or schemas accounted for.",
+      "Build prerequisites, generated artifacts, temporary outputs, and mutable caches have owners and isolation appropriate to concurrent package tasks.",
+      "Coordinated interface, version, and migration changes preserve required old and new consumer combinations through the intended release order.",
+      "Interrupted or partial rollout has stopping and recovery decisions that account for external consumers and irreversible state changes where affected.",
+      "Relevant package and consumer checks run in dependency order against actual artifacts, with hidden root assumptions and remaining integration or release work explicit.",
+    ],
+    validations: ["lint", "typecheck", "contract", "test", "smoke", "check"],
+  },
 };
 
 export function renderProfileChecklist(filePath: string, title: string): string | undefined {
