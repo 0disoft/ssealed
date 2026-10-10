@@ -51,6 +51,46 @@ const profileSkills: Readonly<Record<string, SkillDefinition>> = {
       "Verify relevant duplicate delivery, interrupted execution, stale-owner, and restart paths with controlled evidence. Include old queued schemas and final exhausted or quarantined states when the change affects them.",
     ],
   },
+  "desktop-app": {
+    description: "Change desktop installation, updates, local state, or application lifecycle using supported platform contracts and evidence of the actual installed behavior.",
+    sources: ["docs/desktop/README.md", "docs/desktop/installers.md", ".agents/checklists/desktop-app.md"],
+    workflow: [
+      "Identify supported platforms, distribution artifacts, publisher authority, installation privileges, and owned paths. Preserve user data and shared components across installation, repair, or removal according to the existing contract.",
+      "Distinguish trusted artifact delivery, installed state, and application activation. Account for interrupted updates and local-data compatibility before claiming that restoring an older binary can recover the previous state.",
+      "Assign application resources and pending work to lifecycle owners. Keep late completions from mutating closed or replaced views, preserve recoverable user work, and follow existing diagnostic privacy and cleanup rules.",
+      "Verify relevant journeys using the installed application and supported platform evidence, including affected upgrade, interruption, or recovery paths. Keep untested platforms, incomplete cleanup, and remaining distribution work explicit.",
+    ],
+  },
+  "web-app": {
+    description: "Change web application navigation, rendering, or browser-state behavior with explicit URL ownership, user-state recovery, and supported browser evidence.",
+    sources: ["docs/web-app/README.md", "docs/web-app/routing-and-rendering.md", ".agents/checklists/web-app.md"],
+    workflow: [
+      "Identify supported user journeys, URL and route owners, rendering boundaries, and data-loading responsibilities. Follow the project's server, client, or static rendering choices and coordinate separately owned service contracts.",
+      "Keep direct loads and client navigation consistent with caller identity and current intent. Limit data crossing rendering or URL boundaries, and prevent delayed navigation or hydration results from replacing newer state or user edits.",
+      "Define restoration of form input, focus, scroll, and browser history where affected. Account for identity switches, multiple tabs, stale persistence, and failed loads without silently discarding recoverable work.",
+      "Verify relevant direct-load, navigation, rejection, and recovery paths in supported browsers. Distinguish rendered and accessibility evidence from build success or markup checks and record remaining environment gaps.",
+    ],
+  },
+  "browser-extension": {
+    description: "Change browser extension execution, page integration, permissions, or lifecycle with explicit context authority and evidence across supported browser surfaces.",
+    sources: ["docs/browser-extension/README.md", "docs/browser-extension/extension-contract.md", ".agents/checklists/browser-extension.md"],
+    workflow: [
+      "Identify supported browsers and the responsibilities of extension UI, background execution, content scripts, and external integrations. Follow the declared lifecycle instead of assuming background execution or in-memory state is permanent.",
+      "Bind page or message effects to the responsible caller, origin, frame, and current capability grants. Treat page content as untrusted input and handle denied or revoked access without broadening permissions to bypass a failed operation.",
+      "Assign persistent state, pending effects, listeners, and registrations to owners with restart and cleanup behavior. Preserve user work across suspension, state migration, or update, and reconcile uncertain effects before replaying them.",
+      "Verify affected lifecycle and page interactions in the actual supported browser contexts, including relevant denied grants, unrelated origins, and interrupted operations. Report remaining distribution and browser compatibility gaps.",
+    ],
+  },
+  plugin: {
+    description: "Change plugin activation, extension points, host integration, or teardown with explicit capability, callback lifetime, and resource ownership contracts.",
+    sources: ["docs/plugin/README.md", "docs/plugin/host-contract.md", ".agents/checklists/plugin.md"],
+    workflow: [
+      "Identify supported host interfaces, granted capabilities, extension points, and state owners. Use the documented host contract rather than treating incidental internals or scaffold assumptions as supported authority.",
+      "Assign registrations, listeners, tasks, handles, and persisted state to activation owners. Define repeated activation, overlapping invocation, and failure behavior so one instance does not duplicate effects or release another instance's resources.",
+      "Account for disable or unload with pending callbacks and asynchronous completions. Keep invalidated work from mutating host state, release owned resources, and distinguish cancellation requests from completed teardown.",
+      "Verify relevant activation, capability denial, failure, and teardown behavior against supported hosts. Include state or host-version migration when affected and preserve user configuration through update or recovery.",
+    ],
+  },
 };
 
 export function renderProfileSkill(name: string): string | undefined {

@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.61`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.62`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -145,6 +145,8 @@ Common feature, bugfix, refactor, operations-change, dependency-upgrade, and tes
 Backend API, DB migration, frontend UI, mobile app, infrastructure change, and data pipeline skills provide guidance for their contracts, state owners, interruption, and recovery. Frontend skills link the consumed API contract or the fullstack-owned API according to scope; mobile and data skills select the documents for the scope or repository type. Required links point to documents present at the skill's density, including minimal scaffolds.
 
 CLI tool, API service, library package, SDK, and worker service skills connect their public contracts to task-specific guidance. They cover command completion and output, service lifecycle and consumer migration, distributed-package compatibility, upstream SDK integration, and job acknowledgment or replay respectively. Their required references are available in minimal, standard, and strict scaffolds whether selected as a repository type or an addon.
+
+Desktop, web app, browser extension, and plugin skills address their distribution, navigation, execution-context, and host lifecycle contracts. Guidance connects interrupted work and user-state recovery to actual platform or host evidence, with explicit resource ownership and capability boundaries. Required document links remain valid when these repository types or addons are selected at minimal density.
 
 ## Repository Type Matrix
 
