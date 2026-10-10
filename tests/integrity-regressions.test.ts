@@ -708,14 +708,14 @@ describe("file publication integrity", () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm", "--yes"])).code).toBe(0);
     const packagePath = path.join(dir, "package.json");
-    await chmod(packagePath, 0o600);
+    await chmod(packagePath, 0o640);
 
     const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as { scripts: Record<string, string> };
     delete packageJson.scripts.lint;
-    await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`, { mode: 0o600 });
+    await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`, { mode: 0o640 });
     expect((await runJson(["update", dir, "--yes"])).code).toBe(0);
 
-    expect((await lstat(packagePath)).mode & 0o777).toBe(0o600);
+    expect((await lstat(packagePath)).mode & 0o777).toBe(0o640);
   });
 
   it("does not delete a user replacement while rolling back a later failure", async () => {

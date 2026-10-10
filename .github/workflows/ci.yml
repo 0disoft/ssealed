@@ -52,6 +52,3 @@ jobs:
 
       - name: Check package and runtimes
         run: bun run check
-
-      - name: Validate package contents
-        run: npm pack --dry-run --json

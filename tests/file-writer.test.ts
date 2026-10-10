@@ -1,7 +1,7 @@
 import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type TestContext } from "vitest";
 import { executeScaffold, planScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock } from "../src/core/scaffold.js";
 import { writePlannedFiles } from "../src/core/file-writer.js";
 import { assertSafeTemplatePath, resolveInsideTarget } from "../src/core/path-safety.js";
@@ -22,6 +22,17 @@ async function tempDir(): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "ssealed-writer-"));
   workdirs.push(dir);
   return dir;
+}
+
+async function directoryLink(target: string, linkPath: string, context: TestContext): Promise<void> {
+  try {
+    await symlink(target, linkPath, process.platform === "win32" ? "junction" : "dir");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && ["EPERM", "EACCES", "ENOSYS", "ENOTSUP"].includes(String(error.code))) {
+      context.skip(`Directory links unavailable: ${error.message}`);
+    }
+    throw error;
+  }
 }
 
 async function copyManifestFixture(dir: string, fixtureName: string): Promise<void> {
@@ -771,27 +782,19 @@ describe("file writer behavior", () => {
     ]);
   });
 
-  it("refuses to write through a symlinked generated directory when the platform permits the setup", async () => {
+  it("refuses to write through a symlinked generated directory when the platform permits the setup", async (context) => {
     const dir = await tempDir();
     const outside = await tempDir();
-    try {
-      await symlink(outside, path.join(dir, "docs"), "dir");
-    } catch {
-      return;
-    }
+    await directoryLink(outside, path.join(dir, "docs"), context);
     await expect(executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false })).rejects.toThrow(
       /symlinked directory/u,
     );
   });
 
-  it("preflights symlinked generated directories before writing earlier scaffold files", async () => {
+  it("preflights symlinked generated directories before writing earlier scaffold files", async (context) => {
     const dir = await tempDir();
     const outside = await tempDir();
-    try {
-      await symlink(outside, path.join(dir, "docs"), "dir");
-    } catch {
-      return;
-    }
+    await directoryLink(outside, path.join(dir, "docs"), context);
     await expect(executeScaffold({ target: dir, scope: "general", runner: "none", dryRun: false, force: false })).rejects.toThrow(
       /symlinked directory/u,
     );
@@ -799,32 +802,24 @@ describe("file writer behavior", () => {
     await expect(readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8")).rejects.toThrow();
   });
 
-  it("refuses to create a missing target under a symlinked parent without creating the real directory", async () => {
+  it("refuses to create a missing target under a symlinked parent without creating the real directory", async (context) => {
     const parent = await tempDir();
     const real = await tempDir();
     const link = path.join(parent, "link");
-    try {
-      await symlink(real, link, "dir");
-    } catch {
-      return;
-    }
+    await directoryLink(real, link, context);
     await expect(executeScaffold({ target: path.join(link, "new-target"), scope: "general", runner: "none", dryRun: false, force: false })).rejects.toThrow(
       /symlinked path/u,
     );
     await expect(lstat(path.join(real, "new-target"))).rejects.toThrow();
   });
 
-  it("accepts an existing target reached through a canonicalized parent path", async () => {
+  it("accepts an existing target reached through a canonicalized parent path", async (context) => {
     const parent = await tempDir();
     const real = await tempDir();
     const target = path.join(real, "existing-target");
     const link = path.join(parent, "link");
     await mkdir(target);
-    try {
-      await symlink(real, link, "dir");
-    } catch {
-      return;
-    }
+    await directoryLink(real, link, context);
 
     await expect(
       executeScaffold({ target: path.join(link, "existing-target"), scope: "general", runner: "none", dryRun: false, force: false }),
@@ -832,17 +827,13 @@ describe("file writer behavior", () => {
     await expect(readFile(path.join(target, "AGENTS.md"), "utf8")).resolves.toContain("# AGENTS.md");
   });
 
-  it("creates a missing target below an existing canonicalized ancestor", async () => {
+  it("creates a missing target below an existing canonicalized ancestor", async (context) => {
     const parent = await tempDir();
     const real = await tempDir();
     const existing = path.join(real, "existing-parent");
     const link = path.join(parent, "link");
     await mkdir(existing);
-    try {
-      await symlink(real, link, "dir");
-    } catch {
-      return;
-    }
+    await directoryLink(real, link, context);
 
     await expect(
       executeScaffold({ target: path.join(link, "existing-parent", "new-target"), scope: "general", runner: "none", dryRun: false, force: false }),
@@ -850,15 +841,11 @@ describe("file writer behavior", () => {
     await expect(readFile(path.join(existing, "new-target", "AGENTS.md"), "utf8")).resolves.toContain("# AGENTS.md");
   });
 
-  it("still refuses when the selected target directory is itself a symlink", async () => {
+  it("still refuses when the selected target directory is itself a symlink", async (context) => {
     const parent = await tempDir();
     const real = await tempDir();
     const link = path.join(parent, "target-link");
-    try {
-      await symlink(real, link, "dir");
-    } catch {
-      return;
-    }
+    await directoryLink(real, link, context);
 
     await expect(executeScaffold({ target: link, scope: "general", runner: "none", dryRun: false, force: false })).rejects.toThrow(
       /symlinked target directory/u,

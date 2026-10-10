@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.25`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.26`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -47,7 +47,7 @@ The release workflow:
 - publishes the verified tarball to npm;
 - creates or updates the matching GitHub Release.
 
-The CI workflow runs on pull requests and `main` pushes. It installs with Bun, then runs typecheck, tests, and build before release-only smoke and publication steps are needed.
+The CI workflow runs on pull requests and `main` pushes. It installs with Bun and runs `bun run check`, covering typecheck, tests, build, runtime smoke, package contents, and packed installation. Package contents are checked once through that command. Publication remains exclusive to the release workflow.
 
 npm publishing uses Trusted Publishing through GitHub Actions. Configure the npm package trusted publisher once with:
 
