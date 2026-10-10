@@ -1,6 +1,7 @@
 import type { Addon, Density, Profile, Scope } from "../core/types.js";
 import { documentMetadata } from "./document-format.js";
 import { renderCommonChecklist } from "./common-checklists.js";
+import { renderProfileChecklist } from "./profile-checklists.js";
 import { renderProfileSkill } from "./profile-skills.js";
 import { renderScopeChecklist } from "./scope-checklists.js";
 import { renderScopeSkill } from "./scope-skills.js";
@@ -552,7 +553,7 @@ function profileReviewBlockers(profile: Profile): readonly string[] {
 }
 
 export function checklistDoc(title: string, filePath: string, scope: Scope = "general"): string {
-  const registeredChecklist = renderScopeChecklist(filePath, title, scope) ?? renderCommonChecklist(filePath, title);
+  const registeredChecklist = renderScopeChecklist(filePath, title, scope) ?? renderCommonChecklist(filePath, title) ?? renderProfileChecklist(filePath, title);
   if (registeredChecklist !== undefined) return registeredChecklist;
   const checklist = genericChecklistContent();
 

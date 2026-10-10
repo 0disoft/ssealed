@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.66`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.67`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -156,6 +156,8 @@ Frontend UI skills link the consumed API contract or the fullstack-owned API acc
 Backend API, DB migration, frontend UI, mobile app, infrastructure change, and data pipeline checklists use explicit file-path routing and contextual document links. Their items address contract agreement, ownership, interrupted or partial work, recovery, and observable evidence. Validation names identify relevant choices from VALIDATION.md, and skipped or inapplicable items require an explanation. Normal seeded-file protections preserve user edits and deleted checklists.
 
 Security, performance, operations change, dependency, accessibility, and release-readiness checklists also use file-path routing and evidence items. They connect trust boundaries, comparable measurements, active operating state, compatibility policy, accessible task completion, and distributed-artifact readiness to documents present at their emitted density. Accessibility and release readiness distinguish actual user or delivery evidence from automated or build-only checks.
+
+CLI tool, API service, library package, SDK, and worker service checklists cover their caller contracts, effect completion, consumer compatibility, and recovery boundaries. Their required links remain valid at minimal density for repository types and addons, including the owned API service contract across scopes. Validation choices follow the affected contracts and supported-consumer evidence rather than a fixed full-suite requirement.
 
 ## Repository Type Matrix
 
