@@ -229,11 +229,8 @@ ${sourceLines.join("\n")}
 export function contextMap(scope: Scope, profile: Profile, addons: readonly Addon[] = [], density: Density = "standard"): string {
   const isMinimal = density === "minimal";
   const routes = [
-    ...(scope === "backend" || scope === "fullstack"
-      ? ["- Backend API route: .agents/skills/backend-api/SKILL.md", ...(isMinimal ? [] : ["- DB migration route: .agents/skills/db-migration/SKILL.md"])]
-      : []),
     ...(scope === "frontend" || scope === "fullstack"
-      ? ["- Frontend UI route: .agents/skills/frontend-ui/SKILL.md", "- Backend API contract consumption: docs/integrations/backend-api.md"]
+      ? ["- Backend API contract consumption: docs/integrations/backend-api.md"]
       : []),
     ...(scope === "general"
       ? [
@@ -242,24 +239,8 @@ export function contextMap(scope: Scope, profile: Profile, addons: readonly Addo
           "- Documentation update route: docs/README.md",
         ]
       : []),
-    ...(scope === "mobile" ? ["- Mobile app route: .agents/skills/mobile-app/SKILL.md"] : []),
-    ...(scope === "infra" ? ["- Infrastructure route: .agents/skills/infra-change/SKILL.md"] : []),
-    ...(scope === "data" ? ["- Data pipeline route: .agents/skills/data-pipeline/SKILL.md"] : []),
-    ...profileList(profile, addons).flatMap((value) => profileRoutes(value)),
-    "- Feature route: .agents/skills/feature/SKILL.md",
-    "- Bugfix route: .agents/skills/bugfix/SKILL.md",
-    "- Security checklist route: .agents/checklists/security.md",
-    "- Ops checklist route: .agents/checklists/ops-change.md",
-    ...(isMinimal
-      ? []
-      : [
-          "- Ops route: .agents/skills/ops-change/SKILL.md",
-          "- Dependency route: .agents/skills/dependency-upgrade/SKILL.md",
-          "- Dependency checklist route: .agents/checklists/dependency.md",
-          "- Refactor route: .agents/skills/refactor/SKILL.md",
-          "- Test hardening route: .agents/skills/test-hardening/SKILL.md",
-        ]),
   ];
+  const contextSources = routes.length === 0 ? "" : `## Context Sources\n\n${routes.join("\n")}\n\n`;
 
   return `# Agent Context Map
 
@@ -270,9 +251,7 @@ ${documentMetadata([
   ["Addons", formatAddons(addons)],
 ])}
 
-## Routes
-
-${routes.join("\n")}
+${contextSources}Use the project's checklist router and validation policy to select applicable evidence and configured checks. Generated procedures remain design guidance until project owners record implementation choices and execution authority.
 `;
 }
 
@@ -401,7 +380,6 @@ function formatAddons(addons: readonly Addon[]): string {
 interface ProfileMetadata {
   readonly contract: string;
   readonly sources: readonly string[];
-  readonly route: string;
   readonly decisions: readonly string[];
   readonly blockers: readonly string[];
 }
@@ -410,7 +388,6 @@ const profileMetadata = {
   "cli-tool": {
     contract: "This repository type owns command behavior, arguments, flags, config loading, exit codes, terminal output, JSON output, runtime compatibility, and shell integration contracts.",
     sources: ["- CLI command contract source: docs/cli/command-contract.md", "- CLI output and exit-code source: docs/cli/output-and-exit-codes.md", "- CLI config source: docs/cli/configuration.md"],
-    route: "- CLI tool route: .agents/skills/cli-tool/SKILL.md",
     decisions: [
       "Command list and flag ownership: UNDECIDED",
       "Exit-code taxonomy: UNDECIDED",
@@ -427,7 +404,6 @@ const profileMetadata = {
   "api-service": {
     contract: "This repository type owns service API lifecycle, request and response contracts, idempotency, rate limits, service SLOs, operational readiness, and client-facing error behavior.",
     sources: ["- API lifecycle source: docs/api-service/api-lifecycle.md", "- API idempotency source: docs/api-service/idempotency.md", "- API rate-limit source: docs/api-service/rate-limits.md", "- API service SLO source: docs/api-service/slo.md"],
-    route: "- API service route: .agents/skills/api-service/SKILL.md",
     decisions: [
       "OpenAPI ownership and publish path: UNDECIDED",
       "Authentication and authorization surface: UNDECIDED",
@@ -444,7 +420,6 @@ const profileMetadata = {
   "desktop-app": {
     contract: "This repository type owns installed app behavior, OS support, local data, installer, auto-update, crash reporting, permissions, and desktop-specific security contracts.",
     sources: ["- Desktop installer source: docs/desktop/installers.md", "- Desktop auto-update source: docs/desktop/auto-update.md", "- Desktop local data source: docs/desktop/local-data.md", "- Desktop OS support source: docs/desktop/os-support.md"],
-    route: "- Desktop app route: .agents/skills/desktop-app/SKILL.md",
     decisions: [
       "Supported operating systems and architectures: UNDECIDED",
       "Installer and update channel ownership: UNDECIDED",
@@ -461,7 +436,6 @@ const profileMetadata = {
   library: {
     contract: "This repository type owns public API surface, package compatibility, semantic versioning, migration guidance, distribution artifacts, and consumer-facing deprecation policy.",
     sources: ["- Library public API source: docs/library/public-api.md", "- Library semver source: docs/library/semver.md", "- Library compatibility source: docs/library/compatibility.md", "- Library migration source: docs/library/migration-guide.md"],
-    route: "- Library package route: .agents/skills/library-package/SKILL.md",
     decisions: [
       "Public API ownership: UNDECIDED",
       "Semantic versioning policy: UNDECIDED",
@@ -475,24 +449,23 @@ const profileMetadata = {
       "Package artifacts drift from documented public API.",
     ],
   },
-  "web-app": profileMetadataEntry("Web app", "docs/web-app", "web-app", ["routes, rendering mode, browser state, accessibility, and client observability"], ["Route or rendering behavior changes without documented user-visible states.", "Browser state ownership is unclear or duplicates server state."]),
-  "mobile-app": profileMetadataEntry("Mobile app", "docs/mobile-app", "mobile-app", ["platform support, app lifecycle, offline behavior, store release, and mobile diagnostics"], ["Platform-specific behavior changes without OS and device validation.", "Offline or sync behavior lacks conflict and recovery notes."]),
-  sdk: profileMetadataEntry("SDK", "docs/sdk", "sdk", ["public API, compatibility, examples, versioning, and consumer migration"], ["SDK examples drift from public API.", "Compatibility claims lack runtime or consumer evidence."]),
-  "worker-service": profileMetadataEntry("Worker service", "docs/worker-service", "worker-service", ["job contracts, queue ownership, retry policy, idempotency, and worker observability"], ["Retry behavior lacks idempotency and poison-message handling.", "Queue changes lack visibility, backpressure, or recovery evidence."]),
-  "infra-module": profileMetadataEntry("Infrastructure module", "docs/infra-module", "infra-module", ["module interface, environment contract, drift policy, rollout, and rollback"], ["Infrastructure drift is accepted without owner and rollback notes.", "Environment changes lack blast-radius and validation evidence."]),
-  "data-pipeline": profileMetadataEntry("Data pipeline", "docs/data-pipeline", "data-pipeline", ["lineage, freshness, quality gates, privacy, retention, and downstream contracts"], ["Pipeline changes lack lineage or freshness evidence.", "Data quality claims lack measured gates and failure handling."]),
-  "github-action": profileMetadataEntry("GitHub Action", "docs/github-action", "github-action", ["action inputs, outputs, permissions, token handling, and runner compatibility"], ["Action permission changes lack least-privilege review.", "Outputs or exit behavior changes without workflow examples."]),
-  "browser-extension": profileMetadataEntry("Browser extension", "docs/browser-extension", "browser-extension", ["extension permissions, content-script boundaries, browser compatibility, and privacy"], ["Permission expansion lacks user-visible justification.", "Content script behavior crosses host-page boundaries without review."]),
-  plugin: profileMetadataEntry("Plugin", "docs/plugin", "plugin", ["host contract, extension points, compatibility, lifecycle, and sandbox boundaries"], ["Host compatibility changes lack version and fallback notes.", "Plugin extension points expose unstable internals."]),
-  "docs-site": profileMetadataEntry("Docs site", "docs/docs-site", "docs-site", ["information architecture, publishing, search, content quality, and redirects"], ["Content structure changes break navigation or redirects.", "Publishing behavior changes without preview or link validation."]),
-  monorepo: profileMetadataEntry("Monorepo", "docs/monorepo", "monorepo", ["workspace boundaries, package ownership, dependency policy, and change coordination"], ["Cross-package changes lack ownership and dependency impact review.", "Workspace scripts or package boundaries drift from documented contracts."]),
+  "web-app": profileMetadataEntry("Web app", "docs/web-app", ["routes, rendering mode, browser state, accessibility, and client observability"], ["Route or rendering behavior changes without documented user-visible states.", "Browser state ownership is unclear or duplicates server state."]),
+  "mobile-app": profileMetadataEntry("Mobile app", "docs/mobile-app", ["platform support, app lifecycle, offline behavior, store release, and mobile diagnostics"], ["Platform-specific behavior changes without OS and device validation.", "Offline or sync behavior lacks conflict and recovery notes."]),
+  sdk: profileMetadataEntry("SDK", "docs/sdk", ["public API, compatibility, examples, versioning, and consumer migration"], ["SDK examples drift from public API.", "Compatibility claims lack runtime or consumer evidence."]),
+  "worker-service": profileMetadataEntry("Worker service", "docs/worker-service", ["job contracts, queue ownership, retry policy, idempotency, and worker observability"], ["Retry behavior lacks idempotency and poison-message handling.", "Queue changes lack visibility, backpressure, or recovery evidence."]),
+  "infra-module": profileMetadataEntry("Infrastructure module", "docs/infra-module", ["module interface, environment contract, drift policy, rollout, and rollback"], ["Infrastructure drift is accepted without owner and rollback notes.", "Environment changes lack blast-radius and validation evidence."]),
+  "data-pipeline": profileMetadataEntry("Data pipeline", "docs/data-pipeline", ["lineage, freshness, quality gates, privacy, retention, and downstream contracts"], ["Pipeline changes lack lineage or freshness evidence.", "Data quality claims lack measured gates and failure handling."]),
+  "github-action": profileMetadataEntry("GitHub Action", "docs/github-action", ["action inputs, outputs, permissions, token handling, and runner compatibility"], ["Action permission changes lack least-privilege review.", "Outputs or exit behavior changes without workflow examples."]),
+  "browser-extension": profileMetadataEntry("Browser extension", "docs/browser-extension", ["extension permissions, content-script boundaries, browser compatibility, and privacy"], ["Permission expansion lacks user-visible justification.", "Content script behavior crosses host-page boundaries without review."]),
+  plugin: profileMetadataEntry("Plugin", "docs/plugin", ["host contract, extension points, compatibility, lifecycle, and sandbox boundaries"], ["Host compatibility changes lack version and fallback notes.", "Plugin extension points expose unstable internals."]),
+  "docs-site": profileMetadataEntry("Docs site", "docs/docs-site", ["information architecture, publishing, search, content quality, and redirects"], ["Content structure changes break navigation or redirects.", "Publishing behavior changes without preview or link validation."]),
+  monorepo: profileMetadataEntry("Monorepo", "docs/monorepo", ["workspace boundaries, package ownership, dependency policy, and change coordination"], ["Cross-package changes lack ownership and dependency impact review.", "Workspace scripts or package boundaries drift from documented contracts."]),
 } satisfies Record<Addon, ProfileMetadata>;
 
-function profileMetadataEntry(label: string, sourceDir: string, skillSlug: string, owns: readonly string[], blockers: readonly string[]): ProfileMetadata {
+function profileMetadataEntry(label: string, sourceDir: string, owns: readonly string[], blockers: readonly string[]): ProfileMetadata {
   return {
     contract: `This repository type owns ${owns.join(", ")}.`,
     sources: [`- ${label} source: ${sourceDir}/README.md`],
-    route: `- ${label} route: .agents/skills/${skillSlug}/SKILL.md`,
     decisions: [
       `${label} ownership boundary: UNDECIDED`,
       `${label} public contract: UNDECIDED`,
@@ -542,10 +515,6 @@ function profileSourceLines(profile: Addon, scope: Scope, density: Density): rea
     ];
   }
   return [...apiSource, ...profileMetadata[profile].sources];
-}
-
-function profileRoutes(profile: Addon): readonly string[] {
-  return [profileMetadata[profile].route];
 }
 
 function profileRequiredDecisions(profile: Profile): readonly string[] {

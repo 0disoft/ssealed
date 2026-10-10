@@ -35,6 +35,7 @@ import { templateFilesFor } from "../templates/index.js";
 import { validationScripts } from "../templates/runners.js";
 import { renderValidationGuideIndex } from "../templates/validation-guide-index.js";
 import { renderChecklistIndex } from "../templates/checklist-index.js";
+import { renderSkillIndex } from "../templates/skill-index.js";
 
 const staleLockAgeMs = 60 * 60 * 1000;
 const maxManifestBytes = 1024 * 1024;
@@ -118,7 +119,7 @@ async function planScaffoldWithWarnings(
     .map((file) => file.path));
   if (retiredPaths.size > 0) {
     const activeTemplates = templates.filter((file) => !retiredPaths.has(file.path));
-    for (const [routerPath, renderIndex] of [["VALIDATION.md", renderValidationGuideIndex], ["CHECKLIST.md", renderChecklistIndex]] as const) {
+    for (const [routerPath, renderIndex] of [["VALIDATION.md", renderValidationGuideIndex], ["CHECKLIST.md", renderChecklistIndex], [".agents/context-map.md", renderSkillIndex]] as const) {
       const routerIndex = templates.findIndex((file) => file.path === routerPath);
       const router = templates[routerIndex];
       if (router === undefined) continue;

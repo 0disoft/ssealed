@@ -236,6 +236,26 @@ describe("scope generation", () => {
     }
   });
 
+  it.each([false, true])("keeps retired skills out of regenerated context maps while preserving project edits (%s)", async (customized) => {
+    const dir = await scaffold("general", "none", "sdk", "strict");
+    const routerPath = path.join(dir, ".agents", "context-map.md");
+    const original = await readFile(routerPath, "utf8");
+    const custom = `${original}\nUser instruction: preserve this decision.\n`;
+    if (customized) await writeFile(routerPath, custom);
+    await rm(path.join(dir, ".agents", "skills", "sdk", "SKILL.md"));
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await executeScaffold({ command: "update", target: dir, scope: "general", profile: "sdk", density: "strict", runner: "none", dryRun: false, force: true });
+      expect(result.conflicts).toEqual([]);
+      await expect(exists(dir, ".agents/skills/sdk/SKILL.md")).resolves.toBe(false);
+      const router = await readFile(routerPath, "utf8");
+      if (customized) expect(router).toBe(custom);
+      else expect(router).not.toContain("skills/sdk/SKILL.md");
+      expect(router).toContain("skills/feature/SKILL.md");
+      const manifest = JSON.parse(await readFile(path.join(dir, ".ssealed", "manifest.json"), "utf8"));
+      expect(manifest.files).toContainEqual(expect.objectContaining({ path: ".agents/skills/sdk/SKILL.md", status: "retired" }));
+    }
+  });
+
   it("generates CLI tool profile contracts without changing the selected scope", async () => {
     const dir = await scaffold("general", "none", "cli-tool");
     await expect(exists(dir, "docs/cli/command-contract.md")).resolves.toBe(true);
@@ -386,7 +406,7 @@ describe("scope generation", () => {
     }
   });
 
-  it("keeps control-document routes valid and makes every task checklist and validation guide discoverable", () => {
+  it("keeps control-document routes valid and makes every task skill, checklist, and validation guide discoverable", () => {
     for (const scope of scopes) {
       for (const density of densities) {
         const cases: Array<{ readonly profile: Profile; readonly addons: readonly Addon[]; readonly label: string }> = [
@@ -409,6 +429,15 @@ describe("scope generation", () => {
           for (const checklist of files.filter((file) => file.kind === "checklist" && file.path !== "CHECKLIST.md")) {
             expect(checklistRoutes.has(checklist.path), `${testCase.label}:CHECKLIST.md -> ${checklist.path}`).toBe(true);
           }
+          const context = files.find((file) => file.path === ".agents/context-map.md");
+          expect(context, testCase.label).toBeDefined();
+          const contextContent = context?.content ?? "";
+          const skillRoutes = [
+            ...referencedGeneratedPaths(contextContent).filter((filePath) => filePath.startsWith(".agents/skills/")),
+            ...[...contextContent.matchAll(/\]\((skills\/[^)]+)\)/gu)].map((match) => path.posix.join(".agents", match[1]!)),
+          ];
+          const expectedSkills = files.filter((file) => file.kind === "agent" && file.path.startsWith(".agents/skills/")).map((file) => file.path);
+          expect(skillRoutes.sort(), testCase.label).toEqual(expectedSkills.sort());
 
           for (const file of files) {
             if (!controlDocumentPaths.has(file.path)) {

@@ -23,6 +23,7 @@ import { renderDiagram, renderDiagramIndex } from "./diagrams.js";
 import { renderScopeDocumentIndex } from "./scope-document-index.js";
 import { renderValidationGuideIndex } from "./validation-guide-index.js";
 import { renderChecklistIndex } from "./checklist-index.js";
+import { renderSkillIndex } from "./skill-index.js";
 
 interface FileSpec {
   readonly path: string;
@@ -256,9 +257,11 @@ export function templateFilesFor(
   assertUniqueTemplatePaths(files);
   const validationGuideIndex = renderValidationGuideIndex(files);
   const checklistIndex = renderChecklistIndex(files);
+  const skillIndex = renderSkillIndex(files);
   return files.map((file) => {
     if (file.path === "VALIDATION.md") return { ...file, content: file.content + validationGuideIndex };
     if (file.path === "CHECKLIST.md") return { ...file, content: file.content + checklistIndex };
+    if (file.path === ".agents/context-map.md") return { ...file, content: file.content + skillIndex };
     return file;
   });
 }
