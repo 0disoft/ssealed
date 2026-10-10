@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.63`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.64`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -141,6 +141,7 @@ Architecture, backend, engineering, and operations document renderers require ex
 Contribution and development guides provide decisions for contribution scope, review evidence, delivery ownership, setup, exact project-owned commands, and safe local state management. Mobile, infrastructure, and data scope READMEs describe their own ownership boundaries and list the decision documents selected for the current density. These guides leave tools, commands, owners, and policies unselected until configured by the project; normal seeded-file protections continue to preserve edits and retired documents.
 
 Generated skills have distinct discovery descriptions, task-specific decision guidance, and links to documents present in the selected configuration.
+Every emitted skill requires an explicit registered definition. A missing definition stops scaffold planning with the affected skill path before scaffold files are written.
 
 | Skill family | Skills | Decision focus |
 | --- | --- | --- |
