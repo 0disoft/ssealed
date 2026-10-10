@@ -345,7 +345,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "issue-template":
       return { ...file, content: githubIssueTemplate(file.title ?? "Issue") };
     case "markdown":
-      return { ...file, content: markdownDoc(file.title ?? file.path) };
+      return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? markdownDoc(file.title ?? file.path) };
   }
 }
 

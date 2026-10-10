@@ -5,6 +5,37 @@ import { addons, densities } from "../src/core/types.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { scope: "mobile", file: "app-contract.md", minimum: "minimal", decisions: ["Surface boundary", "User work and state", "External contracts"] },
+    { scope: "mobile", file: "platform-support.md", minimum: "standard", decisions: ["Support matrix", "Capability differences", "End of support"] },
+    { scope: "mobile", file: "offline-and-sync.md", minimum: "standard", decisions: ["Offline authority", "Conflict resolution", "Replay and deletion"] },
+    { scope: "mobile", file: "store-release.md", minimum: "strict", decisions: ["Artifact identity", "Rollout and monitoring", "Release recovery"] },
+    { scope: "infra", file: "module-contract.md", minimum: "minimal", decisions: ["Module boundary", "Inputs and outputs", "State authority"] },
+    { scope: "infra", file: "environments.md", minimum: "standard", decisions: ["Environment isolation", "Credential authority", "Recovery and teardown"] },
+    { scope: "infra", file: "change-plan.md", minimum: "standard", decisions: ["Reviewed change", "Apply authority", "Stop conditions"] },
+    { scope: "infra", file: "drift-and-rollback.md", minimum: "strict", decisions: ["Drift inventory", "Recovery eligibility", "Rollback evidence"] },
+    { scope: "data", file: "pipeline-contract.md", minimum: "minimal", decisions: ["Input and output contracts", "Delivery semantics", "Consumer acceptance"] },
+    { scope: "data", file: "lineage.md", minimum: "standard", decisions: ["Dataset grain", "Transformation lineage", "Late data and backfills"] },
+    { scope: "data", file: "quality.md", minimum: "standard", decisions: ["Quality dimensions", "Gate enforcement", "Quarantine and recovery"] },
+    { scope: "data", file: "privacy-and-retention.md", minimum: "strict", decisions: ["Retention clocks", "Deletion propagation", "Backup and replay behavior"] },
+  ] as const)("gives $scope/$file decisions appropriate to its scope at every supported density", ({ scope, file, minimum, decisions }) => {
+    for (const density of densities) {
+      for (const profile of ["generic", "cli-tool"] as const) {
+        const files = templateFilesFor(scope, "none", profile, density);
+        const document = files.find((candidate) => candidate.path === `docs/${scope}/${file}`);
+        const available = densities.indexOf(density) >= densities.indexOf(minimum);
+        if (!available) { expect(document).toBeUndefined(); continue; }
+        expect(document?.content).toContain("## Contract");
+        expect(document?.content).not.toContain("This document captures the durable design contract");
+        for (const decision of decisions) expect(document?.content).toContain(`${decision}: UNDECIDED`);
+        const references = [...(document?.content ?? "").matchAll(/Project-wide decisions: (\S+)/gu)];
+        expect(references).toHaveLength(1);
+        expect(references[0]?.[1]).toBe(`docs/${scope}/README.md`);
+        expect(files.some((candidate) => candidate.path === references[0]?.[1])).toBe(true);
+      }
+    }
+  });
+
+  it.each([
     { profile: "docs-site", path: "information-architecture.md", decisions: ["Reader journeys", "Canonical content", "Navigation and discovery"] },
     { profile: "docs-site", path: "publishing.md", decisions: ["Publication authority", "Preview isolation", "Promotion and rollback"] },
     { profile: "docs-site", path: "content-quality.md", decisions: ["Accuracy and freshness", "Executable examples", "Accessibility and localization"] },

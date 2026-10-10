@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.48`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.49`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -117,6 +117,8 @@ Scopes describe the ownership area of the repository.
 - `mobile`: common scaffold plus mobile product surface, platform support, offline/sync, store release, mobile skill, checklist, and validation documents.
 - `infra`: common scaffold plus infrastructure contract, environment, change-plan, drift, rollback, infra skill, checklist, and validation documents. It does not generate runtime infrastructure code.
 - `data`: common scaffold plus data pipeline contract, lineage, quality, privacy, retention, data skill, checklist, and validation documents.
+
+Mobile, infrastructure, and data scope documents contain topic-specific decisions. Mobile documents cover product boundaries, supported platforms, offline conflicts, and release recovery; infrastructure documents cover resource and state authority, environment isolation, reviewed execution, drift, and recoverability; data documents cover delivery guarantees, lineage, publication gates, and deletion across derived and recovery copies. Each topic points to its scope's README. Density controls which documents exist, and normal seeded-file protections continue to preserve project edits and retired documents.
 
 Backend scope does not generate frontend docs because ownership drift makes agents edit the wrong surface. Frontend scope does not generate backend internals because database, migration, and authorization implementation details belong to backend owners.
 
