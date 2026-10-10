@@ -3,6 +3,25 @@ import { templateFilesFor } from "../src/templates/index.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { profile: "web-app", path: "routing-and-rendering.md", decisions: ["Route ownership", "Rendering boundary", "Navigation failures"] },
+    { profile: "web-app", path: "browser-state.md", decisions: ["State authority", "Persistence and expiry", "Multiple tabs"] },
+    { profile: "web-app", path: "frontend-observability.md", decisions: ["User journey signals", "Error correlation", "Collection boundaries"] },
+    { profile: "mobile-app", path: "app-lifecycle.md", decisions: ["Lifecycle states", "Background work", "Permission changes"] },
+    { profile: "mobile-app", path: "offline-and-sync.md", decisions: ["Offline authority", "Conflict resolution", "Replay and deletion"] },
+    { profile: "mobile-app", path: "store-release.md", decisions: ["Artifact identity", "Review and promotion", "Release recovery"] },
+  ] as const)("gives $profile $path specific client lifecycle decisions", ({ profile, path, decisions }) => {
+    for (const files of [templateFilesFor("general", "none", profile, "strict"), templateFilesFor("frontend", "none", "generic", "strict", [profile])]) {
+      const content = files.find((file) => file.path === `docs/${profile}/${path}`)?.content;
+      expect(content).toBeDefined();
+      for (const decision of decisions) expect(content).toContain(decision);
+      expect(content).toContain(`docs/${profile}/README.md`);
+      expect(content).toContain(`- Repository Type: ${profile}`);
+      expect(content).toContain("UNDECIDED");
+      expect(content).not.toContain("## Repository Type Contract");
+    }
+  });
+
+  it.each([
     { profile: "worker-service", path: "job-contract.md", decisions: ["Job envelope", "Delivery and acknowledgment", "Completion and side effects"] },
     { profile: "worker-service", path: "retry-and-idempotency.md", decisions: ["Retryable failures", "Deduplication scope", "Replay and recovery"] },
     { profile: "worker-service", path: "queue-operations.md", decisions: ["Backlog signals", "Poison jobs", "Shutdown and draining"] },

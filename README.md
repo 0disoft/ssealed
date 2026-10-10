@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.35`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.36`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -130,8 +130,8 @@ Repository types describe the shape of the repository. They are intentionally se
   Shared guidance lives in `docs/desktop/README.md`. `minimal` includes installation decisions; `standard` adds update recovery and local-data lifecycle; `strict` also asks for diagnostic consent and redaction, a support matrix, and desktop privilege boundaries.
 - `library`: adds public API, semantic versioning, compatibility, package surface, migration guide, checklist, validation, and agent-skill documents.
   Shared guidance lives in `docs/library/README.md`. Individual documents define caller and lifecycle contracts, release compatibility promises, supported consumer environments, installed artifact contents, and ordered migration steps.
-- `web-app`: adds web app routing, rendering, browser-state, frontend observability, checklist, validation, and agent-skill documents.
-- `mobile-app`: adds app lifecycle, offline/sync, store release, checklist, validation, and agent-skill documents.
+- `web-app`: adds topic-specific routing/rendering, browser-state authority and recovery, frontend telemetry, checklist, validation, and agent-skill documents.
+- `mobile-app`: adds topic-specific lifecycle/permission, offline conflict/deletion, store promotion/recovery, checklist, validation, and agent-skill documents.
 - `sdk`: adds SDK public API, compatibility, examples, checklist, validation, and agent-skill documents.
   Shared guidance lives in `docs/sdk/README.md`. Individual documents cover setup and operation behavior, compatibility with consumers and upstream interfaces, and examples that use the published SDK with explicit prerequisites and cleanup.
 - `worker-service`: adds job contract, retry/idempotency, queue operations, checklist, validation, and agent-skill documents.

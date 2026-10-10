@@ -10,6 +10,8 @@ import { desktopAppTopics } from "./topics/desktop-app.js";
 import { apiServiceTopics } from "./topics/api-service.js";
 import { engineeringOperationsTopics } from "./topics/engineering-operations.js";
 import { cliToolTopics } from "./topics/cli-tool.js";
+import { webAppTopics } from "./topics/web-app.js";
+import { mobileAppTopics } from "./topics/mobile-app.js";
 
 const topicContracts: Readonly<Record<string, TopicContract>> = {
   ...workerServiceTopics,
@@ -21,6 +23,8 @@ const topicContracts: Readonly<Record<string, TopicContract>> = {
   ...apiServiceTopics,
   ...engineeringOperationsTopics,
   ...cliToolTopics,
+  ...webAppTopics,
+  ...mobileAppTopics,
 };
 
 export function renderTopicDocument(filePath: string, title: string, profile?: Profile): string | undefined {
