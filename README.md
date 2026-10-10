@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.20`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.21`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -226,7 +226,8 @@ Commands use `.ssealed-init.lock` to keep reads and writes for the same existing
 
 `doctor` and `--dry-run` hold the same target lock for their full read so a writer cannot create a mixed in-progress scaffold state. A dry run against a missing target still creates no directory; if that target appears concurrently, the stale read is discarded and the command asks the caller to retry.
 
-Scaffold writes run in bounded parallel batches for regular files, then write `.ssealed/manifest.json` last. If any batched write fails, already written files are rolled back before the lock is released. During write commands, `SIGINT` and `SIGTERM` are handled the same way: ssealed stops starting new batches, rolls back already written files, and releases `.ssealed-init.lock`.
+Scaffold writes run in bounded parallel batches for regular files, then write `.ssealed/manifest.json` last. If any batched write fails, rollback is attempted before the lock is released. `SIGINT` and `SIGTERM` stop new batches and trigger the same recovery for partial writes. If all writes already completed before a signal arrives during lock release, the changes remain on disk.
+Command results are printed only after lock cleanup completes. JSON interruption and lock-cleanup errors include `committed`, indicating whether the command completed its writes; `false` does not guarantee successful recovery of partial writes. Recovery errors report any incomplete cleanup. A signal during lock release returns 130 or 143 with one JSON error and the actual committed state, without first printing success or claiming that completed writes were rolled back.
 If multiple files fail within a batch, ssealed reports every failed path and preserves all original errors in an `AggregateError`. A single failure retains its original error.
 When restoring an overwritten file, rollback rechecks its path and generated content after staging the original bytes, immediately before restoring them. If it detects a concurrent change, it preserves the changed file and reports incomplete recovery.
 Bounded reads finish already started operations before reporting the first failure. Lock cleanup never turns a failed operation into success; if cleanup also fails, both failures are retained.

@@ -5,12 +5,19 @@ const scaffoldSignals = ["SIGINT", "SIGTERM"] as const satisfies readonly Scaffo
 
 export interface ScaffoldInterruptContext {
   readonly interruptedSignal: ScaffoldSignalName | undefined;
+  readonly committed: boolean;
+  markCommitted(): void;
   isInterrupted(): boolean;
   throwIfInterrupted(): void;
 }
 
 class ActiveScaffoldInterruptContext implements ScaffoldInterruptContext {
   #interruptedSignal: ScaffoldSignalName | undefined;
+  committed = false;
+
+  markCommitted(): void {
+    this.committed = true;
+  }
 
   get interruptedSignal(): ScaffoldSignalName | undefined {
     return this.#interruptedSignal;
@@ -26,7 +33,7 @@ class ActiveScaffoldInterruptContext implements ScaffoldInterruptContext {
 
   throwIfInterrupted(): void {
     if (this.#interruptedSignal !== undefined) {
-      throw new ScaffoldInterruptedError(this.#interruptedSignal);
+      throw new ScaffoldInterruptedError(this.#interruptedSignal, this.committed);
     }
   }
 }

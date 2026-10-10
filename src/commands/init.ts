@@ -10,6 +10,7 @@ import { writeTextFileAtomically } from "../core/file-writer.js";
 import { parseJsonObject, preserveJsonBom } from "../core/json.js";
 import { executeScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock, type PreviousManifestSettings, type PreviousManifestState } from "../core/scaffold.js";
 import { assertNoSymlinkInPath, resolveInsideTarget } from "../core/path-safety.js";
+import { getScaffoldInterruptContext } from "../core/signals.js";
 import { gitignoreBlock } from "../templates/index.js";
 import { validationScripts } from "../templates/runners.js";
 import {
@@ -56,12 +57,25 @@ export async function runInit(options: InitCliOptions): Promise<number> {
 }
 
 export async function runScaffoldCommand(options: InitCliOptions & { readonly command: CliCommand }): Promise<number> {
+  const response = await prepareScaffoldCommand(options);
+  if (response.stdout) output.write(response.stdout);
+  if (response.stderr) process.stderr.write(response.stderr);
+  return response.code;
+}
+
+interface CommandResponse {
+  readonly code: number;
+  readonly stdout?: string;
+  readonly stderr?: string;
+}
+
+async function prepareScaffoldCommand(options: InitCliOptions & { readonly command: CliCommand }): Promise<CommandResponse> {
   const target = path.resolve(options.target ?? process.cwd());
   if (options.command === "doctor") {
     return withScaffoldReadLock(target, () => runDoctor(target, options.json, options.strict ?? false));
   }
   if (options.command === "eject" && options.eject !== "runner") {
-    return writeEjectError(options.json, {
+    return formatEjectError(options.json, {
       code: "INVALID_EJECT_TARGET",
       message: "Invalid eject target. Use: ssealed eject runner [target]",
     });
@@ -74,22 +88,22 @@ export async function runScaffoldCommand(options: InitCliOptions & { readonly co
       throw error;
     });
     if (targetStat === undefined) {
-      return writeInitError(options, {
+      return formatInitError(options, {
         code: "MISSING_MANIFEST",
         message: "Missing .ssealed/manifest.json. Use ssealed init to create a new scaffold first.",
       });
     }
   }
   if (options.command === "eject") {
-    const run = (): Promise<number> => runEject(target, options.json, options.dryRun);
+    const run = (): Promise<CommandResponse> => runEject(target, options.json, options.dryRun);
     return options.dryRun ? withScaffoldReadLock(target, run) : withScaffoldWriteLock(target, options.breakStaleLock ?? false, run);
   }
   const scaffoldCommand = options.command;
 
-  const runResolvedScaffold = async (previousManifest?: PreviousManifestState): Promise<number> => {
+  const runResolvedScaffold = async (previousManifest?: PreviousManifestState): Promise<CommandResponse> => {
     const settings = await resolveScaffoldSettings(target, { ...options, command: scaffoldCommand }, previousManifest);
     if (isInitError(settings)) {
-      return writeInitError(options, settings);
+      return formatInitError(options, settings);
     }
 
     const result = await executeScaffold({
@@ -107,20 +121,17 @@ export async function runScaffoldCommand(options: InitCliOptions & { readonly co
       ...(previousManifest === undefined ? {} : { previousManifest }),
     });
 
-    if (options.json) {
-      output.write(`${JSON.stringify(formatJsonResult(result), null, 2)}\n`);
-    } else {
-      output.write(formatHumanResult(result));
-    }
-
-    return result.conflicts.length > 0 ? 1 : 0;
+    return {
+      code: result.conflicts.length > 0 ? 1 : 0,
+      stdout: options.json ? `${JSON.stringify(formatJsonResult(result), null, 2)}\n` : formatHumanResult(result),
+    };
   };
 
   if (options.command === "init" || options.command === "adopt") {
     return runResolvedScaffold();
   }
 
-  const runWithManifest = async (): Promise<number> => {
+  const runWithManifest = async (): Promise<CommandResponse> => {
     const previousManifest = await readPreviousManifest(target);
     return runResolvedScaffold(previousManifest);
   };
@@ -347,12 +358,8 @@ function isRunner(value: string): value is Runner {
   return runners.includes(value as Runner);
 }
 
-function printError(message: string): void {
-  process.stderr.write(`ssealed: ${message}\n`);
-}
-
-function printExamples(): void {
-  process.stderr.write(
+function formatExamples(): string {
+  return (
     [
       "Examples:",
       "  ssealed init --scope backend --runner none",
@@ -360,7 +367,7 @@ function printExamples(): void {
       "  ssealed update ./my-service --yes",
       "  ssealed upgrade ./my-service --repo-type api-service --density strict --runner make --yes --force",
       "  ssealed doctor ./my-service --json",
-    ].join("\n") + "\n",
+    ].join("\n") + "\n"
   );
 }
 
@@ -368,22 +375,17 @@ function isInitError(value: unknown): value is InitError {
   return typeof value === "object" && value !== null && "code" in value;
 }
 
-function writeInitError(options: InitCliOptions, error: InitError): number {
+function formatInitError(options: InitCliOptions, error: InitError): CommandResponse {
   if (options.json) {
-    output.write(`${JSON.stringify({ ok: false, error: { code: error.code, message: error.message } }, null, 2)}\n`);
-    return 1;
+    return { code: 1, stdout: `${JSON.stringify({ ok: false, error: { code: error.code, message: error.message } }, null, 2)}\n` };
   }
-  printError(error.message);
-  if (error.showExamples) {
-    printExamples();
-  }
-  return 1;
+  return { code: 1, stderr: `ssealed: ${error.message}\n${error.showExamples ? formatExamples() : ""}` };
 }
 
-async function runEject(target: string, json: boolean, dryRun: boolean): Promise<number> {
+async function runEject(target: string, json: boolean, dryRun: boolean): Promise<CommandResponse> {
   const previous = await readPreviousManifest(target);
   if (previous.settings === undefined) {
-    return writeEjectError(json, {
+    return formatEjectError(json, {
       code: previous.warnings.length > 0 ? "INVALID_MANIFEST" : "MISSING_MANIFEST",
       message:
         previous.warnings.length > 0
@@ -393,7 +395,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
   }
 
   if (previous.settings.runner !== "npm" && previous.settings.runner !== "pnpm") {
-    return writeEjectError(json, {
+    return formatEjectError(json, {
       code: "RUNNER_NOT_BLOCK_MANAGED",
       message: "Only npm and pnpm package.json runner blocks can be ejected.",
     });
@@ -401,13 +403,13 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
 
   const previousPackage = previous.files.get("package.json");
   if (previousPackage === undefined || previousPackage.kind !== "runner") {
-    return writeEjectError(json, {
+    return formatEjectError(json, {
       code: "RUNNER_NOT_BLOCK_MANAGED",
       message: "This scaffold does not record a package.json runner block to eject.",
     });
   }
   if (previousPackage.ownership === "project-owned") {
-    return writeEjectResult(target, json, dryRun, "unchanged");
+    return formatEjectResult(target, json, dryRun, "unchanged");
   }
 
   const manifestPath = resolveInsideTarget(target, ".ssealed/manifest.json");
@@ -415,7 +417,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
   const manifestContent = await readFile(manifestPath, "utf8");
   const manifest = parseJsonObject(manifestContent);
   if (manifest === undefined || !Array.isArray(manifest.files)) {
-    return writeEjectError(json, {
+    return formatEjectError(json, {
       code: "INVALID_MANIFEST",
       message: "Existing .ssealed/manifest.json is invalid. Repair or remove it before ejecting runner ownership.",
     });
@@ -432,7 +434,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
   const acceptedChecksum = packageContent === undefined ? previousPackage.checksum : sha256(packageContent);
   const packageFile = manifest.files.find(isPackageManifestFile);
   if (packageFile === undefined) {
-    return writeEjectError(json, {
+    return formatEjectError(json, {
       code: "RUNNER_NOT_BLOCK_MANAGED",
       message: "This scaffold does not record a package.json runner block to eject.",
     });
@@ -460,6 +462,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
     const manifestMode = (await lstat(manifestPath)).mode;
     await writeTextFileAtomically(manifestPath, preserveJsonBom(manifestContent, `${JSON.stringify(nextManifest, null, 2)}\n`), {
       mode: manifestMode,
+      onCommit: () => getScaffoldInterruptContext()?.markCommitted(),
       beforeCommit: async () => {
         await assertNoSymlinkInPath(target, manifestPath);
         if ((await readFile(manifestPath, "utf8")) !== manifestContent) {
@@ -469,10 +472,10 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
     });
   }
 
-  return writeEjectResult(target, json, dryRun, dryRun ? "planned" : "project-owned");
+  return formatEjectResult(target, json, dryRun, dryRun ? "planned" : "project-owned");
 }
 
-function writeEjectResult(target: string, json: boolean, dryRun: boolean, status: "unchanged" | "planned" | "project-owned"): number {
+function formatEjectResult(target: string, json: boolean, dryRun: boolean, status: "unchanged" | "planned" | "project-owned"): CommandResponse {
   const reason = status === "unchanged" ? "Runner block is already project-owned." : "Runner block is explicitly marked as project-owned.";
   const payload = {
     ok: true,
@@ -486,9 +489,9 @@ function writeEjectResult(target: string, json: boolean, dryRun: boolean, status
     reason,
   };
   if (json) {
-    output.write(`${JSON.stringify(payload, null, 2)}\n`);
-  } else {
-    output.write(
+    return { code: 0, stdout: `${JSON.stringify(payload, null, 2)}\n` };
+  }
+  return { code: 0, stdout:
       [
         "ssealed eject result",
         `Target: ${target}`,
@@ -496,18 +499,14 @@ function writeEjectResult(target: string, json: boolean, dryRun: boolean, status
         `Dry run: ${dryRun ? "yes" : "no"}`,
         `- ${status}: package.json (${reason})`,
       ].join("\n") + "\n",
-    );
-  }
-  return 0;
+  };
 }
 
-function writeEjectError(json: boolean, error: InitError): number {
+function formatEjectError(json: boolean, error: InitError): CommandResponse {
   if (json) {
-    output.write(`${JSON.stringify({ ok: false, command: "eject", error: { code: error.code, message: error.message } }, null, 2)}\n`);
-    return 1;
+    return { code: 1, stdout: `${JSON.stringify({ ok: false, command: "eject", error: { code: error.code, message: error.message } }, null, 2)}\n` };
   }
-  printError(error.message);
-  return 1;
+  return { code: 1, stderr: `ssealed: ${error.message}\n` };
 }
 
 function isPackageManifestFile(value: unknown): value is Record<string, unknown> {
@@ -593,7 +592,7 @@ interface DoctorCheck {
   readonly reason?: string | undefined;
 }
 
-async function runDoctor(target: string, json: boolean, strict: boolean): Promise<number> {
+async function runDoctor(target: string, json: boolean, strict: boolean): Promise<CommandResponse> {
   const previous = await readPreviousManifest(target);
   if (previous.settings === undefined) {
     const payload = {
@@ -612,15 +611,8 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
               message: "Missing .ssealed/manifest.json. Use ssealed init to create a new scaffold first.",
             },
     };
-    if (json) {
-      output.write(`${JSON.stringify(payload, null, 2)}\n`);
-    } else {
-      output.write(`ssealed doctor result\nTarget: ${target}\nStatus: ${payload.error.code}\n`);
-      for (const warning of previous.warnings) {
-        output.write(`Warning ${warning.code} ${warning.path}: ${warning.message}\n`);
-      }
-    }
-    return 1;
+    return { code: 1, stdout: json ? `${JSON.stringify(payload, null, 2)}\n`
+      : `ssealed doctor result\nTarget: ${target}\nStatus: ${payload.error.code}\n${previous.warnings.map((warning) => `Warning ${warning.code} ${warning.path}: ${warning.message}\n`).join("")}` };
   }
   const settings = previous.settings;
 
@@ -715,13 +707,7 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
     warnings: previous.warnings,
   };
 
-  if (json) {
-    output.write(`${JSON.stringify(payload, null, 2)}\n`);
-  } else {
-    output.write(formatDoctorHuman(payload));
-  }
-
-  return failed.length > 0 ? 1 : 0;
+  return { code: failed.length > 0 ? 1 : 0, stdout: json ? `${JSON.stringify(payload, null, 2)}\n` : formatDoctorHuman(payload) };
 }
 
 function formatDoctorHuman(payload: {

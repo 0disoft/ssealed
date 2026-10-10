@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { runScaffoldCommand, type CliCommand } from "./commands/init.js";
-import { isScaffoldInterruptedError, isSsealedError } from "./core/errors.js";
+import { ScaffoldCleanupError, isScaffoldInterruptedError, isSsealedError } from "./core/errors.js";
 import { toolVersion } from "./core/manifest.js";
 
 const commandNames = ["init", "adopt", "update", "upgrade", "doctor", "eject"] as const satisfies readonly CliCommand[];
@@ -287,10 +287,14 @@ function classifyRuntimeError(error: unknown): {
   readonly message: string;
   readonly signal?: string;
   readonly exitCode?: number;
+  readonly committed?: boolean;
 } {
   const message = error instanceof Error ? error.message : String(error);
   if (isScaffoldInterruptedError(error)) {
-    return { code: error.code, message, signal: error.signal, exitCode: error.exitCode };
+    return { code: error.code, message, signal: error.signal, exitCode: error.exitCode, committed: error.committed };
+  }
+  if (error instanceof ScaffoldCleanupError) {
+    return { code: "WRITE_FAILED", message, committed: error.committed };
   }
   if (isSsealedError(error)) {
     return { code: error.code, message };

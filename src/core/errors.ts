@@ -14,12 +14,23 @@ export class SsealedError extends Error {
 export class ScaffoldInterruptedError extends SsealedError {
   readonly signal: ScaffoldSignalName;
   readonly exitCode: number;
+  readonly committed: boolean;
 
-  constructor(signal: ScaffoldSignalName) {
-    super("INTERRUPTED", `Interrupted by ${signal}; rolled back partial scaffold writes and released the scaffold lock.`);
+  constructor(signal: ScaffoldSignalName, committed = false) {
+    super("INTERRUPTED", committed
+      ? `Interrupted by ${signal} after scaffold changes were committed; the changes remain on disk.`
+      : `Interrupted by ${signal}; scaffold changes were not committed. Inspect any recovery errors before retrying.`);
     this.name = "ScaffoldInterruptedError";
     this.signal = signal;
     this.exitCode = signal === "SIGINT" ? 130 : 143;
+    this.committed = committed;
+  }
+}
+
+export class ScaffoldCleanupError extends AggregateError {
+  constructor(errors: readonly unknown[], message: string, readonly committed: boolean) {
+    super(errors, message);
+    this.name = "ScaffoldCleanupError";
   }
 }
 

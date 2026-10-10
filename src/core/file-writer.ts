@@ -308,6 +308,7 @@ async function writePlannedFilesInterruptibly(
     throw error;
   }
 
+  if (written.length > 0) interrupt?.markCommitted();
   return written;
 }
 

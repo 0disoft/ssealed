@@ -4,7 +4,7 @@ import { lstat, open, readFile, rm, stat } from "node:fs/promises";
 import { hostname } from "node:os";
 import { normalizeText } from "./checksum.js";
 import { filesystemReadConcurrency, mapWithConcurrency } from "./concurrency.js";
-import { SsealedError } from "./errors.js";
+import { ScaffoldCleanupError, SsealedError } from "./errors.js";
 import { parseJsonObject } from "./json.js";
 import { formatManifest, createManifest } from "./manifest.js";
 import { planTemplateFile, writePlannedFiles } from "./file-writer.js";
@@ -677,7 +677,7 @@ async function acquireScaffoldLock<T>(
 
   if (cleanupErrors.length > 0) {
     const failures = taskFailed ? [taskError, ...cleanupErrors] : cleanupErrors;
-    throw new AggregateError(failures, `Scaffold lock cleanup failed: ${cleanupErrors.map((error) => error.message).join("; ")}`);
+    throw new ScaffoldCleanupError(failures, `Scaffold lock cleanup failed: ${cleanupErrors.map((error) => error.message).join("; ")}`, getScaffoldInterruptContext()?.committed ?? false);
   }
   if (taskFailed) {
     throw taskError;
