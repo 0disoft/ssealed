@@ -36,6 +36,7 @@ import { validationScripts } from "../templates/runners.js";
 
 const staleLockAgeMs = 60 * 60 * 1000;
 const maxManifestBytes = 1024 * 1024;
+const maxLockMetadataBytes = 1024 * 1024;
 
 export async function planScaffold(options: InitOptions & { readonly previousManifest?: PreviousManifestState }): Promise<readonly PlannedFile[]> {
   return withScaffoldReadLock(path.resolve(options.target), async () => (await planScaffoldWithWarnings(options, options.previousManifest)).files);
@@ -706,7 +707,7 @@ async function recoverScaffoldLock<T>(
   await assertNoSymlinkInPath(path.dirname(lockPath), recoveryPath);
   return acquireScaffoldLock(recoveryPath, false, async (releaseRecovery) => {
     if (!(await removeStaleScaffoldLock(lockPath))) {
-      throw new SsealedError("LOCK_EXISTS", "Existing scaffold lock is not stale or its owning process cannot be verified. Refusing to remove .ssealed-init.lock while another ssealed command may still be running.");
+      throw new SsealedError("LOCK_EXISTS", "Existing scaffold lock is invalid, not stale, or its owning process cannot be verified. Refusing to remove .ssealed-init.lock while another ssealed command may still be running.");
     }
     return acquireScaffoldLock(lockPath, false, async (releaseMain) => {
       await releaseRecovery();
@@ -763,32 +764,30 @@ interface ScaffoldLockMetadata {
 }
 
 async function readScaffoldLockMetadata(lockPath: string): Promise<ScaffoldLockMetadata | undefined> {
-  const content = await readFile(lockPath, "utf8").catch(() => undefined);
-  if (content === undefined) {
+  const lockStat = await lstat(lockPath).catch(() => undefined);
+  if (lockStat === undefined || !lockStat.isFile() || lockStat.size > maxLockMetadataBytes) {
     return undefined;
   }
-  try {
-    const parsed = parseJsonObject(content);
-    if (typeof parsed !== "object" || parsed === null) {
-      return undefined;
-    }
-    const metadata: { lockId?: string; pid?: number; hostname?: string; createdAt?: string } = {};
-    if (typeof (parsed as { readonly lockId?: unknown }).lockId === "string") {
-      metadata.lockId = (parsed as { readonly lockId: string }).lockId;
-    }
-    if (typeof (parsed as { readonly pid?: unknown }).pid === "number") {
-      metadata.pid = (parsed as { readonly pid: number }).pid;
-    }
-    if (typeof (parsed as { readonly hostname?: unknown }).hostname === "string") {
-      metadata.hostname = (parsed as { readonly hostname: string }).hostname;
-    }
-    if (typeof (parsed as { readonly createdAt?: unknown }).createdAt === "string") {
-      metadata.createdAt = (parsed as { readonly createdAt: string }).createdAt;
-    }
-    return metadata;
-  } catch {
+  const bytes = await readFile(lockPath).catch(() => undefined);
+  if (bytes === undefined || bytes.length > maxLockMetadataBytes || !isUtf8(bytes)) {
     return undefined;
   }
+  const parsed = parseJsonObject(bytes.toString("utf8"));
+  if (
+    parsed === undefined || parsed.tool !== "ssealed" ||
+    typeof parsed.pid !== "number" || !Number.isInteger(parsed.pid) || parsed.pid <= 0 ||
+    typeof parsed.createdAt !== "string" || !Number.isFinite(Date.parse(parsed.createdAt)) ||
+    (Object.hasOwn(parsed, "hostname") && (typeof parsed.hostname !== "string" || parsed.hostname.length === 0)) ||
+    (Object.hasOwn(parsed, "lockId") && (typeof parsed.lockId !== "string" || parsed.lockId.length === 0))
+  ) {
+    return undefined;
+  }
+  return {
+    pid: parsed.pid,
+    createdAt: parsed.createdAt,
+    ...(typeof parsed.hostname === "string" ? { hostname: parsed.hostname } : {}),
+    ...(typeof parsed.lockId === "string" ? { lockId: parsed.lockId } : {}),
+  };
 }
 
 function asError(error: unknown): Error {
