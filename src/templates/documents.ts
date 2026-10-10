@@ -1,6 +1,7 @@
 import type { Addon, Density, Profile, Scope } from "../core/types.js";
 import { documentMetadata } from "./document-format.js";
 import { renderCommonChecklist } from "./common-checklists.js";
+import { renderCommonValidation } from "./common-validations.js";
 import { renderProfileChecklist } from "./profile-checklists.js";
 import { renderProfileSkill } from "./profile-skills.js";
 import { renderScopeChecklist } from "./scope-checklists.js";
@@ -275,8 +276,8 @@ ${routes.join("\n")}
 }
 
 export function validationDoc(title: string, scope: Scope, profile: Profile, addons: readonly Addon[] = [], filePath = "VALIDATION.md"): string {
-  const scopeValidation = renderScopeValidation(filePath, title, scope);
-  if (scopeValidation !== undefined) return scopeValidation;
+  const taskValidation = renderScopeValidation(filePath, title, scope) ?? renderCommonValidation(filePath, title);
+  if (taskValidation !== undefined) return taskValidation;
   const repositoryShape = profileList(profile, addons);
   const repositoryShapeBlock =
     repositoryShape.length === 0
