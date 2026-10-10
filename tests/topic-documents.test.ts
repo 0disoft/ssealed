@@ -3,6 +3,27 @@ import { templateFilesFor } from "../src/templates/index.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { path: "docs/desktop/installers.md", decisions: ["Distribution matrix", "Privileges and paths", "Uninstall and cleanup"] },
+    { path: "docs/desktop/auto-update.md", decisions: ["Update lifecycle", "Metadata and artifact trust", "Recovery and rollback"] },
+    { path: "docs/desktop/crash-reporting.md", decisions: ["Privacy and consent", "Symbolication", "Triage ownership"] },
+    { path: "docs/desktop/local-data.md", decisions: ["Storage inventory", "Data schemas and migrations", "Corruption handling"] },
+    { path: "docs/desktop/os-support.md", decisions: ["Support matrix", "Unsupported environments", "Filesystem behavior"] },
+    { path: "docs/security/desktop-security.md", decisions: ["Privilege boundaries", "IPC and external entry points", "Untrusted content"] },
+  ])("gives desktop $path its own decisions for primary and addon use", ({ path, decisions }) => {
+    for (const files of [
+      templateFilesFor("general", "none", "desktop-app", "strict"),
+      templateFilesFor("frontend", "none", "generic", "strict", ["desktop-app"]),
+    ]) {
+      const content = files.find((file) => file.path === path)?.content;
+      expect(content).toBeDefined();
+      for (const decision of decisions) expect(content).toContain(decision);
+      expect(content).toContain("docs/desktop/README.md");
+      expect(content).toContain("UNDECIDED");
+      expect(content).not.toContain("## Repository Type Contract");
+    }
+  });
+
+  it.each([
     { path: "api-lifecycle.md", decisions: ["Operation inventory", "Versioning and deprecation", "Access control"] },
     { path: "idempotency.md", decisions: ["Key scope", "Concurrent duplicates", "Retention and expiry"] },
     { path: "rate-limits.md", decisions: ["Quota dimensions", "Accounting unit", "Counter failures"] },

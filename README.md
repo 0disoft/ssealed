@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.31`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.32`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -127,6 +127,7 @@ Repository types describe the shape of the repository. They are intentionally se
 - `api-service`: adds API service lifecycle, idempotency, rate-limit, SLO, checklist, validation, and agent-skill documents. If the selected scope does not already own `api/openapi.yaml`, the repository type adds an OpenAPI skeleton and API response examples.
   Shared service guidance lives in `docs/api-service/README.md`; individual documents ask for lifecycle and deprecation rules, idempotency key scope and replay behavior, quota accounting and counter failures, or measurable SLIs and error-budget decisions. `minimal` includes lifecycle decisions, `standard` also includes idempotency, and `strict` adds rate limits and SLOs.
 - `desktop-app`: adds installer, auto-update, crash-reporting, local-data, OS-support, desktop-security, checklist, validation, and agent-skill documents.
+  Shared guidance lives in `docs/desktop/README.md`. `minimal` includes installation decisions; `standard` adds update recovery and local-data lifecycle; `strict` also asks for diagnostic consent and redaction, a support matrix, and desktop privilege boundaries.
 - `library`: adds public API, semantic versioning, compatibility, package surface, migration guide, checklist, validation, and agent-skill documents.
 - `web-app`: adds web app routing, rendering, browser-state, frontend observability, checklist, validation, and agent-skill documents.
 - `mobile-app`: adds app lifecycle, offline/sync, store release, checklist, validation, and agent-skill documents.
