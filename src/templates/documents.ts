@@ -5,6 +5,7 @@ import { renderProfileChecklist } from "./profile-checklists.js";
 import { renderProfileSkill } from "./profile-skills.js";
 import { renderScopeChecklist } from "./scope-checklists.js";
 import { renderScopeSkill } from "./scope-skills.js";
+import { renderScopeValidation } from "./scope-validations.js";
 import { renderTaskSkill } from "./task-skills.js";
 
 export function markdownDoc(title: string): string {
@@ -273,7 +274,9 @@ ${routes.join("\n")}
 `;
 }
 
-export function validationDoc(title: string, scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
+export function validationDoc(title: string, scope: Scope, profile: Profile, addons: readonly Addon[] = [], filePath = "VALIDATION.md"): string {
+  const scopeValidation = renderScopeValidation(filePath, title, scope);
+  if (scopeValidation !== undefined) return scopeValidation;
   const repositoryShape = profileList(profile, addons);
   const repositoryShapeBlock =
     repositoryShape.length === 0

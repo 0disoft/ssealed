@@ -197,7 +197,7 @@ function renderProfileFile(file: ProfileFileSpec, profile: Addon, scope: Scope):
     case "checklist":
       return { ...file, content: checklistDoc(file.title, file.path, scope) };
     case "validation":
-      return { ...file, content: validationDoc(file.title, scope, profile) };
+      return { ...file, content: validationDoc(file.title, scope, profile, [], file.path) };
     case "openapi":
       return { ...file, content: openApiSkeleton() };
     case "success-json":

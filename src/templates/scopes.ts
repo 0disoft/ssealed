@@ -293,7 +293,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "root-readme":
       return { ...file, content: rootReadme(scope, profile, addons) };
     case "validation":
-      return { ...file, content: validationDoc(file.title ?? "Validation", scope, profile, addons) };
+      return { ...file, content: validationDoc(file.title ?? "Validation", scope, profile, addons, file.path) };
     case "checklist-router":
       return { ...file, content: checklistRouter(scope, profile, addons, density) };
     case "docs-readme":
