@@ -22,6 +22,7 @@ import { profileFilesFor } from "./profiles.js";
 import { runnerFiles } from "./runners.js";
 import { renderTopicDocument } from "./topic-documents.js";
 import { renderAdrDocument } from "./adr-documents.js";
+import { renderDiagram, renderDiagramIndex } from "./diagrams.js";
 
 interface FileSpec {
   readonly path: string;
@@ -54,6 +55,7 @@ type Renderer =
   | "ops-doc"
   | "architecture-doc"
   | "mermaid"
+  | "diagram-index"
   | "pull-request-template"
   | "codeowners"
   | "issue-template"
@@ -124,7 +126,7 @@ const commonFiles: readonly FileSpec[] = [
   file("docs/ops/secrets.md", "document", "ops-doc", "Secrets"),
   file("docs/ops/backup-and-restore.md", "document", "ops-doc", "Backup and Restore"),
   file("docs/ops/incident-response.md", "document", "ops-doc", "Incident Response"),
-  file("diagrams/README.md", "diagram", "markdown", "Diagrams"),
+  file("diagrams/README.md", "diagram", "diagram-index", "Diagrams"),
   file("diagrams/system-context.mmd", "diagram", "mermaid", "system-context"),
   file("diagrams/container-view.mmd", "diagram", "mermaid", "container-view"),
   file("diagrams/core-runtime-flow.mmd", "diagram", "mermaid", "core-runtime-flow"),
@@ -248,7 +250,8 @@ export function templateFilesFor(
     ...(scope === "data" ? dataFiles : []),
   ].filter((file) => includesDensity(file, density));
 
-  const renderedScopedFiles = scopedFiles.map((file) => renderFile(file, scope, profile, addons, density));
+  const diagramFiles = scopedFiles.filter((file) => file.renderer === "mermaid");
+  const renderedScopedFiles = scopedFiles.map((file) => renderFile(file, scope, profile, addons, density, diagramFiles));
   const scopedPaths = new Set(renderedScopedFiles.map((file) => file.path));
   const files = [...renderedScopedFiles, ...profileFilesFor(profile, scope, density, addons).filter((file) => !scopedPaths.has(file.path)), ...runnerFiles(runner)];
   assertUniqueTemplatePaths(files);
@@ -280,7 +283,7 @@ function assertUniqueTemplatePaths(files: readonly TemplateFile[]): void {
   }
 }
 
-function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: readonly Addon[], density: Density): TemplateFile {
+function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: readonly Addon[], density: Density, diagramFiles: readonly FileSpec[]): TemplateFile {
   switch (file.renderer) {
     case "editorconfig":
       return { ...file, content: editorconfig() };
@@ -338,7 +341,9 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "architecture-doc":
       return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? architectureDoc(file.title ?? file.path) };
     case "mermaid":
-      return { ...file, content: mermaid(file.title ?? "diagram") };
+      return { ...file, content: renderDiagram(file.path, scope) };
+    case "diagram-index":
+      return { ...file, content: renderDiagramIndex(diagramFiles, scope) };
     case "pull-request-template":
       return { ...file, content: pullRequestTemplate() };
     case "codeowners":
@@ -485,16 +490,6 @@ function profileChecklistLabel(profile: Addon): string {
   if (profile === "plugin") return "Plugin";
   if (profile === "docs-site") return "Docs site";
   return "Monorepo";
-}
-
-function mermaid(name: string): string {
-  const safeName = name.replace(/[^A-Za-z0-9_]/gu, "_");
-  return `flowchart TD
-  A["${safeName}: input"] --> B["Review source of truth"]
-  B --> C["Change plan"]
-  C --> D["Validation"]
-  D --> E["Release or rollback decision"]
-`;
 }
 
 function pullRequestTemplate(): string {

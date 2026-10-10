@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.51`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.52`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -113,6 +113,8 @@ Scopes describe the ownership area of the repository.
 Every scope includes product brief, specification, and system-boundary documents with concrete decision prompts. Standard and strict density add roadmap and risk decisions, domain identities and invariants, runtime effect ordering and recovery, measurable quality scenarios, and an architecture overview that points to the detailed decision owners. Existing document paths and seeded-file ownership behavior are preserved.
 
 Standard and strict density also include an ADR index, a reusable decision-record template, and initial drafts for architecture boundaries and contract sources of truth. Each record captures context, the proposed decision, alternatives, consequences, verification, and supersession. Generated ADRs remain drafts until the project records its own decisions; acceptance is separate from implementation evidence. These existing seeded paths continue to preserve project edits and retired documents during updates.
+
+Mermaid diagrams at standard and strict density contain topic-specific draft views for system composition, operation and release recovery, and the selected scope's contracts. Frontend request views describe client freshness and cancellation; backend and fullstack views describe request validation and effect ownership. The diagram index lists only emitted views and their existing decision sources. All identities, relations, and branch conditions remain `UNDECIDED` prompts, and project edits and retired diagrams retain seeded-file protections. Rendered layout and accessibility require review in the project's chosen Mermaid viewer.
 
 - `backend`: common scaffold plus backend docs, `api/openapi.yaml`, DBML, backend skills, backend checklists, and backend validations.
 - `frontend`: common scaffold plus `docs/frontend/FRONTEND_DESIGN.md`, consumed backend API contracts, frontend skills, frontend checklists, and frontend validations.
