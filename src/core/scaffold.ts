@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isUtf8 } from "node:buffer";
 import path from "node:path";
 import { lstat, open, readFile, rm, stat } from "node:fs/promises";
 import { hostname } from "node:os";
@@ -207,18 +208,21 @@ export async function readPreviousManifest(targetRoot: string): Promise<Previous
   if (manifestStat.size > maxManifestBytes) {
     return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json exceeds the supported 1 MiB size limit.")] };
   }
-  const content = await readFile(manifestPath, "utf8").catch((error: unknown) => {
+  const bytes = await readFile(manifestPath).catch((error: unknown) => {
     if (isNodeError(error) && error.code === "ENOENT") {
       return undefined;
     }
     throw error;
   });
-  if (content === undefined) {
+  if (bytes === undefined) {
     return { version: undefined, files: new Map(), settings: undefined, warnings: [] };
+  }
+  if (!isUtf8(bytes)) {
+    return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning("Existing .ssealed/manifest.json is not valid UTF-8. Convert its encoding explicitly before running ssealed.")] };
   }
 
   try {
-    const parsed = parseJsonObject(content);
+    const parsed = parseJsonObject(bytes.toString("utf8"));
     if (!isManifestLike(parsed)) {
       return { version: undefined, files: new Map(), settings: undefined, warnings: [invalidManifestWarning()] };
     }

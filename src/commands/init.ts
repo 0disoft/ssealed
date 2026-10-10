@@ -1,4 +1,5 @@
 import { lstat, readFile } from "node:fs/promises";
+import { isUtf8 } from "node:buffer";
 import path from "node:path";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -414,7 +415,14 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
 
   const manifestPath = resolveInsideTarget(target, ".ssealed/manifest.json");
   await assertNoSymlinkInPath(target, manifestPath);
-  const manifestContent = await readFile(manifestPath, "utf8");
+  const manifestBytes = await readFile(manifestPath);
+  if (!isUtf8(manifestBytes)) {
+    return formatEjectError(json, {
+      code: "INVALID_MANIFEST",
+      message: "Existing .ssealed/manifest.json is not valid UTF-8. Convert its encoding explicitly before ejecting runner ownership.",
+    });
+  }
+  const manifestContent = manifestBytes.toString("utf8");
   const manifest = parseJsonObject(manifestContent);
   if (manifest === undefined || !Array.isArray(manifest.files)) {
     return formatEjectError(json, {
@@ -465,7 +473,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
       onCommit: () => getScaffoldInterruptContext()?.markCommitted(),
       beforeCommit: async () => {
         await assertNoSymlinkInPath(target, manifestPath);
-        if ((await readFile(manifestPath, "utf8")) !== manifestContent) {
+        if (!(await readFile(manifestPath)).equals(manifestBytes)) {
           throw new SsealedError("WRITE_FAILED", "Refusing to eject runner ownership because the manifest changed while the command was running.");
         }
       },
@@ -634,7 +642,9 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
             expectedChecksum: file.checksum,
           };
         }
-        const content = await readFile(absolutePath, "utf8");
+        const bytes = await readFile(absolutePath);
+        if (!isUtf8(bytes)) throw new Error("File is not valid UTF-8. Convert its encoding explicitly before running ssealed.");
+        const content = bytes.toString("utf8");
         const actualChecksum = sha256(content);
         return checkExistingManifestFile({
           path: relativePath,

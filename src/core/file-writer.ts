@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { isUtf8 } from "node:buffer";
 import { link, lstat, mkdir, open, readFile, rename, rm, rmdir } from "node:fs/promises";
 import path from "node:path";
 import { normalizeText, sha256 } from "./checksum.js";
@@ -390,7 +391,7 @@ async function writeOnePlannedFile(
 type ExistingPath =
   | { readonly kind: "missing" }
   | { readonly kind: "file"; readonly content: string; readonly mode: number }
-  | { readonly kind: "symlink" | "directory" | "other" };
+  | { readonly kind: "symlink" | "directory" | "other" | "invalid-encoding" };
 
 async function readExistingPath(filePath: string): Promise<ExistingPath> {
   const stat = await lstat(filePath).catch((error: unknown) => {
@@ -412,10 +413,15 @@ async function readExistingPath(filePath: string): Promise<ExistingPath> {
   if (!stat.isFile()) {
     return { kind: "other" };
   }
-  return { kind: "file", content: await readFile(filePath, "utf8"), mode: stat.mode };
+  const bytes = await readFile(filePath);
+  if (!isUtf8(bytes)) return { kind: "invalid-encoding" };
+  return { kind: "file", content: bytes.toString("utf8"), mode: stat.mode };
 }
 
 function existingPathConflictReason(kind: Exclude<ExistingPath["kind"], "missing" | "file">): string {
+  if (kind === "invalid-encoding") {
+    return "Existing file is not valid UTF-8. Convert its encoding explicitly before running ssealed; the original bytes will not be rewritten.";
+  }
   if (kind === "symlink") {
     return "Existing path is a symlink and will not be followed or overwritten.";
   }

@@ -32,6 +32,76 @@ async function runJson(args: readonly string[]): Promise<{ code: number; payload
   }
 }
 
+describe("UTF-8 byte preservation", () => {
+  it("preserves valid Unicode and literal replacement characters during merges", async () => {
+    const dir = await tempDir();
+    const pattern = "café-한글-\uFFFD.local\n";
+    const description = "café 한글 \uFFFD";
+    await writeFile(path.join(dir, ".gitignore"), pattern);
+    await writeFile(path.join(dir, "package.json"), JSON.stringify({ name: "example", description }));
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm"])).code).toBe(0);
+    expect(await readFile(path.join(dir, ".gitignore"), "utf8")).toContain(pattern);
+    expect(JSON.parse(await readFile(path.join(dir, "package.json"), "utf8"))).toMatchObject({ description });
+    expect((await runJson(["doctor", dir, "--strict"])).code).toBe(0);
+  });
+
+  it.each([".gitignore", "package.json"])("reports invalid UTF-8 in an existing %s and leaves update side-effect free", async (file) => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm"])).code).toBe(0);
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const manifest = await readFile(manifestPath);
+    const filePath = path.join(dir, file);
+    const content = await readFile(filePath);
+    const original = file === ".gitignore"
+      ? Buffer.concat([Buffer.from("caf"), Buffer.from([0xe9]), Buffer.from(".local\n"), content])
+      : Buffer.concat([Buffer.from('{"description":"caf'), Buffer.from([0xe9]), Buffer.from('",'), content.subarray(1)]);
+    await writeFile(filePath, original);
+    const doctor = await runJson(["doctor", dir]);
+    expect(doctor.code).toBe(1);
+    expect(doctor.payload.checks).toContainEqual(expect.objectContaining({ path: file, status: "unreadable", reason: expect.stringContaining("UTF-8") }));
+    for (const flags of [["--dry-run"], []]) {
+      const update = await runJson(["update", dir, "--force", ...flags]);
+      expect(update.code).toBe(1);
+      expect(update.payload.conflicts).toContainEqual(expect.objectContaining({ path: file, reason: expect.stringContaining("UTF-8") }));
+      expect(update.payload.written).toEqual([]);
+      expect(await readFile(filePath)).toEqual(original);
+      expect(await readFile(manifestPath)).toEqual(manifest);
+    }
+  });
+
+  it.each([".gitignore", "package.json"].flatMap((file) => [false, true].map((force) => ({ file, force }))))(
+    "refuses to merge invalid UTF-8 in $file with force=$force",
+    async ({ file, force }) => {
+      const dir = await tempDir();
+      const filePath = path.join(dir, file);
+      const original = Buffer.concat(file === ".gitignore"
+        ? [Buffer.from("# existing patterns\ncaf"), Buffer.from([0xe9]), Buffer.from(".local\n")]
+        : [Buffer.from('{"name":"caf'), Buffer.from([0xe9]), Buffer.from('","scripts":{"start":"node app.js"}}\n')]);
+      await writeFile(filePath, original);
+      for (const dryRun of [true, false]) {
+        const result = await runJson(["init", dir, "--scope", "general", "--runner", "npm", ...(force ? ["--force"] : []), ...(dryRun ? ["--dry-run"] : [])]);
+        expect(result.code).toBe(1);
+        expect(result.payload.conflicts).toContainEqual(expect.objectContaining({ path: file, reason: expect.stringContaining("UTF-8") }));
+        expect(result.payload.written).toEqual([]);
+        expect(await readFile(filePath)).toEqual(original);
+        await expect(lstat(path.join(dir, ".ssealed", "manifest.json"))).rejects.toMatchObject({ code: "ENOENT" });
+      }
+    },
+  );
+
+  it.each(["doctor", "update", "upgrade", "eject"])("rejects invalid manifest UTF-8 before %s can accept it", async (command) => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--runner", "npm"])).code).toBe(0);
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const content = await readFile(manifestPath, "utf8");
+    const original = Buffer.concat([Buffer.from(content.trimEnd().slice(0, -1)), Buffer.from(',"note":"caf'), Buffer.from([0xe9]), Buffer.from('"}\n')]);
+    await writeFile(manifestPath, original);
+    const result = await runJson([command, ...(command === "eject" ? ["runner"] : []), dir]);
+    expect(result).toMatchObject({ code: 1, payload: { ok: false, error: { code: "INVALID_MANIFEST" } } });
+    expect(await readFile(manifestPath)).toEqual(original);
+  });
+});
+
 describe("UTF-8 BOM compatibility", () => {
   it.each(["npm", "pnpm"] as const)("accepts and preserves a BOM package during %s runner merges", async (runner) => {
     const dir = await tempDir();

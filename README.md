@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.27`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.28`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -191,6 +191,7 @@ Manifest loading rejects unsafe or reserved file paths, duplicate file paths, an
 An addon must differ from the primary repository type, both in CLI options and in recorded manifest settings. A manifest that repeats its primary type as an addon is invalid and must be repaired before commands use it.
 The manifest itself must be a regular file no larger than 1 MiB. Directories and other non-regular entries at `.ssealed/manifest.json` are rejected before reading or parsing their contents.
 JSON files may begin with a single UTF-8 byte order mark (BOM), including `package.json`, manifests, and lock metadata. Malformed JSON is still rejected. Package merges, manifest updates, and runner ejection preserve an existing BOM; generated JSON without a BOM stays BOM-free.
+Existing scaffold files must contain valid UTF-8. Invalid byte sequences produce a planning conflict, including with `--force`, before any scaffold writes; convert legacy encodings explicitly first. Invalid UTF-8 manifests return `INVALID_MANIFEST`, and `doctor` reports invalid UTF-8 file contents as unreadable. This prevents merges from silently replacing original bytes with replacement characters.
 If a recorded path differs only in letter case from a generated path, `update` and `upgrade` report a conflict before planning file reads or writing any files. Repair the recorded casing first. This prevents duplicate manifest entries and avoids guessing whether differently cased names refer to the same file on the current filesystem.
 `update`, `upgrade`, `eject`, and `doctor` distinguish an absent manifest (`MISSING_MANIFEST`) from an invalid one (`INVALID_MANIFEST`) in their JSON error envelopes. Invalid manifests must be repaired or removed; these commands do not replace them, including during dry runs.
 
