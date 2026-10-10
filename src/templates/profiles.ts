@@ -195,7 +195,7 @@ function renderProfileFile(file: ProfileFileSpec, profile: Addon, scope: Scope):
     case "agent-skill":
       return { ...file, content: agentSkill(file.title, scope) };
     case "checklist":
-      return { ...file, content: checklistDoc(file.title) };
+      return { ...file, content: checklistDoc(file.title, file.path, scope) };
     case "validation":
       return { ...file, content: validationDoc(file.title, scope, profile) };
     case "openapi":

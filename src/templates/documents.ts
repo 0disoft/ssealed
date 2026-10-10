@@ -1,6 +1,7 @@
 import type { Addon, Density, Profile, Scope } from "../core/types.js";
 import { documentMetadata } from "./document-format.js";
 import { renderProfileSkill } from "./profile-skills.js";
+import { renderScopeChecklist } from "./scope-checklists.js";
 import { renderScopeSkill } from "./scope-skills.js";
 import { renderTaskSkill } from "./task-skills.js";
 
@@ -549,7 +550,9 @@ function profileReviewBlockers(profile: Profile): readonly string[] {
   return profileMetadata[profile].blockers;
 }
 
-export function checklistDoc(title: string): string {
+export function checklistDoc(title: string, filePath: string, scope: Scope = "general"): string {
+  const scopedChecklist = renderScopeChecklist(filePath, title, scope);
+  if (scopedChecklist !== undefined) return scopedChecklist;
   const lower = title.toLowerCase();
   const checklist = checklistContent(lower);
 
@@ -577,50 +580,6 @@ function checklistContent(lowerTitle: string): {
   readonly items: readonly string[];
   readonly validations: readonly string[];
 } {
-  if (lowerTitle.includes("backend api")) {
-    return {
-      failureModes: "Auth, authorization, OpenAPI drift, error shape drift, pagination bugs, idempotency gaps, missing logs, and missing tests.",
-      items: [
-        "`api/openapi.yaml` describes every changed request, response, parameter, and error.",
-        "Authentication and authorization behavior is explicit for success and denial cases.",
-        "Pagination uses stable cursors or documented limits and does not expose unbounded reads.",
-        "`Idempotency-Key` behavior is defined for create or retry-prone operations.",
-        "Logs include correlation evidence without secrets or private payloads.",
-        "Contract, negative-path, and smoke validation are run or explicitly skipped.",
-      ],
-      validations: ["contract", "test", "smoke", "check"],
-    };
-  }
-  if (lowerTitle.includes("frontend ui")) {
-    return {
-      failureModes: [
-        "Route drift, unclear state ownership, component boundary leakage, accessibility regressions,",
-        "missing loading/empty/error/disabled states, form bugs, and missing tests.",
-      ].join(" "),
-      items: [
-        "`docs/frontend/FRONTEND_DESIGN.md` names the changed route, page model, and component boundary.",
-        "Server State, URL State, Form State, Local UI State, and allowed Global Client State are separated.",
-        "Loading, empty, error, and disabled states are visible for each async interaction.",
-        "Keyboard navigation, focus movement, labels, landmarks, and screen-reader announcements are covered.",
-        "Form validation identifies client-only checks and backend contract checks.",
-        "Frontend tests or smoke checks cover the main route and at least one failure state.",
-      ],
-      validations: ["lint", "typecheck", "test", "smoke", "check"],
-    };
-  }
-  if (lowerTitle.includes("db migration")) {
-    return {
-      failureModes: "Unsafe expand-contract rollout, missing rollback or forward-fix path, large table locks, unsafe indexes, and weak data verification.",
-      items: [
-        "`db/schema.dbml` and migration notes agree on source-of-truth structure.",
-        "The migration separates expand, backfill, switch, and contract phases when needed.",
-        "Large table operations have lock, timeout, batching, and index-build risk called out.",
-        "Rollback or forward-fix behavior is documented for every irreversible step.",
-        "Data verification queries or checks are named before and after deployment.",
-      ],
-      validations: ["migration-check", "test", "smoke", "check"],
-    };
-  }
   if (lowerTitle.includes("security")) {
     return {
       failureModes: "Auth bypass, authorization gaps, tenant leakage, unsafe inputs or outputs, secret exposure, log leakage, and risky external integrations.",

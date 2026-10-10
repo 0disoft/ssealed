@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.64`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.65`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -152,6 +152,8 @@ Every emitted skill requires an explicit registered definition. A missing defini
 | Coordination and publishing | `infra-module`, `github-action`, `docs-site`, `monorepo` | Resource interfaces, runner authority, usable publication, and package dependency or artifact boundaries. |
 
 Frontend UI skills link the consumed API contract or the fullstack-owned API according to scope; mobile and data skills select the documents for the scope or repository type. Required references remain valid at each density where the skill is emitted, including minimal scaffolds. Existing skill paths, density, and seeded-file protections remain in place. Skills use the repository's validation routes, leave skipped or unconfigured checks explicit, and do not grant additional publication or external mutation authority.
+
+Backend API, DB migration, frontend UI, mobile app, infrastructure change, and data pipeline checklists use explicit file-path routing and contextual document links. Their items address contract agreement, ownership, interrupted or partial work, recovery, and observable evidence. Validation names identify relevant choices from VALIDATION.md, and skipped or inapplicable items require an explanation. Normal seeded-file protections preserve user edits and deleted checklists.
 
 ## Repository Type Matrix
 

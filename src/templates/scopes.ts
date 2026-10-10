@@ -303,7 +303,7 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "agent-skill":
       return { ...file, content: agentSkill(file.title ?? "agent-skill", scope) };
     case "checklist":
-      return { ...file, content: checklistDoc(file.title ?? file.path) };
+      return { ...file, content: checklistDoc(file.title ?? file.path, file.path, scope) };
     case "openapi":
       return { ...file, content: openApiSkeleton() };
     case "success-json":
