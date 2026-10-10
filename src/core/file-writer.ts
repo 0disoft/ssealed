@@ -319,7 +319,7 @@ async function writePlannedFilesInterruptibly(
     if (recoveryErrors.length > 0) {
       throw new AggregateError(
         [error, ...recoveryErrors],
-        `Scaffold write failed and recovery was incomplete: ${recoveryErrors.map((failure) => failure.message).join("; ")}`,
+        `Scaffold write failed: ${asError(error).message}; recovery was incomplete: ${recoveryErrors.map((failure) => failure.message).join("; ")}`,
       );
     }
     throw error;

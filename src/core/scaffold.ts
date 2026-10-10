@@ -614,6 +614,8 @@ async function acquireScaffoldLock<T>(
   const lockId = randomUUID();
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let acquired = false;
+  let initialized = false;
+  let identity: { readonly dev: bigint; readonly ino: bigint } | undefined;
   let result: T | undefined;
   let taskFailed = false;
   let taskError: unknown;
@@ -636,6 +638,7 @@ async function acquireScaffoldLock<T>(
   }
 
   try {
+    identity = await handle.stat({ bigint: true });
     await handle.writeFile(
       JSON.stringify(
         {
@@ -650,6 +653,7 @@ async function acquireScaffoldLock<T>(
       ),
       "utf8",
     );
+    initialized = true;
     await handle.close();
     handle = undefined;
     getScaffoldInterruptContext()?.throwIfInterrupted();
@@ -669,7 +673,7 @@ async function acquireScaffoldLock<T>(
   }
   try {
     if (acquired) {
-      await releaseScaffoldLock(lockPath, lockId);
+      await releaseScaffoldLock(lockPath, lockId, identity, initialized);
     }
   } catch (error) {
     cleanupErrors.push(asError(error));
@@ -677,7 +681,11 @@ async function acquireScaffoldLock<T>(
 
   if (cleanupErrors.length > 0) {
     const failures = taskFailed ? [taskError, ...cleanupErrors] : cleanupErrors;
-    throw new ScaffoldCleanupError(failures, `Scaffold lock cleanup failed: ${cleanupErrors.map((error) => error.message).join("; ")}`, getScaffoldInterruptContext()?.committed ?? false);
+    throw new ScaffoldCleanupError(
+      failures,
+      `${taskFailed ? `Scaffold command failed: ${asError(taskError).message}; ` : ""}Scaffold lock cleanup failed: ${cleanupErrors.map((error) => error.message).join("; ")}`,
+      getScaffoldInterruptContext()?.committed ?? false,
+    );
   }
   if (taskFailed) {
     throw taskError;
@@ -685,9 +693,22 @@ async function acquireScaffoldLock<T>(
   return result as T;
 }
 
-async function releaseScaffoldLock(lockPath: string, lockId: string): Promise<void> {
-  const metadata = await readScaffoldLockMetadata(lockPath);
-  if (metadata?.lockId !== lockId) {
+async function releaseScaffoldLock(
+  lockPath: string,
+  lockId: string,
+  identity: { readonly dev: bigint; readonly ino: bigint } | undefined,
+  initialized: boolean,
+): Promise<void> {
+  await assertNoSymlinkInPath(path.dirname(lockPath), lockPath);
+  const current = await lstat(lockPath, { bigint: true }).catch((error: unknown) => {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  if (current === undefined && !initialized) return;
+  if (identity === undefined || current === undefined || !current.isFile() || current.dev !== identity.dev || current.ino !== identity.ino) {
+    throw new SsealedError("LOCK_EXISTS", `Scaffold lock ownership cannot be verified; preserving ${lockPath}.`);
+  }
+  if (initialized && (await readScaffoldLockMetadata(lockPath))?.lockId !== lockId) {
     throw new SsealedError("LOCK_EXISTS", "Scaffold lock ownership changed while the command was running; the replacement lock was preserved.");
   }
   await rm(lockPath);

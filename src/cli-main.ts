@@ -282,19 +282,27 @@ function wantsJson(argv: readonly string[]): boolean {
   return false;
 }
 
-function classifyRuntimeError(error: unknown): {
+interface RuntimeError {
   readonly code: string;
   readonly message: string;
   readonly signal?: string;
   readonly exitCode?: number;
   readonly committed?: boolean;
-} {
+  readonly causes?: readonly RuntimeError[];
+}
+
+function classifyRuntimeError(error: unknown, ancestors = new Set<unknown>()): RuntimeError {
+  if (ancestors.has(error)) return { code: "WRITE_FAILED", message: "Circular error cause omitted." };
+  const nextAncestors = new Set(ancestors).add(error);
+  const causes = error instanceof AggregateError
+    ? { causes: error.errors.map((cause: unknown) => classifyRuntimeError(cause, nextAncestors)) }
+    : {};
   const message = error instanceof Error ? error.message : String(error);
   if (isScaffoldInterruptedError(error)) {
     return { code: error.code, message, signal: error.signal, exitCode: error.exitCode, committed: error.committed };
   }
   if (error instanceof ScaffoldCleanupError) {
-    return { code: "WRITE_FAILED", message, committed: error.committed };
+    return { code: "WRITE_FAILED", message, committed: error.committed, ...causes };
   }
   if (isSsealedError(error)) {
     return { code: error.code, message };
@@ -302,7 +310,7 @@ function classifyRuntimeError(error: unknown): {
   if (isNodeError(error)) {
     return { code: "FILESYSTEM_ERROR", message };
   }
-  return { code: "WRITE_FAILED", message };
+  return { code: "WRITE_FAILED", message, ...causes };
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

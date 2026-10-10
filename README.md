@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.22`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.23`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -224,6 +224,7 @@ Paths are checked again after staging, immediately before publication, and befor
 Atomic writes record the exclusively opened temporary file's device and inode identity. Publication and cleanup recheck that identity and preserve a detected replacement, even if its contents match. Permission changes use the opened handle. If cleanup cannot verify ownership, the error includes both the write failure and cleanup failure; the temporary file is left for inspection. These identity checks also remain best effort against concurrent path changes.
 
 Commands use `.ssealed-init.lock` to keep reads and writes for the same existing target mutually exclusive. If a previous process crashed and left an old lock, rerun a write command with `--break-stale-lock`; the lock is removed only when its metadata is old enough and the recorded local process is confirmed absent. Locks recorded on another host, locks without a valid process ID, and locks whose process status cannot be checked are preserved. Legacy locks without a hostname continue to use the local process check.
+If writing lock metadata fails, cleanup verifies the exclusively opened file's device and inode identity instead of requiring complete JSON. A verified partial lock is removed so a normal retry can proceed; replacements and locks whose identity cannot be verified are preserved. Errors retain the original write failure and any cleanup failures. JSON aggregate errors expose nested `causes` so manifest publication, rollback, and lock-release failures are not hidden by the last cleanup error.
 
 `doctor` and `--dry-run` hold the same target lock for their full read so a writer cannot create a mixed in-progress scaffold state. A dry run against a missing target still creates no directory; if that target appears concurrently, the stale read is discarded and the command asks the caller to retry.
 
