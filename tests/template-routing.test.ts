@@ -6,6 +6,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const omittedTopic = vi.hoisted(() => ({ path: "" }));
 const omittedSkill = vi.hoisted(() => ({ name: "" }));
 const omittedChecklist = vi.hoisted(() => ({ path: "" }));
+const omittedValidation = vi.hoisted(() => ({ path: "" }));
+
+vi.mock("../src/templates/common-validations.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/templates/common-validations.js")>();
+  return { ...original, renderCommonValidation: (...args: Parameters<typeof original.renderCommonValidation>) =>
+    args[0] === omittedValidation.path ? undefined : original.renderCommonValidation(...args) };
+});
+vi.mock("../src/templates/scope-validations.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/templates/scope-validations.js")>();
+  return { ...original, renderScopeValidation: (...args: Parameters<typeof original.renderScopeValidation>) =>
+    args[0] === omittedValidation.path ? undefined : original.renderScopeValidation(...args) };
+});
+vi.mock("../src/templates/profile-validations.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/templates/profile-validations.js")>();
+  return { ...original, renderProfileValidation: (...args: Parameters<typeof original.renderProfileValidation>) =>
+    args[0] === omittedValidation.path ? undefined : original.renderProfileValidation(...args) };
+});
 
 vi.mock("../src/templates/common-checklists.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("../src/templates/common-checklists.js")>();
@@ -69,6 +86,7 @@ afterEach(async () => {
   omittedTopic.path = "";
   omittedSkill.name = "";
   omittedChecklist.path = "";
+  omittedValidation.path = "";
   vi.resetModules();
   await Promise.all(workdirs.splice(0).map((dir) => {
     const resolved = path.resolve(dir);
@@ -108,6 +126,23 @@ describe("required checklist routing", () => {
     const target = await mkdtemp(path.join(tmpdir(), "ssealed-routing-"));
     workdirs.push(target);
     await expect(executeScaffold({ target, scope, profile, addons, runner: "none", density: "strict", dryRun: false, force: false })).rejects.toThrow(`Missing required checklist: ${missing}`);
+    expect(await readdir(target)).toEqual([]);
+  });
+});
+
+describe("required validation guide routing", () => {
+  it.each([
+    { scope: "general", profile: "generic", addons: [], missing: ".agents/validations/default.md" },
+    { scope: "backend", profile: "generic", addons: [], missing: ".agents/validations/backend-api.md" },
+    { scope: "general", profile: "library", addons: [], missing: ".agents/validations/library-package.md" },
+    { scope: "general", profile: "generic", addons: ["sdk"], missing: ".agents/validations/sdk.md" },
+  ] as const)("rejects a missing $missing definition without leaving scaffold files or locks", async ({ scope, profile, addons, missing }) => {
+    omittedValidation.path = missing;
+    vi.resetModules();
+    const { executeScaffold } = await import("../src/core/scaffold.js");
+    const target = await mkdtemp(path.join(tmpdir(), "ssealed-routing-"));
+    workdirs.push(target);
+    await expect(executeScaffold({ target, scope, profile, addons, runner: "none", density: "strict", dryRun: false, force: false })).rejects.toThrow(`Missing required validation guide: ${missing}`);
     expect(await readdir(target)).toEqual([]);
   });
 });

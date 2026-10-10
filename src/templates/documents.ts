@@ -276,9 +276,14 @@ ${routes.join("\n")}
 `;
 }
 
-export function validationDoc(title: string, scope: Scope, profile: Profile, addons: readonly Addon[] = [], filePath = "VALIDATION.md"): string {
-  const taskValidation = renderScopeValidation(filePath, title, scope) ?? renderCommonValidation(filePath, title) ?? renderProfileValidation(filePath, title);
-  if (taskValidation !== undefined) return taskValidation;
+export function validationDoc(title: string, filePath: string, scope: Scope, profile: Profile, addons: readonly Addon[] = []): string {
+  if (filePath === "VALIDATION.md") return validationRouterDoc(title, scope, profile, addons);
+  const validation = renderScopeValidation(filePath, title, scope) ?? renderCommonValidation(filePath, title) ?? renderProfileValidation(filePath, title);
+  if (validation === undefined) throw new Error(`Missing required validation guide: ${filePath}`);
+  return validation;
+}
+
+function validationRouterDoc(title: string, scope: Scope, profile: Profile, addons: readonly Addon[]): string {
   const repositoryShape = profileList(profile, addons);
   const repositoryShapeBlock =
     repositoryShape.length === 0
