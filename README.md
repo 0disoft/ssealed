@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.24`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.25`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -157,6 +157,7 @@ On `upgrade`, repeated `--addon` values replace the existing addon list. Use `--
 - `strict`: adds deeper risk, release-readiness, service-level, data-integrity, migration, package-surface, and repository-type-specific hardening surfaces.
 
 Use `minimal` for small repos that need a compact starting point, `standard` for normal teams, and `strict` when the repository needs stronger operational, security, or release review coverage.
+Minimal backend documents keep undecided error-response policy in the documents that exist, rather than referring to a policy file generated only at higher densities. Strict threat-model, data-integrity, disaster-recovery, and service-level documents contain their own decision prompts. CLI configuration, command, output, and shell-completion documents likewise contain topic-specific decisions, with shared repository guidance in the CLI README. These prompts remain unconfigured scaffolds, not completed project decisions.
 
 Generated agent route maps, checklist routers, and source-of-truth summaries only reference files included by the selected scope, repository type, addons, and density.
 

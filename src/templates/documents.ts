@@ -56,7 +56,10 @@ UNDECIDED. Add the minimal sequence needed to explain request, state, failure, a
 `;
 }
 
-export function backendDoc(title: string): string {
+export function backendDoc(title: string, density: Density = "standard"): string {
+  const errorPolicy = density === "minimal"
+    ? "UNDECIDED. Record the error shape, stable codes, and HTTP status policy in this document."
+    : "docs/backend/05-error-response.md";
   return `# ${title}
 
 ${documentMetadata([["Status", "Draft"]])}
@@ -73,7 +76,7 @@ and backend security as applicable.
 - Auth model: UNDECIDED
 - Authorization checks: UNDECIDED
 - Persistence model: UNDECIDED
-- Error response policy: docs/backend/05-error-response.md
+- Error response policy: ${errorPolicy}
 
 ## Merge Blockers
 

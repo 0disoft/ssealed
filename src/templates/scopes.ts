@@ -20,6 +20,7 @@ import {
 } from "./documents.js";
 import { profileFilesFor } from "./profiles.js";
 import { runnerFiles } from "./runners.js";
+import { renderTopicDocument } from "./topic-documents.js";
 
 interface FileSpec {
   readonly path: string;
@@ -328,11 +329,11 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "frontend-design":
       return { ...file, content: frontendDesignDoc() };
     case "backend-doc":
-      return { ...file, content: backendDoc(file.title ?? file.path) };
+      return { ...file, content: backendDoc(file.title ?? file.path, density) };
     case "engineering-doc":
-      return { ...file, content: engineeringDoc(file.title ?? file.path) };
+      return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? engineeringDoc(file.title ?? file.path) };
     case "ops-doc":
-      return { ...file, content: opsDoc(file.title ?? file.path) };
+      return { ...file, content: renderTopicDocument(file.path, file.title ?? file.path) ?? opsDoc(file.title ?? file.path) };
     case "architecture-doc":
       return { ...file, content: architectureDoc(file.title ?? file.path) };
     case "mermaid":

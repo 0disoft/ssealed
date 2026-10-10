@@ -1,5 +1,6 @@
 import type { Addon, Density, FileKind, Profile, Scope, TemplateFile } from "../core/types.js";
 import { agentSkill, checklistDoc, openApiSkeleton, profileDoc, validationDoc } from "./documents.js";
+import { renderTopicDocument } from "./topic-documents.js";
 
 interface ProfileFileSpec {
   readonly path: string;
@@ -219,7 +220,7 @@ function renderProfileFile(file: ProfileFileSpec, profile: Addon, scope: Scope):
     case "paginated-json":
       return { ...file, content: `${JSON.stringify({ data: [], page: { limit: 25, nextCursor: null } }, null, 2)}\n` };
     case "profile-doc":
-      return { ...file, content: profileDoc(file.title, profile) };
+      return { ...file, content: renderTopicDocument(file.path, file.title) ?? profileDoc(file.title, profile) };
   }
 }
 
