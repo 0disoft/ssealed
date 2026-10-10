@@ -2,6 +2,25 @@ import { describe, expect, it } from "vitest";
 import { templateFilesFor } from "../src/templates/index.js";
 
 describe("topic-specific generated documents", () => {
+  it.each([
+    { path: "api-lifecycle.md", decisions: ["Operation inventory", "Versioning and deprecation", "Access control"] },
+    { path: "idempotency.md", decisions: ["Key scope", "Concurrent duplicates", "Retention and expiry"] },
+    { path: "rate-limits.md", decisions: ["Quota dimensions", "Accounting unit", "Counter failures"] },
+    { path: "slo.md", decisions: ["SLI definition", "Measurement window", "Error budget policy"] },
+  ])("gives API service $path its own decisions for primary and addon use", ({ path, decisions }) => {
+    for (const files of [
+      templateFilesFor("general", "none", "api-service", "strict"),
+      templateFilesFor("backend", "none", "generic", "strict", ["api-service"]),
+    ]) {
+      const content = files.find((file) => file.path === `docs/api-service/${path}`)?.content;
+      expect(content).toBeDefined();
+      for (const decision of decisions) expect(content).toContain(decision);
+      expect(content).toContain("docs/api-service/README.md");
+      expect(content).toContain("UNDECIDED");
+      expect(content).not.toContain("## Repository Type Contract");
+    }
+  });
+
   it.each(["backend", "fullstack"] as const)("keeps minimal %s error decisions in the documents that actually exist", (scope) => {
     const files = templateFilesFor(scope, "none", "generic", "minimal");
     expect(files.some((file) => file.path === "docs/backend/05-error-response.md")).toBe(false);
