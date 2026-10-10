@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.23`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.24`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -224,6 +224,7 @@ Paths are checked again after staging, immediately before publication, and befor
 Atomic writes record the exclusively opened temporary file's device and inode identity. Publication and cleanup recheck that identity and preserve a detected replacement, even if its contents match. Permission changes use the opened handle. If cleanup cannot verify ownership, the error includes both the write failure and cleanup failure; the temporary file is left for inspection. These identity checks also remain best effort against concurrent path changes.
 
 Commands use `.ssealed-init.lock` to keep reads and writes for the same existing target mutually exclusive. If a previous process crashed and left an old lock, rerun a write command with `--break-stale-lock`; the lock is removed only when its metadata is old enough and the recorded local process is confirmed absent. Locks recorded on another host, locks without a valid process ID, and locks whose process status cannot be checked are preserved. Legacy locks without a hostname continue to use the local process check.
+Stale recovery acquires `.ssealed-recovery.lock` exclusively, then rereads the main lock and holds the recovery lock through main-lock reacquisition. It releases the recovery lock before entering the command's write section, preventing another recovery caller from deleting a newly acquired main lock. If a crash leaves the recovery lock behind, ssealed refuses automatic removal: verify no recovery process is running before manually removing that file and retrying. Both lock paths are reserved and ignored by generated projects.
 If writing lock metadata fails, cleanup verifies the exclusively opened file's device and inode identity instead of requiring complete JSON. A verified partial lock is removed so a normal retry can proceed; replacements and locks whose identity cannot be verified are preserved. Errors retain the original write failure and any cleanup failures. JSON aggregate errors expose nested `causes` so manifest publication, rollback, and lock-release failures are not hidden by the last cleanup error.
 
 `doctor` and `--dry-run` hold the same target lock for their full read so a writer cannot create a mixed in-progress scaffold state. A dry run against a missing target still creates no directory; if that target appears concurrently, the stale read is discarded and the command asks the caller to retry.
@@ -234,7 +235,7 @@ If multiple files fail within a batch, ssealed reports every failed path and pre
 When restoring an overwritten file, rollback rechecks its path and generated content after staging the original bytes, immediately before restoring them. If it detects a concurrent change, it preserves the changed file and reports incomplete recovery.
 Bounded reads finish already started operations before reporting the first failure. Lock cleanup never turns a failed operation into success; if cleanup also fails, both failures are retained.
 
-The generated `.gitignore` block includes `.ssealed-init.lock` so stale lock metadata is not committed accidentally.
+The generated `.gitignore` block includes `.ssealed-init.lock` and `.ssealed-recovery.lock` so stale lock metadata is not committed accidentally. `doctor` accepts blocks from before each lock pattern was introduced when the manifest records the corresponding older generator version. Use `update --force` to refresh an unmodified older managed block.
 
 `doctor` validates block-managed surfaces even when the whole-file checksum matches the manifest, so an `update` cannot accept modified package scripts or malformed `.gitignore` blocks as healthy state. Project-owned ignore rules may live outside the single ssealed block. Manifests generated before `.ssealed-init.lock` was added to the managed block remain accepted for compatibility. For npm and pnpm runners, use `ssealed eject runner [target]` before replacing generated validation scripts with project-owned package scripts; doctor then reports `package.json` as `project-owned` instead of `block-modified`.
 

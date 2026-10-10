@@ -465,7 +465,7 @@ describe("managed surface integrity", () => {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
     await writeFile(manifestPath, `${JSON.stringify({ ...manifest, generatorVersion: "0.6.1", version: "0.6.1" }, null, 2)}\n`);
     const gitignorePath = path.join(dir, ".gitignore");
-    await writeFile(gitignorePath, (await readFile(gitignorePath, "utf8")).replace(".ssealed-init.lock\n", ""));
+    await writeFile(gitignorePath, (await readFile(gitignorePath, "utf8")).replace(".ssealed-init.lock\n", "").replace(".ssealed-recovery.lock\n", ""));
 
     expect((await runJson(["doctor", dir])).code).toBe(0);
     expect((await runJson(["eject", "runner", dir])).code).toBe(0);

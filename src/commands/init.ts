@@ -838,10 +838,11 @@ function checkManagedBlock(
 
 function gitignoreBlocksAcceptedForManifest(manifestVersion: string | undefined): readonly string[] {
   const currentBlock = normalizeText(gitignoreBlock());
-  if (!isBeforeVersion(manifestVersion, "0.6.2")) {
-    return [currentBlock];
-  }
-  return [currentBlock, normalizeText(gitignoreBlock().replace(".ssealed-init.lock\n", ""))];
+  const blocks = [currentBlock];
+  const beforeRecovery = normalizeText(gitignoreBlock().replace(".ssealed-recovery.lock\n", ""));
+  if (isBeforeVersion(manifestVersion, "0.7.24")) blocks.push(beforeRecovery);
+  if (isBeforeVersion(manifestVersion, "0.6.2")) blocks.push(normalizeText(beforeRecovery.replace(".ssealed-init.lock\n", "")));
+  return blocks;
 }
 
 function isBeforeVersion(value: string | undefined, minimum: string): boolean {

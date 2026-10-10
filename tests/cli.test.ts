@@ -487,7 +487,7 @@ describe("CLI argument parsing", () => {
       const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
       await writeFile(manifestPath, `${JSON.stringify({ ...manifest, generatorVersion: "0.6.1", version: "0.6.1" }, null, 2)}\n`);
       const gitignorePath = path.join(dir, ".gitignore");
-      const legacyGitignore = (await readFile(gitignorePath, "utf8")).replace(".ssealed-init.lock\n", "");
+      const legacyGitignore = (await readFile(gitignorePath, "utf8")).replace(".ssealed-init.lock\n", "").replace(".ssealed-recovery.lock\n", "");
       await writeFile(gitignorePath, `__pycache__/\n.pytest_cache/\n${legacyGitignore}`);
       stdout.mockClear();
 

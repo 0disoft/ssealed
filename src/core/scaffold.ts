@@ -358,7 +358,7 @@ function isSafeManifestFilePath(value: unknown): value is string {
     return false;
   }
   const pathKey = value.toLowerCase();
-  if (pathKey === ".ssealed/manifest.json" || pathKey === ".ssealed-init.lock") {
+  if (pathKey === ".ssealed/manifest.json" || pathKey === ".ssealed-init.lock" || pathKey === ".ssealed-recovery.lock") {
     return false;
   }
   try {
@@ -608,7 +608,7 @@ export async function withScaffoldWriteLock<T>(targetRoot: string, breakStaleLoc
 async function acquireScaffoldLock<T>(
   lockPath: string,
   breakStaleLock: boolean,
-  task: () => Promise<T>,
+  task: (releaseLock: () => Promise<void>) => Promise<T>,
   lockExistsMessage = "Another ssealed init is already running for this target. Run again with --break-stale-lock only after confirming the lock is stale.",
 ): Promise<T> {
   const lockId = randomUUID();
@@ -624,19 +624,19 @@ async function acquireScaffoldLock<T>(
     acquired = true;
   } catch (error) {
     if (isNodeError(error) && error.code === "EEXIST") {
-      if (breakStaleLock && (await removeStaleScaffoldLock(lockPath))) {
-        return acquireScaffoldLock(lockPath, false, task, lockExistsMessage);
+      if (breakStaleLock) {
+        return recoverScaffoldLock(lockPath, task, lockExistsMessage);
       }
-      throw new SsealedError(
-        "LOCK_EXISTS",
-        breakStaleLock
-          ? "Existing scaffold lock is not stale or its owning process cannot be verified. Refusing to remove .ssealed-init.lock while another ssealed command may still be running."
-          : lockExistsMessage,
-      );
+      throw new SsealedError("LOCK_EXISTS", lockExistsMessage);
     }
     throw error;
   }
 
+  const release = async (): Promise<void> => {
+    if (!acquired) return;
+    await releaseScaffoldLock(lockPath, lockId, identity, initialized);
+    acquired = false;
+  };
   try {
     identity = await handle.stat({ bigint: true });
     await handle.writeFile(
@@ -657,7 +657,7 @@ async function acquireScaffoldLock<T>(
     await handle.close();
     handle = undefined;
     getScaffoldInterruptContext()?.throwIfInterrupted();
-    result = await task();
+    result = await task(release);
   } catch (error) {
     taskFailed = true;
     taskError = error;
@@ -673,7 +673,7 @@ async function acquireScaffoldLock<T>(
   }
   try {
     if (acquired) {
-      await releaseScaffoldLock(lockPath, lockId, identity, initialized);
+      await release();
     }
   } catch (error) {
     cleanupErrors.push(asError(error));
@@ -691,6 +691,24 @@ async function acquireScaffoldLock<T>(
     throw taskError;
   }
   return result as T;
+}
+
+async function recoverScaffoldLock<T>(
+  lockPath: string,
+  task: (releaseLock: () => Promise<void>) => Promise<T>,
+  lockExistsMessage: string,
+): Promise<T> {
+  const recoveryPath = resolveInsideTarget(path.dirname(lockPath), ".ssealed-recovery.lock");
+  await assertNoSymlinkInPath(path.dirname(lockPath), recoveryPath);
+  return acquireScaffoldLock(recoveryPath, false, async (releaseRecovery) => {
+    if (!(await removeStaleScaffoldLock(lockPath))) {
+      throw new SsealedError("LOCK_EXISTS", "Existing scaffold lock is not stale or its owning process cannot be verified. Refusing to remove .ssealed-init.lock while another ssealed command may still be running.");
+    }
+    return acquireScaffoldLock(lockPath, false, async (releaseMain) => {
+      await releaseRecovery();
+      return task(releaseMain);
+    }, lockExistsMessage);
+  }, "Another stale-lock recovery is active, or .ssealed-recovery.lock remains after a crash. Verify no recovery process is running before manually removing that recovery lock and retrying.");
 }
 
 async function releaseScaffoldLock(

@@ -412,6 +412,7 @@ pnpm-debug.log*
 .env.*
 !.env.example
 .ssealed-init.lock
+.ssealed-recovery.lock
 node_modules/
 dist/
 build/
