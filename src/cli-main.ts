@@ -18,6 +18,8 @@ Usage:
   ssealed --help
   ssealed --version
 
+Omit [target] or pass . to use the current directory. Empty target strings are rejected.
+
 Options:
   --scope      Scaffold ownership scope.
   --repo-type  Primary repository shape. Defaults to generic for init.
@@ -99,7 +101,7 @@ const commandDetails: Readonly<Record<CliCommand, { readonly usage: string; read
 function commandHelpText(command: CliCommand): string {
   const details = commandDetails[command];
   const options = allowedByCommand[command].map((name) => `  --${name}  ${optionHelp[name]}`).join("\n");
-  return `ssealed ${command}\n\n${details.description}\n\nUsage:\n  ssealed ${details.usage} [options]\n\nTarget defaults to the current directory.\n\nOptions:\n${options}\n\nExample:\n  ssealed ${details.example}\n`;
+  return `ssealed ${command}\n\n${details.description}\n\nUsage:\n  ssealed ${details.usage} [options]\n\nTarget defaults to the current directory. Empty target strings are rejected; pass . explicitly if needed.\n\nOptions:\n${options}\n\nExample:\n  ssealed ${details.example}\n`;
 }
 
 interface ParsedScaffoldArgs {

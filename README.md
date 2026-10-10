@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.45`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.46`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -87,6 +87,8 @@ ssealed init --help
 ```
 
 Use `ssealed <command> --help` for that command's syntax, supported options, accepted values, and an example. For example, `ssealed eject --help` shows the required `runner` subject, while `ssealed update --help` directs setting changes to `upgrade`.
+
+Omitting `[target]` or passing `.` selects the current directory. An explicitly empty target, such as `ssealed init "" --scope general`, fails with `INVALID_TARGET` before reading the target, creating a lock, or writing files. This prevents an empty path variable in a script from silently selecting the current directory.
 
 `init` creates a new scaffold and refuses targets with an existing valid `.ssealed/manifest.json`.
 `adopt` initializes `.ssealed/manifest.json` for an existing repository while preserving differing regular files as `project-owned`; missing scaffold files are created, and `.gitignore` still receives the managed ignore block.

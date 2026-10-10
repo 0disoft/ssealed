@@ -71,6 +71,12 @@ interface CommandResponse {
 }
 
 async function prepareScaffoldCommand(options: InitCliOptions & { readonly command: CliCommand }): Promise<CommandResponse> {
+  if (options.target === "") {
+    return formatInitError(options, {
+      code: "INVALID_TARGET",
+      message: "Target cannot be empty. Omit the target or pass . to use the current directory, or provide an explicit path.",
+    });
+  }
   const target = path.resolve(options.target ?? process.cwd());
   if (options.command === "doctor") {
     return withScaffoldReadLock(target, () => runDoctor(target, options.json, options.strict ?? false));
@@ -144,6 +150,7 @@ async function prepareScaffoldCommand(options: InitCliOptions & { readonly comma
 }
 
 type InitErrorCode =
+  | "INVALID_TARGET"
   | "INVALID_SCOPE"
   | "INVALID_PROFILE"
   | "INVALID_ADDON"
