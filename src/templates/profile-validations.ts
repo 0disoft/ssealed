@@ -100,6 +100,50 @@ const profileValidations: Readonly<Record<string, ValidationDefinition>> = {
     ],
     validations: ["contract", "test", "smoke", "docs", "check"],
   },
+  ".agents/validations/infra-module.md": {
+    sources: ["docs/infra-module/README.md", "docs/infra-module/module-interface.md", "docs/infra-module/environment-contract.md", ".agents/checklists/infra-module.md"],
+    purpose: "Verify module consumers and authorized resource transitions against actual environment and state ownership.",
+    evidence: [
+      "Compare affected public inputs, outputs, defaults, and consumer configurations with the module interface, including sensitive values and shared-resource boundaries.",
+      "Verify the selected environment, credential scope, state authority, and relevant concurrent-writer controls before authorized creation, replacement, import, or removal.",
+      "Where resource lifecycle or drift handling changes, inspect actual partial or applied state and affected dependent behavior rather than inferring completion from a successful plan.",
+      "Verify supported interface transitions and recovery against retained user or shared state, recording irreversible effects, incompatible consumers, and unresolved reconciliation.",
+    ],
+    validations: ["contract", "test", "smoke", "check"],
+  },
+  ".agents/validations/github-action.md": {
+    sources: ["docs/github-action/README.md", "docs/github-action/action-contract.md", "docs/github-action/inputs-and-outputs.md", "docs/github-action/permissions.md", ".agents/checklists/github-action.md"],
+    purpose: "Verify the action's caller-visible results and runner effects with appropriate input handling, execution authority, and cleanup.",
+    evidence: [
+      "Exercise affected caller workflows and supported runners with relevant absent, empty, multiline, numeric, boolean, and path inputs, checking actual parsing and output framing.",
+      "Verify changed untrusted-event and permission boundaries, including denied authority, keeping contributor data separate from executable syntax and privileged effects.",
+      "Where repeated or concurrent execution, cancellation, or failure changes, observe isolated workspace state, actual external effects, output publication timing, exit status, and owned-resource cleanup.",
+      "Inspect affected logs, outputs, summaries, caches, and artifacts for unintended credential disclosure, and record caller compatibility, untested matrix entries, and incomplete recovery.",
+    ],
+    validations: ["lint", "contract", "test", "smoke", "check"],
+  },
+  ".agents/validations/docs-site.md": {
+    sources: ["docs/docs-site/README.md", "docs/docs-site/information-architecture.md", "docs/docs-site/publishing.md", ".agents/checklists/docs-site.md"],
+    purpose: "Verify accurate reader guidance and usable navigation, with visible-content evidence when publication is authorized and in scope.",
+    evidence: [
+      "Compare affected claims, prerequisites, examples, and procedures with authoritative product behavior, identifying drafts, stale versions or translations, and private values.",
+      "Follow relevant reader journeys through navigation, search, links, anchors, and assets, checking moved or removed addresses and accessible task completion where affected.",
+      "For authorized publication changes, verify reviewed source and artifact identity, preview isolation, promotion prerequisites, and partial-publication recovery.",
+      "Observe affected published pages, base paths, redirects, cache visibility, and search state before claiming delivery; distinguish content review and build results from actual publication.",
+    ],
+    validations: ["docs", "test", "smoke", "check"],
+  },
+  ".agents/validations/monorepo.md": {
+    sources: ["docs/monorepo/README.md", "docs/monorepo/workspace-boundaries.md", "docs/monorepo/package-ownership.md", ".agents/checklists/monorepo.md"],
+    purpose: "Verify affected package and consumer contracts in dependency order without assuming root success or atomic releases establish independent package usability.",
+    evidence: [
+      "Identify affected package owners, public surfaces, allowed dependency edges, and direct or transitive consumers of shared tooling, configuration, or schemas.",
+      "Run relevant package and consumer checks against actual artifacts in prerequisite order, exposing private cross-package imports and hidden root or sibling assumptions.",
+      "Where concurrent tasks or shared outputs change, verify artifact and mutable-cache ownership, isolation, and preservation of independently valid package work.",
+      "Check required old and new consumer combinations through the intended version, migration, and release sequence, recording partial rollout, recovery limits, and remaining integration or publication work.",
+    ],
+    validations: ["lint", "typecheck", "contract", "test", "smoke", "check"],
+  },
 };
 
 export function renderProfileValidation(filePath: string, title: string): string | undefined {

@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.74`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.75`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -172,6 +172,8 @@ Default, operations change, dependency upgrade, and release-readiness validation
 CLI tool, API service, library package, SDK, and worker service validation guides cover installed command results, service lifecycle, packaged public entrypoints, upstream integration, and job acknowledgment or recovery. Required references select existing contracts and checklists for repository types and addons. Root `VALIDATION.md` remains authoritative, and the guides keep simulated integration, untested consumers, and incomplete effects distinct from verified results.
 
 Desktop, web app, browser extension, and plugin validation guides cover installed-app and local-data transitions, browser navigation and state restoration, context-specific capabilities, and host activation or teardown. Their references exist at each emitted density, including the applicable update, browser-state, permission, or extension-point decisions. They distinguish builds and cancellation requests from actual user journeys, released resources, and completed recovery.
+
+Infrastructure module, GitHub Action, docs site, and monorepo validation guides cover resource transitions and consumer compatibility, runner authority and output timing, accurate reader guidance and visible publication, and package dependency or release coordination. They link the interface, environment, permission, publishing, or ownership decisions available at their emitted density. Plans, root commands, and builds remain distinct from applied state, independent consumer behavior, and completed delivery.
 
 ## Repository Type Matrix
 
