@@ -8,6 +8,114 @@ interface TopicContract {
 }
 
 const topicContracts: Readonly<Record<string, TopicContract>> = {
+  "docs/worker-service/job-contract.md": {
+    purpose: "Define what a job means to its producer, worker, and downstream consumers throughout delivery and completion.",
+    source: "docs/worker-service/README.md",
+    decisions: [
+      "Job envelope: UNDECIDED. Specify identity, payload schema and version, tenant context, correlation, and required metadata.",
+      "Preconditions and authority: UNDECIDED. Define who may submit a job and which state must hold before execution.",
+      "Delivery and acknowledgment: UNDECIDED. State delivery guarantees, ordering, and when a worker may acknowledge receipt or completion.",
+      "Completion and side effects: UNDECIDED. Distinguish accepted, running, completed, and failed states and their observable effects.",
+      "Cancellation and timeouts: UNDECIDED. Define deadline expiry, cancellation ownership, and the state left after interruption.",
+      "Schema evolution: UNDECIDED. Explain how old queued jobs are accepted, migrated, or isolated after a contract change.",
+    ],
+  },
+  "docs/worker-service/retry-and-idempotency.md": {
+    purpose: "Specify safe repeated execution when delivery, ownership, or downstream effects fail independently.",
+    source: "docs/worker-service/README.md",
+    decisions: [
+      "Retryable failures: UNDECIDED. Classify transient, permanent, and unknown outcomes without treating every failure as safe to retry.",
+      "Retry budget and timing: UNDECIDED. Define attempt limits, backoff, jitter, deadlines, and the final exhausted state.",
+      "Deduplication scope: UNDECIDED. Bind job identity to tenant and operation, compare payloads, and set the retention window.",
+      "Concurrent ownership: UNDECIDED. Define lease renewal, stale workers, and prevention of competing side effects.",
+      "Outcome and acknowledgment atomicity: UNDECIDED. State how persisted completion relates to external effects and queue acknowledgment.",
+      "Replay and recovery: UNDECIDED. Define repair authority and evidence before replaying jobs with partial or unknown outcomes.",
+    ],
+  },
+  "docs/worker-service/queue-operations.md": {
+    purpose: "Make queue capacity, worker readiness, and failure recovery observable and operable by named owners.",
+    source: "docs/worker-service/README.md",
+    decisions: [
+      "Backlog signals: UNDECIDED. Define depth, oldest-job age, arrival and completion rates, and alert thresholds.",
+      "Capacity and fairness: UNDECIDED. Set concurrency, scaling limits, tenant isolation, and protection of downstream dependencies.",
+      "Poison jobs: UNDECIDED. Define isolation, dead-letter routing, inspection, retention, and replay authority.",
+      "Readiness and dependencies: UNDECIDED. Specify when workers may accept work and how dependency outages affect consumption.",
+      "Shutdown and draining: UNDECIDED. Define graceful stop, in-flight ownership transfer, and evidence that work is not silently abandoned.",
+      "Operational recovery: UNDECIDED. Assign owners for stalled consumers, broker outages, queue restoration, and reconciliation.",
+    ],
+  },
+  "docs/infra-module/module-interface.md": {
+    purpose: "Define the module's owned resources and public interface without hiding shared-resource or state authority.",
+    source: "docs/infra-module/README.md",
+    decisions: [
+      "Module boundary: UNDECIDED. Inventory owned resources, external dependencies, and shared surfaces the module must not take over.",
+      "Inputs and outputs: UNDECIDED. Specify types, defaults, validation, sensitive values, and stable consumer-facing outputs.",
+      "State authority: UNDECIDED. Identify state ownership, concurrency controls, access rights, and recovery authority.",
+      "Lifecycle transitions: UNDECIDED. Describe creation, change, replacement, import, and removal with their expected effects.",
+      "Destructive-change policy: UNDECIDED. Identify irreversible operations, review authority, and recovery limits.",
+      "Compatibility evidence: UNDECIDED. Define interface evolution and consumer checks needed before a module release.",
+    ],
+  },
+  "docs/infra-module/environment-contract.md": {
+    purpose: "Explain how an environment obtains reviewed configuration and authority while remaining isolated from other environments.",
+    source: "docs/infra-module/README.md",
+    decisions: [
+      "Environment isolation: UNDECIDED. Map identities, accounts, regions, networks, namespaces, and state boundaries.",
+      "Promotion and configuration: UNDECIDED. Define reviewed inputs, precedence, artifact promotion, and permitted environment differences.",
+      "Credential authority: UNDECIDED. Name who may plan, apply, or remove resources and how credential references are supplied.",
+      "Dependency assumptions: UNDECIDED. Identify external resources, service availability, and prerequisites for provisioning.",
+      "Capacity and cost boundaries: UNDECIDED. Record resource limits, ownership, and approval for expanding an environment.",
+      "Recovery and teardown: UNDECIDED. Define environment restoration, retained state, and evidence before removing shared or durable resources.",
+    ],
+  },
+  "docs/infra-module/drift-policy.md": {
+    purpose: "Define how differences between declared and actual infrastructure are detected, reviewed, and reconciled.",
+    source: "docs/infra-module/README.md",
+    decisions: [
+      "Drift authority: UNDECIDED. Identify the source of truth and who may accept a change or restore declared state.",
+      "Detection and classification: UNDECIDED. Set inspection cadence and distinguish expected, ignored, unauthorized, and destructive differences.",
+      "Reconciliation policy: UNDECIDED. Decide which changes require review and which, if any, may be corrected automatically.",
+      "Emergency changes: UNDECIDED. Define temporary overrides, approval, expiry, and reconciliation back into the declared source.",
+      "State conflict and recovery: UNDECIDED. Explain how concurrent changes, imports, lost state, and failed repairs are handled.",
+      "Audit evidence: UNDECIDED. Record observed changes, decisions, applied corrections, owners, and unresolved drift.",
+    ],
+  },
+  "docs/data-pipeline/lineage.md": {
+    purpose: "Trace a published dataset from authoritative inputs through transformations to consumers with explicit identity and timing rules.",
+    source: "docs/data-pipeline/README.md",
+    decisions: [
+      "Source authority: UNDECIDED. Name input systems, owners, schema versions, and the source of truth for each important field.",
+      "Dataset grain: UNDECIDED. Define what one row represents, business keys, duplicates, partitions, and join cardinality.",
+      "Transformation lineage: UNDECIDED. Record filters, joins, aggregations, derivations, and dependencies that change meaning.",
+      "Event time and freshness: UNDECIDED. Specify clocks, time zones, watermarks, ingestion delay, and publication expectations.",
+      "Late data and backfills: UNDECIDED. Define correction windows, replay scope, ordering, and effects on already published results.",
+      "Consumer contracts: UNDECIDED. Identify downstream users, dataset versions, and compatibility notice for changed meaning or schemas.",
+    ],
+  },
+  "docs/data-pipeline/quality-gates.md": {
+    purpose: "Make data-quality claims measurable and define what happens when a dataset fails a required gate.",
+    source: "docs/data-pipeline/README.md",
+    decisions: [
+      "Quality dimensions: UNDECIDED. Select completeness, uniqueness, validity, consistency, and freshness checks relevant to consumers.",
+      "Thresholds and measurement: UNDECIDED. Define populations, denominators, windows, expected ranges, and acceptable exceptions.",
+      "Gate enforcement: UNDECIDED. State which failures block publication, warn, or require an explicit override.",
+      "Quarantine and recovery: UNDECIDED. Define isolation of bad rows or batches, repair authority, replay, and restoration of trusted output.",
+      "Drift and false positives: UNDECIDED. Explain schema changes, baseline updates, and review of noisy or obsolete checks.",
+      "Evidence and ownership: UNDECIDED. Record gate results, affected consumers, exception expiry, and who resolves a failure.",
+    ],
+  },
+  "docs/data-pipeline/retention-and-privacy.md": {
+    purpose: "Define where sensitive data may flow, how long copies remain, and how deletion reaches derived and recovery surfaces.",
+    source: "docs/data-pipeline/README.md",
+    decisions: [
+      "Data classification: UNDECIDED. Identify sensitive fields, permitted purposes, and owners across raw and derived datasets.",
+      "Access and exposure: UNDECIDED. Define access boundaries, masking, exports, diagnostics, and restrictions on using production data in examples.",
+      "Retention clocks: UNDECIDED. Set retention periods, the event that starts each clock, and exception ownership.",
+      "Deletion propagation: UNDECIDED. Map deletion to sources, derived tables, indexes, caches, exports, and downstream consumers.",
+      "Backup and replay behavior: UNDECIDED. Explain how restoration or backfills avoid reintroducing data already scheduled for deletion.",
+      "Verification and exceptions: UNDECIDED. Record deletion evidence, residual copies, approved exceptions, and unresolved gaps.",
+    ],
+  },
   "docs/library/public-api.md": {
     purpose: "Define what consumers may rely on without exposing internal implementation choices as permanent public contracts.",
     source: "docs/library/README.md",

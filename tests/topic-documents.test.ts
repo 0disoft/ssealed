@@ -3,6 +3,31 @@ import { templateFilesFor } from "../src/templates/index.js";
 
 describe("topic-specific generated documents", () => {
   it.each([
+    { profile: "worker-service", path: "job-contract.md", decisions: ["Job envelope", "Delivery and acknowledgment", "Completion and side effects"] },
+    { profile: "worker-service", path: "retry-and-idempotency.md", decisions: ["Retryable failures", "Deduplication scope", "Replay and recovery"] },
+    { profile: "worker-service", path: "queue-operations.md", decisions: ["Backlog signals", "Poison jobs", "Shutdown and draining"] },
+    { profile: "infra-module", path: "module-interface.md", decisions: ["Module boundary", "Inputs and outputs", "State authority"] },
+    { profile: "infra-module", path: "environment-contract.md", decisions: ["Environment isolation", "Promotion and configuration", "Credential authority"] },
+    { profile: "infra-module", path: "drift-policy.md", decisions: ["Drift authority", "Detection and classification", "Emergency changes"] },
+    { profile: "data-pipeline", path: "lineage.md", decisions: ["Source authority", "Dataset grain", "Late data and backfills"] },
+    { profile: "data-pipeline", path: "quality-gates.md", decisions: ["Quality dimensions", "Gate enforcement", "Quarantine and recovery"] },
+    { profile: "data-pipeline", path: "retention-and-privacy.md", decisions: ["Data classification", "Retention clocks", "Deletion propagation"] },
+  ] as const)("gives $profile $path actionable operational decisions", ({ profile, path, decisions }) => {
+    for (const files of [
+      templateFilesFor("general", "none", profile, "strict"),
+      templateFilesFor("backend", "none", "generic", "strict", [profile]),
+    ]) {
+      const content = files.find((file) => file.path === `docs/${profile}/${path}`)?.content;
+      expect(content).toBeDefined();
+      for (const decision of decisions) expect(content).toContain(decision);
+      expect(content).toContain(`docs/${profile}/README.md`);
+      expect(content).toContain(`- Repository Type: ${profile}`);
+      expect(content).toContain("UNDECIDED");
+      expect(content).not.toContain("## Repository Type Contract");
+    }
+  });
+
+  it.each([
     { profile: "library", path: "public-api.md", decisions: ["Supported entry points", "Inputs and defaults", "Ownership and lifecycle"] },
     { profile: "library", path: "semver.md", decisions: ["Compatibility promise", "Change classification", "Deprecation and removal"] },
     { profile: "library", path: "compatibility.md", decisions: ["Consumer matrix", "Dependency constraints", "Compatibility evidence"] },

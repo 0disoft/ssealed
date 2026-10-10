@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.33`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.34`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -135,8 +135,11 @@ Repository types describe the shape of the repository. They are intentionally se
 - `sdk`: adds SDK public API, compatibility, examples, checklist, validation, and agent-skill documents.
   Shared guidance lives in `docs/sdk/README.md`. Individual documents cover setup and operation behavior, compatibility with consumers and upstream interfaces, and examples that use the published SDK with explicit prerequisites and cleanup.
 - `worker-service`: adds job contract, retry/idempotency, queue operations, checklist, validation, and agent-skill documents.
+  Individual documents define job completion and acknowledgment, retry ownership and recovery, and backlog, draining, and poison-job operations.
 - `infra-module`: adds module interface, environment contract, drift policy, checklist, validation, and agent-skill documents.
+  Individual documents define resource and state authority, environment isolation and promotion, and reviewed reconciliation of declared and actual state.
 - `data-pipeline`: adds lineage, quality gates, retention/privacy, checklist, validation, and agent-skill documents.
+  Individual documents define dataset grain and backfills, measurable publication gates and quarantine, and retention or deletion across derived and recovery copies.
 - `github-action`: adds action contract, inputs/outputs, permissions, checklist, validation, and agent-skill documents.
 - `browser-extension`: adds extension contract, permissions, content-script boundaries, checklist, validation, and agent-skill documents.
 - `plugin`: adds host contract, extension points, compatibility, checklist, validation, and agent-skill documents.
