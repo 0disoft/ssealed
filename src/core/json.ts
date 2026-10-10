@@ -27,6 +27,47 @@ export function findJsonObjectProperty(content: string, name: string): JsonValue
   return locateJsonObjectProperty(content, name).range;
 }
 
+export function findJsonArrayElement(content: string, index: number): JsonValueRange | undefined {
+  if (!Number.isInteger(index) || index < 0) return undefined;
+  let offset = skipJsonWhitespace(content, 0);
+  if (content[offset] !== "[") throw new Error("Expected a validated JSON array.");
+  offset++;
+  for (let current = 0; offset < content.length; current++) {
+    const start = skipJsonWhitespace(content, offset);
+    if (content[start] === "]") return undefined;
+    const end = scanJsonValue(content, start);
+    if (current === index) return { start, end };
+    offset = skipJsonWhitespace(content, end);
+    if (content[offset] === ",") offset++;
+  }
+  return undefined;
+}
+
+export function removeJsonObjectProperty(content: string, name: string): string {
+  const opening = skipJsonWhitespace(content, content.startsWith(utf8Bom) ? 1 : 0);
+  if (content[opening] !== "{") throw new Error("Expected a validated JSON object.");
+  let offset = opening + 1;
+  let removed = false;
+  const retained: string[] = [];
+  while (offset < content.length) {
+    const memberStart = offset;
+    offset = skipJsonWhitespace(content, offset);
+    if (content[offset] === "}") {
+      return removed ? `${content.slice(0, opening + 1)}${retained.join(",")}${content.slice(offset)}` : content;
+    }
+    const keyEnd = scanJsonString(content, offset);
+    const key: unknown = JSON.parse(content.slice(offset, keyEnd));
+    offset = skipJsonWhitespace(content, keyEnd);
+    if (content[offset] !== ":") throw new Error("Expected a validated JSON property.");
+    const end = scanJsonValue(content, skipJsonWhitespace(content, offset + 1));
+    offset = skipJsonWhitespace(content, end);
+    if (key === name) removed = true;
+    else retained.push(content.slice(memberStart, offset));
+    if (content[offset] === ",") offset++;
+  }
+  throw new Error("Could not locate the end of a validated JSON object.");
+}
+
 export function setJsonObjectProperty(content: string, name: string, serializedValue: string, indent: string | number = 0): string {
   const property = locateJsonObjectProperty(content, name);
   if (property.range !== undefined) {

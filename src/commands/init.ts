@@ -8,7 +8,7 @@ import { filesystemReadConcurrency, mapWithConcurrency } from "../core/concurren
 import { SsealedError } from "../core/errors.js";
 import { findGitignoreManagedBlocks } from "../core/gitignore-block.js";
 import { writeTextFileAtomically } from "../core/file-writer.js";
-import { parseJsonObject, preserveJsonBom } from "../core/json.js";
+import { findJsonArrayElement, findJsonObjectProperty, parseJsonObject, removeJsonObjectProperty, setJsonObjectProperty } from "../core/json.js";
 import { executeScaffold, readPreviousManifest, withScaffoldReadLock, withScaffoldWriteLock, type PreviousManifestSettings, type PreviousManifestState } from "../core/scaffold.js";
 import { assertNoSymlinkInPath, resolveInsideTarget } from "../core/path-safety.js";
 import { getScaffoldInterruptContext } from "../core/signals.js";
@@ -449,8 +449,7 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
   }
   const generatedChecksum = typeof packageFile.generatedChecksum === "string" ? packageFile.generatedChecksum : previousPackage.generatedChecksum;
   const initialChecksum = typeof packageFile.initialChecksum === "string" ? packageFile.initialChecksum : previousPackage.initialChecksum;
-  const nextPackageFile: Record<string, unknown> = {
-    ...packageFile,
+  const changedPackageFields: Record<string, unknown> = {
     checksum: acceptedChecksum,
     acceptedChecksum,
     generatedChecksum,
@@ -459,16 +458,25 @@ async function runEject(target: string, json: boolean, dryRun: boolean): Promise
     presence: "optional",
     status: "active",
   };
-  delete nextPackageFile.managedScripts;
-  const nextManifest = {
-    ...manifest,
-    generatedAt: new Date().toISOString(),
-    files: manifest.files.map((file) => (file === packageFile ? nextPackageFile : file)),
-  };
+  const filesRange = findJsonObjectProperty(manifestContent, "files");
+  if (filesRange === undefined) throw new SsealedError("WRITE_FAILED", "Could not locate manifest file records for runner ejection.");
+  const filesContent = manifestContent.slice(filesRange.start, filesRange.end);
+  const packageRange = findJsonArrayElement(filesContent, manifest.files.indexOf(packageFile));
+  if (packageRange === undefined) throw new SsealedError("WRITE_FAILED", "Could not locate the package.json manifest record for runner ejection.");
+  let packageRecord = removeJsonObjectProperty(filesContent.slice(packageRange.start, packageRange.end), "managedScripts");
+  for (const [name, value] of Object.entries(changedPackageFields)) {
+    if (packageFile[name] !== value) packageRecord = setJsonObjectProperty(packageRecord, name, JSON.stringify(value));
+  }
+  const nextFiles = `${filesContent.slice(0, packageRange.start)}${packageRecord}${filesContent.slice(packageRange.end)}`;
+  const nextManifest = setJsonObjectProperty(
+    setJsonObjectProperty(manifestContent, "files", nextFiles),
+    "generatedAt",
+    JSON.stringify(new Date().toISOString()),
+  );
 
   if (!dryRun) {
     const manifestMode = (await lstat(manifestPath)).mode;
-    await writeTextFileAtomically(manifestPath, preserveJsonBom(manifestContent, `${JSON.stringify(nextManifest, null, 2)}\n`), {
+    await writeTextFileAtomically(manifestPath, nextManifest, {
       mode: manifestMode,
       onCommit: () => getScaffoldInterruptContext()?.markCommitted(),
       beforeCommit: async () => {

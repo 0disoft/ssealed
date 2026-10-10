@@ -159,6 +159,49 @@ describe("UTF-8 BOM compatibility", () => {
   });
 });
 
+describe("eject manifest preservation", () => {
+  it.each(["first", "middle", "last"] as const)("preserves unrelated tokens when the package record is $0", async (position) => {
+    const dir = await tempDir();
+    expect((await runJson(["init", dir, "--scope", "general", "--density", "minimal", "--runner", "npm"])).code).toBe(0);
+    const manifestPath = path.join(dir, ".ssealed", "manifest.json");
+    const packagePath = path.join(dir, "package.json");
+    const packageBytes = await readFile(packagePath);
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown> & { files: Record<string, unknown>[] };
+    const packageFile = manifest.files.find((file) => file.path === "package.json") as Record<string, unknown>;
+    const otherFiles = manifest.files.filter((file) => file !== packageFile);
+    if (position === "first") {
+      manifest.generatorVersion = "0.6.1";
+      manifest.version = "0.6.1";
+      delete manifest.schemaVersion;
+      for (const key of ["acceptedChecksum", "generatedChecksum", "initialChecksum", "presence", "status"]) delete packageFile[key];
+    }
+    const extension = '"extension" : {"externalId":9007199254740993,"tiny":1e-400,"huge":1e400,"nested":[{"marker":"} , ]"}]}';
+    const unrelated = `${JSON.stringify(otherFiles[0]).slice(0, -1)},${extension}}`;
+    const entries = otherFiles.map((file, index) => index === 0 ? unrelated : JSON.stringify(file));
+    const selected = `{"managed\\u0053cripts" : {"test":"ignored-first"},${JSON.stringify(packageFile).slice(1, -1)},${extension}}`;
+    const selectedIndex = position === "first" ? 0 : position === "last" ? entries.length : Math.floor(entries.length / 2);
+    entries.splice(selectedIndex, 0, selected);
+    const header = JSON.stringify({ ...manifest, files: undefined }).slice(1, -1);
+    const original = `\uFEFF{${header},${extension},"\\u0066iles" : [${entries.join(",\r\n")}]}\r\n`;
+    await writeFile(manifestPath, original);
+    expect((await runJson(["eject", "runner", dir, "--dry-run"])).code).toBe(0);
+    expect(await readFile(manifestPath, "utf8")).toBe(original);
+    expect((await runJson(["eject", "runner", dir])).code).toBe(0);
+    const actual = await readFile(manifestPath, "utf8");
+    expect(actual.startsWith("\uFEFF")).toBe(true);
+    expect(actual).toContain(unrelated);
+    expect(actual.split(extension)).toHaveLength(4);
+    expect(actual).toContain('"\\u0066iles" : ');
+    const updated = JSON.parse(actual.slice(1)) as { files: Record<string, unknown>[] };
+    const owned = updated.files.find((file) => file.path === "package.json");
+    expect(owned).toMatchObject({ ownership: "project-owned", presence: "optional", status: "active" });
+    expect(owned).not.toHaveProperty("managedScripts");
+    expect(actual).not.toContain("ignored-first");
+    expect(await readFile(packagePath)).toEqual(packageBytes);
+    expect((await runJson(["doctor", dir, "--strict"])).code).toBe(0);
+  });
+});
+
 describe("manifest setting consistency", () => {
   it("rejects an addon that repeats the primary repository type before commands use it", async () => {
     const dir = await tempDir();
