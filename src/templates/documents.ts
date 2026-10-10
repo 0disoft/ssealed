@@ -1,5 +1,6 @@
 import type { Addon, Density, Profile, Scope } from "../core/types.js";
 import { documentMetadata } from "./document-format.js";
+import { renderCommonChecklist } from "./common-checklists.js";
 import { renderProfileSkill } from "./profile-skills.js";
 import { renderScopeChecklist } from "./scope-checklists.js";
 import { renderScopeSkill } from "./scope-skills.js";
@@ -551,10 +552,9 @@ function profileReviewBlockers(profile: Profile): readonly string[] {
 }
 
 export function checklistDoc(title: string, filePath: string, scope: Scope = "general"): string {
-  const scopedChecklist = renderScopeChecklist(filePath, title, scope);
-  if (scopedChecklist !== undefined) return scopedChecklist;
-  const lower = title.toLowerCase();
-  const checklist = checklistContent(lower);
+  const registeredChecklist = renderScopeChecklist(filePath, title, scope) ?? renderCommonChecklist(filePath, title);
+  if (registeredChecklist !== undefined) return registeredChecklist;
+  const checklist = genericChecklistContent();
 
   return `# ${title}
 
@@ -575,68 +575,11 @@ ${checklist.items.map((item) => `- ${item}`).join("\n")}
 `;
 }
 
-function checklistContent(lowerTitle: string): {
+function genericChecklistContent(): {
   readonly failureModes: string;
   readonly items: readonly string[];
   readonly validations: readonly string[];
 } {
-  if (lowerTitle.includes("security")) {
-    return {
-      failureModes: "Auth bypass, authorization gaps, tenant leakage, unsafe inputs or outputs, secret exposure, log leakage, and risky external integrations.",
-      items: [
-        "Authentication and authorization checks are owned by the correct boundary.",
-        "Tenant, organization, and user ownership checks cannot be bypassed through alternate paths.",
-        "Inputs and outputs are validated at trust boundaries.",
-        "Secrets are not committed, logged, copied into examples, or exposed through generated artifacts.",
-        "External integrations document scopes, retries, error handling, and redaction.",
-        "Tracked secret files and `.gitignore` exceptions are reviewed.",
-      ],
-      validations: ["lint", "test", "smoke", "check"],
-    };
-  }
-  if (lowerTitle.includes("performance")) {
-    return {
-      failureModes: "Latency regression, oversized payloads, excess queries, missing cache policy, bundle growth, background job pressure, and hot-path churn.",
-      items: [
-        "The affected user journey or hot path is named.",
-        "Latency, payload, query count, cache, bundle, or job budget is stated or marked UNDECIDED.",
-        "Repeated I/O, cross-boundary calls, and avoidable allocations are reviewed.",
-        "Cache behavior includes invalidation, freshness, and fallback expectations.",
-        "Performance validation evidence or a reason for skipping it is included.",
-      ],
-      validations: ["test", "smoke", "check"],
-    };
-  }
-  if (lowerTitle.includes("ops")) {
-    return {
-      failureModes: [
-        "CI drift, unsafe release, unclear rollback, missing observability, config drift,",
-        "secret handling gaps, backup risk, and incident response gaps.",
-      ].join(" "),
-      items: [
-        "CI checks and local validation names are aligned with `VALIDATION.md`.",
-        "Release and rollback conditions are explicit before deployment.",
-        "Logs, metrics, traces, dashboards, alerts, and health checks cover the changed behavior.",
-        "Config and secrets changes have owners, defaults, validation, and leak response.",
-        "Backup, restore, and incident-response docs are updated when operational risk changes.",
-        "Repository hygiene changes are reviewed for line endings, binary diffs, tracked secrets, and ignored artifacts.",
-      ],
-      validations: ["docs", "smoke", "check"],
-    };
-  }
-  if (lowerTitle.includes("dependency")) {
-    return {
-      failureModes: "Unnecessary dependency, weak maintenance, license mismatch, vulnerability exposure, runtime or bundle impact, and high removal cost.",
-      items: [
-        "The dependency need is tied to a source-of-truth requirement.",
-        "Native alternatives, existing dependencies, and smaller packages were considered.",
-        "License, maintenance health, release cadence, and security posture are reviewed.",
-        "Runtime, bundle, install, transitive dependency, and platform impacts are understood.",
-        "Major upgrades include migration notes, rollback or pinning strategy, and removal cost.",
-      ],
-      validations: ["lint", "typecheck", "test", "check"],
-    };
-  }
   return {
     failureModes: "Source-of-truth drift, missing validation, missing tests, rollback gaps, and ownership ambiguity.",
     items: [
