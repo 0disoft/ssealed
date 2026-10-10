@@ -222,7 +222,7 @@ describe("managed surface integrity", () => {
     expect(conflicting.code).toBe(1);
     expect(conflicting.payload.error).toMatchObject({ code: "CONFLICTING_ADDON_OPTIONS" });
 
-    const cleared = await runJson(["upgrade", dir, "--clear-addons", "--yes"]);
+    const cleared = await runJson(["upgrade", dir, "--clear-addons", "--yes", "--force"]);
     expect(cleared.code).toBe(0);
     expect(cleared.payload.addons).toEqual([]);
     expect(await readFile(addonDoc, "utf8")).toBe(originalDoc);
@@ -236,7 +236,7 @@ describe("managed surface integrity", () => {
   it("can promote the last addon to the primary repository type", async () => {
     const dir = await tempDir();
     expect((await runJson(["init", dir, "--scope", "general", "--repo-type", "cli-tool", "--addon", "docs-site", "--yes"])).code).toBe(0);
-    const upgraded = await runJson(["upgrade", dir, "--repo-type", "docs-site", "--yes"]);
+    const upgraded = await runJson(["upgrade", dir, "--repo-type", "docs-site", "--yes", "--force"]);
     expect(upgraded.code).toBe(0);
     expect(upgraded.payload).toMatchObject({ profile: "docs-site", addons: [] });
     expect((await runJson(["doctor", dir])).code).toBe(0);
@@ -248,7 +248,7 @@ describe("managed surface integrity", () => {
     const docPath = path.join(dir, "docs", "docs-site", "information-architecture.md");
     const customDoc = "# Project documentation\n\nKeep this structure.\n";
     await writeFile(docPath, customDoc);
-    const upgraded = await runJson(["upgrade", dir, "--repo-type", "docs-site"]);
+    const upgraded = await runJson(["upgrade", dir, "--repo-type", "docs-site", "--force"]);
     expect(upgraded).toMatchObject({ code: 0, payload: { profile: "docs-site", addons: ["github-action"] } });
     expect(await readFile(docPath, "utf8")).toBe(customDoc);
     expect((await runJson(["doctor", dir, "--strict"])).code).toBe(0);

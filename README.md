@@ -36,7 +36,7 @@ bun run check
 
 ## Release Automation
 
-Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.21`, and GitHub Actions will run the release workflow.
+Releases are tag-driven. Push a version tag that matches `package.json`, such as `v0.7.22`, and GitHub Actions will run the release workflow.
 
 The release workflow:
 
@@ -90,6 +90,7 @@ ssealed init --help
 `adopt` initializes `.ssealed/manifest.json` for an existing repository while preserving differing regular files as `project-owned`; missing scaffold files are created, and `.gitignore` still receives the managed ignore block.
 `update` reapplies the existing manifest settings, accepts project-owned edits to seeded documents, keeps deleted seeded documents retired, and refreshes manifest metadata without changing `scope`, repository type, addons, `density`, or `runner`.
 `upgrade` is the explicit path for changing scaffold settings.
+If an unchanged previously generated seeded file differs from the upgraded template, `upgrade` reports a conflict and writes nothing until you rerun it with `--force`. This prevents accepting new settings while retaining obsolete generated instructions. Actual user edits remain preserved, including with `--force`, and the result identifies customized files requiring manual review against the upgraded settings.
 `update`, `upgrade`, and `eject` require an existing target. A missing target returns `MISSING_MANIFEST` without creating its directory or missing parent directories. Invalid `eject` subjects are rejected before filesystem changes.
 `doctor` checks scaffold lifecycle metadata. It accepts normal project evolution for seeded documents by default. Use `doctor --strict` when you intentionally want checksum drift detection against accepted manifest content.
 Unreadable file checks include the failure reason in JSON and human output, such as a refused symlink path or a filesystem permission error.

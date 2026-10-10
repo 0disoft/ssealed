@@ -207,6 +207,21 @@ export async function planTemplateFile(params: {
   }
 
   if (ownership === "seeded" && params.command !== "init") {
+    if (params.command === "upgrade" && previouslyGenerated === true) {
+      return {
+        ...params.template,
+        action: "conflict",
+        content: generatedContent,
+        existingContent,
+        previouslyGenerated,
+        ownership,
+        presence,
+        previousChecksum,
+        previousGeneratedChecksum,
+        previousInitialChecksum,
+        reason: "Unmodified generated file needs to change for this upgrade. Rerun upgrade with --force to update it before accepting the new settings.",
+      };
+    }
     return {
       ...params.template,
       action: "customized",
@@ -218,7 +233,9 @@ export async function planTemplateFile(params: {
       previousChecksum,
       previousGeneratedChecksum,
       previousInitialChecksum,
-      reason: "Seeded file has project-owned edits and is no longer treated as scaffold drift.",
+      reason: params.command === "upgrade"
+        ? "Seeded file has project-owned edits; review it manually against the upgraded scaffold settings."
+        : "Seeded file has project-owned edits and is no longer treated as scaffold drift.",
     };
   }
 

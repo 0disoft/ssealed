@@ -59,7 +59,7 @@ describe("UTF-8 BOM compatibility", () => {
       expect((await runJson(["update", dir, "--yes", ...flags])).code).toBe(0);
       await expect(readFile(manifestPath, "utf8")).resolves.toBe(original);
     }
-    expect((await runJson(["upgrade", dir, "--density", "minimal", "--yes"])).code).toBe(0);
+    expect((await runJson(["upgrade", dir, "--density", "minimal", "--yes", "--force"])).code).toBe(0);
     const upgraded = await readFile(manifestPath, "utf8");
     expect(upgraded.startsWith("\uFEFF")).toBe(true);
     expect((await runJson(["eject", "runner", dir, "--dry-run"])).code).toBe(0);
