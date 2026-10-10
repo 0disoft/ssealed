@@ -526,6 +526,23 @@ describe("stale lock ownership", () => {
 });
 
 describe("bounded filesystem work", () => {
+  it.each([{ reason: new Error("first failure") }, { reason: undefined }])("preserves the first concurrent failure ($reason)", async ({ reason }) => {
+    const later = Promise.withResolvers<void>();
+    const started: number[] = [];
+    const operation = mapWithConcurrency([0, 1, 2], 2, async (value) => {
+      started.push(value);
+      if (value === 0) {
+        throw reason;
+      }
+      await later.promise;
+      throw new Error("later failure");
+    });
+    const rejection = expect(operation).rejects.toBe(reason);
+    later.resolve();
+    await rejection;
+    expect(started).toEqual([0, 1]);
+  });
+
   it("limits concurrent operations while preserving result order", async () => {
     let active = 0;
     let peak = 0;
@@ -681,6 +698,27 @@ describe("file publication integrity", () => {
 });
 
 describe("lock and interrupt ownership", () => {
+  it.each(["read", "write"] as const)("propagates undefined task failures after %s lock cleanup", async (mode) => {
+    const dir = await tempDir();
+    const task = async (): Promise<never> => { throw undefined; };
+    const operation = mode === "read" ? withScaffoldReadLock(dir, task) : withScaffoldWriteLock(dir, false, task);
+    await expect(operation).rejects.toBeUndefined();
+    await expect(lstat(path.join(dir, ".ssealed-init.lock"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(withScaffoldWriteLock(dir, false, async () => "retry succeeded")).resolves.toBe("retry succeeded");
+  });
+
+  it("retains undefined task failure alongside a lock cleanup failure", async () => {
+    const dir = await tempDir();
+    const lockPath = path.join(dir, ".ssealed-init.lock");
+    const operation = withScaffoldWriteLock(dir, false, async () => {
+      await rm(lockPath);
+      await writeFile(lockPath, '{"lockId":"replacement"}\n');
+      throw undefined;
+    });
+    await expect(operation).rejects.toMatchObject({ errors: [undefined, expect.objectContaining({ code: "LOCK_EXISTS" })] });
+    await expect(readFile(lockPath, "utf8")).resolves.toContain('"replacement"');
+  });
+
   it("keeps signal exit codes in JSON mode", async () => {
     for (const [signal, exitCode] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
       const dir = await tempDir();

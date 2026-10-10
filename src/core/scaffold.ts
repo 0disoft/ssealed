@@ -609,6 +609,7 @@ async function acquireScaffoldLock<T>(
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   let acquired = false;
   let result: T | undefined;
+  let taskFailed = false;
   let taskError: unknown;
   try {
     handle = await open(lockPath, "wx");
@@ -648,6 +649,7 @@ async function acquireScaffoldLock<T>(
     getScaffoldInterruptContext()?.throwIfInterrupted();
     result = await task();
   } catch (error) {
+    taskFailed = true;
     taskError = error;
   }
 
@@ -668,10 +670,10 @@ async function acquireScaffoldLock<T>(
   }
 
   if (cleanupErrors.length > 0) {
-    const failures = taskError === undefined ? cleanupErrors : [taskError, ...cleanupErrors];
+    const failures = taskFailed ? [taskError, ...cleanupErrors] : cleanupErrors;
     throw new AggregateError(failures, `Scaffold lock cleanup failed: ${cleanupErrors.map((error) => error.message).join("; ")}`);
   }
-  if (taskError !== undefined) {
+  if (taskFailed) {
     throw taskError;
   }
   return result as T;

@@ -20,8 +20,10 @@ export async function mapWithConcurrency<T, R>(
       try {
         results[index] = await mapper(values[index] as T, index);
       } catch (error) {
-        failed = true;
-        failure = error;
+        if (!failed) {
+          failed = true;
+          failure = error;
+        }
       }
     }
   };
