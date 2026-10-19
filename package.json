@@ -42,15 +42,10 @@
     "smoke:packed-install": "node scripts/smoke-packed-install.mjs",
     "smoke": "bun run smoke:node-runtime && bun run smoke:bun-runtime && bun run smoke:package-surface && bun run smoke:packed-install",
     "check": "bun run typecheck && bun run test && bun run build && bun run smoke",
-    "dev": "tsx src/cli.ts",
-    "mf": "mf",
-    "mustflow:check": "mf version --check",
-    "mustflow:update:dry-run": "bun update mustflow && mf update --dry-run",
-    "mustflow:update:apply": "bun update mustflow && mf update --apply"
+    "dev": "tsx src/cli.ts"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "mustflow": "^2.128.0",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
