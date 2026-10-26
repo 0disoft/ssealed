@@ -380,16 +380,26 @@ describe("scope generation", () => {
     expect(codeowners).not.toContain("\n* @REPLACE_WITH_OWNER");
   });
 
-  it("keeps generated OpenAPI and JSON examples aligned for pagination and create requests", async () => {
-    const dir = await scaffold("backend");
-    const openapi = await readFile(path.join(dir, "api", "openapi.yaml"), "utf8");
-    const paginatedExample = await readFile(path.join(dir, "api", "examples", "paginated-response.json"), "utf8");
-    expect(paginatedExample).toContain('"limit"');
-    expect(openapi).toContain("required: [limit, nextCursor]");
-    expect(openapi).toContain("limit:");
-    expect(openapi).toContain("CreateResourceRequest:");
-    expect(openapi).toMatch(/Idempotency-Key[\s\S]*required: true/u);
-    expect(openapi).toMatch(/post:[\s\S]*requestBody:[\s\S]*CreateResourceRequest/u);
+  it("leaves generated API and database contracts unadopted and free of invented domain policies", () => {
+    for (const scope of scopes) {
+      for (const density of densities) {
+        const files = templateFilesFor(scope, "none", "api-service", density);
+        const api = files.find((file) => file.path.endsWith("openapi.yaml"))!;
+        expect(api.content).toContain("paths: {}");
+        expect(api.content).toContain("x-ssealed-status: draft");
+        expect(api.content).not.toMatch(/bearerAuth|securitySchemes|Idempotency-Key|\/v1\/resources|nextCursor/u);
+        const database = files.find((file) => file.path === "db/schema.dbml");
+        if (database !== undefined) {
+          expect(database.content).toContain("UNDECIDED");
+          expect(database.content).not.toMatch(/\bTable\s|database_type:|\buuid\b|\borganizations?\b/u);
+        }
+        for (const example of files.filter((file) => file.path.includes("/examples/") && file.path.endsWith(".json"))) {
+          const payload = JSON.parse(example.content);
+          expect(Object.keys(payload)).toEqual(["$comment"]);
+          expect(payload.$comment).toContain("not an adopted wire format");
+        }
+      }
+    }
   });
 
   it("does not generate duplicate template paths for any scope and runner", () => {

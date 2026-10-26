@@ -24,6 +24,7 @@ import { renderScopeDocumentIndex } from "./scope-document-index.js";
 import { renderValidationGuideIndex } from "./validation-guide-index.js";
 import { renderChecklistIndex } from "./checklist-index.js";
 import { renderSkillIndex } from "./skill-index.js";
+import { apiResponseExample } from "./api-contracts.js";
 
 interface FileSpec {
   readonly path: string;
@@ -318,24 +319,11 @@ function renderFile(file: FileSpec, scope: Scope, profile: Profile, addons: read
     case "openapi":
       return { ...file, content: openApiSkeleton() };
     case "success-json":
-      return { ...file, content: `${JSON.stringify({ data: { id: "resource_UNDECIDED", type: "Resource" } }, null, 2)}\n` };
+      return { ...file, content: apiResponseExample("success") };
     case "error-json":
-      return {
-        ...file,
-        content: `${JSON.stringify(
-          {
-            error: {
-              code: "UNDECIDED_ERROR",
-              message: "A safe public error message.",
-              requestId: "req_UNDECIDED",
-            },
-          },
-          null,
-          2,
-        )}\n`,
-      };
+      return { ...file, content: apiResponseExample("error") };
     case "paginated-json":
-      return { ...file, content: `${JSON.stringify({ data: [], page: { limit: 25, nextCursor: null } }, null, 2)}\n` };
+      return { ...file, content: apiResponseExample("paginated") };
     case "dbml":
       return { ...file, content: dbml() };
     case "frontend-design":

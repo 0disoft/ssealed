@@ -1,6 +1,7 @@
 import type { Addon, Density, FileKind, Profile, Scope, TemplateFile } from "../core/types.js";
 import { agentSkill, checklistDoc, openApiSkeleton, profileDoc, validationDoc } from "./documents.js";
 import { renderTopicDocument } from "./topic-documents.js";
+import { apiResponseExample } from "./api-contracts.js";
 
 interface ProfileFileSpec {
   readonly path: string;
@@ -201,24 +202,11 @@ function renderProfileFile(file: ProfileFileSpec, profile: Addon, scope: Scope):
     case "openapi":
       return { ...file, content: openApiSkeleton() };
     case "success-json":
-      return { ...file, content: `${JSON.stringify({ data: { id: "resource_UNDECIDED", type: "Resource" } }, null, 2)}\n` };
+      return { ...file, content: apiResponseExample("success") };
     case "error-json":
-      return {
-        ...file,
-        content: `${JSON.stringify(
-          {
-            error: {
-              code: "UNDECIDED_ERROR",
-              message: "A safe public error message.",
-              requestId: "req_UNDECIDED",
-            },
-          },
-          null,
-          2,
-        )}\n`,
-      };
+      return { ...file, content: apiResponseExample("error") };
     case "paginated-json":
-      return { ...file, content: `${JSON.stringify({ data: [], page: { limit: 25, nextCursor: null } }, null, 2)}\n` };
+      return { ...file, content: apiResponseExample("paginated") };
     case "profile-doc":
       return { ...file, content: renderTopicDocument(file.path, file.title, profile) ?? profileDoc(file.title, profile) };
   }
