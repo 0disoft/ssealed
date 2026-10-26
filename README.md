@@ -69,6 +69,7 @@ ssealed update [target]
 ssealed upgrade [target]
 ssealed doctor [target]
 ssealed doctor [target] --strict
+ssealed doctor [target] --links
 ssealed eject runner [target] [--dry-run]
 ssealed init [target] --repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo
 ssealed init [target] --addon github-action --addon docs-site
@@ -97,6 +98,7 @@ Omitting `[target]` or passing `.` selects the current directory. An explicitly 
 If an unchanged previously generated seeded file differs from the upgraded template, `upgrade` reports a conflict and writes nothing until you rerun it with `--force`. This prevents accepting new settings while retaining obsolete generated instructions. Actual user edits remain preserved, including with `--force`, and the result identifies customized files requiring manual review against the upgraded settings.
 `update`, `upgrade`, and `eject` require an existing target. A missing target returns `MISSING_MANIFEST` without creating its directory or missing parent directories. Invalid `eject` subjects are rejected before filesystem changes.
 `doctor` checks scaffold lifecycle metadata. It accepts normal project evolution for seeded documents by default. Use `doctor --strict` when you intentionally want checksum drift detection against accepted manifest content.
+`doctor --links` is opt-in and checks local Markdown links in manifest-tracked `.md` sources: inline destinations and reference definitions. Relative paths resolve from the containing document, while `/` paths resolve from the repository root. URLs, heading or query-only links, fenced code examples, and HTML comments are skipped. Findings report source path, line, target, reason, and repair instruction, and missing, unsafe, or unreadable destinations exit 1. The check writes nothing and leaves default `doctor` and `--strict` behavior unchanged; it does not check heading anchors, HTML links, or full Markdown semantic readiness.
 Unreadable file checks include the failure reason in JSON and human output, such as a refused symlink path or a filesystem permission error.
 `eject runner` marks an npm or pnpm `package.json` runner block as explicitly project-owned in `.ssealed/manifest.json`. Use `--dry-run` to inspect that ownership transfer without changing the manifest.
 Repeating `eject runner` after ownership is already project-owned reports `unchanged` in both human and JSON output and leaves the manifest and package files untouched.
@@ -118,11 +120,13 @@ Mermaid diagrams at standard and strict density contain topic-specific draft vie
 
 - `backend`: common scaffold plus backend docs, `api/openapi.yaml`, DBML, backend skills, backend checklists, and backend validations.
 - `frontend`: common scaffold plus `docs/frontend/FRONTEND_DESIGN.md`, consumed backend API contracts, frontend skills, frontend checklists, and frontend validations.
-- `fullstack`: common plus backend and frontend surfaces. It does not generate `contracts/backend-api/` because `api/openapi.yaml` is the source of truth.
+- `fullstack`: common plus backend and frontend surfaces. It does not generate `contracts/backend-api/`; `api/openapi.yaml` is the fullstack-owned API draft.
 - `general`: common product, architecture, engineering, operational, validation, checklist, and agent scaffolds.
 - `mobile`: common scaffold plus mobile product surface, platform support, offline/sync, store release, mobile skill, checklist, and validation documents.
 - `infra`: common scaffold plus infrastructure contract, environment, change-plan, drift, rollback, infra skill, checklist, and validation documents. It does not generate runtime infrastructure code.
 - `data`: common scaffold plus data pipeline contract, lineage, quality, privacy, retention, data skill, checklist, and validation documents.
+
+Generated API and DB files are neutral drafts. `api/openapi.yaml` contains `paths: {}` and `x-ssealed-status: draft`; `db/schema.dbml` carries a project note without tables or an engine; and JSON example paths remain as `$comment`-only undecided placeholders rather than response payloads. Normal ownership logic preserves user edits and does not automatically replace existing documents.
 
 Mobile, infrastructure, and data scope documents contain topic-specific decisions. Mobile documents cover product boundaries, supported platforms, offline conflicts, and release recovery; infrastructure documents cover resource and state authority, environment isolation, reviewed execution, drift, and recoverability; data documents cover delivery guarantees, lineage, publication gates, and deletion across derived and recovery copies. Each topic points to its scope's README. Density controls which documents exist, and normal seeded-file protections continue to preserve project edits and retired documents.
 
@@ -130,7 +134,7 @@ Backend scope does not generate frontend docs because ownership drift makes agen
 
 Backend and fullstack documents contain distinct decision prompts for server boundaries, identity verification, resource permissions, stored-state authority, HTTP effects and completion, public errors, telemetry, migrations, security, API evolution, and data integrity. Minimal overviews keep unresolved error policy in the documents that exist; higher densities point to the dedicated error policy. Strict evolution and integrity documents point to their applicable API and persistence policies. These prompts do not select a framework, identity provider, database, or accepted project policy, and existing seeded-file protections remain in place.
 
-Frontend design leaves component layers and shared-state policies as project decisions. API integration documents point to the consumed `contracts/backend-api/openapi.yaml` in frontend scope and the owned `api/openapi.yaml` in fullstack scope. The consumed-contract guide records provenance and update ownership; strict accessibility and state/cache documents cover task completion, evidence limits, response freshness, identity isolation, and recovery. Existing paths and density remain unchanged, and scaffold updates continue to preserve edited or retired seeded documents.
+Frontend design leaves component layers and shared-state policies as project decisions. API integration documents point to the consumed `contracts/backend-api/openapi.yaml` in frontend scope and the owned `api/openapi.yaml` draft in fullstack scope. The consumed-contract guide records provenance and update ownership; strict accessibility and state/cache documents cover task completion, evidence limits, response freshness, identity isolation, and recovery. Existing paths and density remain unchanged, and scaffold updates continue to preserve edited or retired seeded documents.
 
 Operations documents turn critical journeys and recovery budgets into specific decisions for telemetry, CI scope and cost, artifact promotion, recovery eligibility, active configuration, secret lifecycle, demonstrated restoration, and incident response. Each detailed policy, including strict disaster-recovery and service-level documents, points to the common operational contract. All values and owners remain unresolved until the project supplies decisions and evidence; document density and seeded-file protections are preserved.
 
@@ -189,7 +193,7 @@ Repository types describe the shape of the repository. They are intentionally se
 
 - `generic`: default behavior. Generates no repository-shape-specific files.
 - `cli-tool`: adds CLI command, configuration, output, exit-code, shell-completion, checklist, validation, and agent-skill documents.
-- `api-service`: adds API service lifecycle, idempotency, rate-limit, SLO, checklist, validation, and agent-skill documents. If the selected scope does not already own `api/openapi.yaml`, the repository type adds an OpenAPI skeleton and API response examples.
+- `api-service`: adds API service lifecycle, idempotency, rate-limit, SLO, checklist, validation, and agent-skill documents. If the selected scope does not already own `api/openapi.yaml`, the repository type adds a neutral OpenAPI draft and `$comment`-only JSON example placeholders.
   Shared service guidance lives in `docs/api-service/README.md`; individual documents ask for lifecycle and deprecation rules, idempotency key scope and replay behavior, quota accounting and counter failures, or measurable SLIs and error-budget decisions. `minimal` includes lifecycle decisions, `standard` also includes idempotency, and `strict` adds rate limits and SLOs.
 - `desktop-app`: adds installer, auto-update, crash-reporting, local-data, OS-support, desktop-security, checklist, validation, and agent-skill documents.
   Shared guidance lives in `docs/desktop/README.md`. `minimal` includes installation decisions; `standard` adds update recovery and local-data lifecycle; `strict` also asks for diagnostic consent and redaction, a support matrix, and desktop privilege boundaries.

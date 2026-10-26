@@ -13,7 +13,7 @@ Usage:
   ssealed adopt [target] --scope backend|frontend|fullstack|general|mobile|infra|data [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
   ssealed update [target]
   ssealed upgrade [target] [--scope backend|frontend|fullstack|general|mobile|infra|data] [--repo-type generic|cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo] [--addon cli-tool|api-service|desktop-app|library|web-app|mobile-app|sdk|worker-service|infra-module|data-pipeline|github-action|browser-extension|plugin|docs-site|monorepo | --clear-addons] [--density minimal|standard|strict] [--runner none|make|just|task|npm|pnpm]
-  ssealed doctor [target] [--strict]
+  ssealed doctor [target] [--strict] [--links]
   ssealed eject runner [target] [--dry-run]
   ssealed --help
   ssealed --version
@@ -34,6 +34,7 @@ Options:
   --break-stale-lock
                Remove an old scaffold lock after verifying it is stale.
   --strict     Make doctor fail on any accepted-checksum drift.
+  --links      Also check local Markdown file links in manifest-tracked documents.
   --json       Print machine-readable JSON without interactive prompts.
 `;
 
@@ -50,6 +51,7 @@ const optionHelp = {
   force: "Overwrite only when current content matches previous generated checksums.",
   "break-stale-lock": "Recover an old scaffold lock after verifying it is stale.",
   strict: "Fail on any accepted-checksum drift.",
+  links: "Also check local Markdown file links in manifest-tracked documents; report missing or unsafe destinations.",
   json: "Print machine-readable JSON without interactive prompts.",
   help: "Show this command's help.",
 } as const;
@@ -61,7 +63,7 @@ const allowedByCommand: Readonly<Record<CliCommand, readonly OptionName[]>> = {
   adopt: scaffoldOptions,
   update: ["yes", "dry-run", "force", "break-stale-lock", "json", "help"],
   upgrade: [...scaffoldOptions, "clear-addons"],
-  doctor: ["strict", "json", "help"],
+  doctor: ["strict", "links", "json", "help"],
   eject: ["dry-run", "break-stale-lock", "json", "help"],
 };
 
@@ -88,7 +90,7 @@ const commandDetails: Readonly<Record<CliCommand, { readonly usage: string; read
   },
   doctor: {
     usage: "doctor [target]",
-    description: "Check scaffold lifecycle metadata. Use --strict to require accepted checksums.",
+    description: "Check scaffold lifecycle metadata. Use --strict to require accepted checksums and --links to check local Markdown destinations.",
     example: "doctor ./my-service --strict --json",
   },
   eject: {
@@ -118,6 +120,7 @@ interface ParsedScaffoldArgs {
     readonly force?: boolean;
     readonly "break-stale-lock"?: boolean;
     readonly strict?: boolean;
+    readonly links?: boolean;
     readonly json?: boolean;
     readonly help?: boolean;
   };
@@ -212,6 +215,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       force: parsed.values.force ?? false,
       breakStaleLock: parsed.values["break-stale-lock"] ?? false,
       strict: parsed.values.strict ?? false,
+      links: parsed.values.links ?? false,
       json: parsed.values.json ?? false,
       ...(ejectSubject === undefined ? {} : { eject: ejectSubject }),
       ...(parsed.values["repo-type"] === undefined ? {} : { repoType: parsed.values["repo-type"] }),
@@ -252,6 +256,7 @@ function parseScaffoldArgs(args: readonly string[]): ParsedScaffoldArgs | Error 
         force: { type: "boolean" },
         "break-stale-lock": { type: "boolean" },
         strict: { type: "boolean" },
+        links: { type: "boolean" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" },
       },

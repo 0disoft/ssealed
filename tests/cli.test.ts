@@ -28,7 +28,7 @@ describe("CLI argument parsing", () => {
     { command: "adopt", usage: "adopt [target] --scope <scope>", included: ["scope", "addon"], excluded: ["strict", "clear-addons"] },
     { command: "update", usage: "update [target]", included: ["force", "dry-run"], excluded: ["scope", "runner", "strict"] },
     { command: "upgrade", usage: "upgrade [target]", included: ["scope", "clear-addons"], excluded: ["strict"] },
-    { command: "doctor", usage: "doctor [target]", included: ["strict", "json"], excluded: ["scope", "force", "dry-run"] },
+    { command: "doctor", usage: "doctor [target]", included: ["strict", "links", "json"], excluded: ["scope", "force", "dry-run"] },
     { command: "eject", usage: "eject runner [target]", included: ["dry-run", "break-stale-lock"], excluded: ["scope", "force", "strict"] },
   ])("shows the executable grammar and supported options for $command --help", async ({ command, usage, included, excluded }) => {
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);

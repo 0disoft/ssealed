@@ -5,6 +5,7 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { normalizeText, sha256 } from "../core/checksum.js";
 import { filesystemReadConcurrency, mapWithConcurrency } from "../core/concurrency.js";
+import { checkDocumentLinks, type DocumentLinkReport } from "../core/document-links.js";
 import { SsealedError } from "../core/errors.js";
 import { findGitignoreManagedBlocks } from "../core/gitignore-block.js";
 import { readExistingPath, writeTextFileAtomically } from "../core/file-writer.js";
@@ -49,6 +50,7 @@ export interface InitCliOptions {
   readonly force: boolean;
   readonly breakStaleLock?: boolean;
   readonly strict?: boolean;
+  readonly links?: boolean;
   readonly json: boolean;
   readonly eject?: string;
 }
@@ -79,7 +81,7 @@ async function prepareScaffoldCommand(options: InitCliOptions & { readonly comma
   }
   const target = path.resolve(options.target ?? process.cwd());
   if (options.command === "doctor") {
-    return withScaffoldReadLock(target, () => runDoctor(target, options.json, options.strict ?? false));
+    return withScaffoldReadLock(target, () => runDoctor(target, options.json, options.strict ?? false, options.links ?? false));
   }
   if (options.command === "eject" && options.eject !== "runner") {
     return formatEjectError(options.json, {
@@ -626,7 +628,7 @@ interface DoctorCheck {
   readonly reason?: string | undefined;
 }
 
-async function runDoctor(target: string, json: boolean, strict: boolean): Promise<CommandResponse> {
+async function runDoctor(target: string, json: boolean, strict: boolean, links: boolean): Promise<CommandResponse> {
   const previous = await readPreviousManifest(target);
   if (previous.settings === undefined) {
     const payload = {
@@ -649,6 +651,7 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
       : `ssealed doctor result\nTarget: ${target}\nStatus: ${payload.error.code}\n${previous.warnings.map((warning) => `Warning ${warning.code} ${warning.path}: ${warning.message}\n`).join("")}` };
   }
   const settings = previous.settings;
+  const documents = new Map<string, string>();
 
   const checks = await mapWithConcurrency(
     [...previous.files.entries()],
@@ -671,6 +674,7 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
         const bytes = await readFile(absolutePath);
         if (!isUtf8(bytes)) throw new Error("File is not valid UTF-8. Convert its encoding explicitly before running ssealed.");
         const content = bytes.toString("utf8");
+        if (links && relativePath.endsWith(".md")) documents.set(relativePath, content);
         const actualChecksum = sha256(content);
         return checkExistingManifestFile({
           path: relativePath,
@@ -728,8 +732,9 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
   );
 
   const failed = checks.filter((check) => isFailedDoctorCheck(check));
+  const linkReport = links ? await checkDocumentLinks(target, new Map([...documents].sort(([left], [right]) => left.localeCompare(right)))) : undefined;
   const payload = {
-    ok: failed.length === 0,
+    ok: failed.length === 0 && (linkReport?.ok ?? true),
     command: "doctor",
     strict,
     target,
@@ -741,9 +746,10 @@ async function runDoctor(target: string, json: boolean, strict: boolean): Promis
     runner: settings.runner,
     checks,
     warnings: previous.warnings,
+    ...(linkReport === undefined ? {} : { links: linkReport }),
   };
 
-  return { code: failed.length > 0 ? 1 : 0, stdout: json ? `${JSON.stringify(payload, null, 2)}\n` : formatDoctorHuman(payload) };
+  return { code: payload.ok ? 0 : 1, stdout: json ? `${JSON.stringify(payload, null, 2)}\n` : formatDoctorHuman(payload) };
 }
 
 function formatDoctorHuman(payload: {
@@ -756,6 +762,7 @@ function formatDoctorHuman(payload: {
   readonly runner: Runner;
   readonly strict: boolean;
   readonly checks: readonly DoctorCheck[];
+  readonly links?: DocumentLinkReport;
 }): string {
   const lines = [
     "ssealed doctor result",
@@ -766,11 +773,17 @@ function formatDoctorHuman(payload: {
     `Density: ${payload.density}`,
     `Runner: ${payload.runner}`,
     `Mode: ${payload.strict ? "strict" : "lifecycle"}`,
-    `Status: ${payload.ok ? "ok" : "drift"}`,
+    `Status: ${payload.ok ? "ok" : payload.links?.ok === false ? "broken-links" : "drift"}`,
   ];
 
   for (const check of payload.checks) {
     lines.push(`- ${check.status}: ${check.path}${check.reason ? ` (${check.reason})` : ""}`);
+  }
+  if (payload.links !== undefined) {
+    lines.push(`Links: ${payload.links.checked} checked, ${payload.links.issues.length} issues`);
+    for (const issue of payload.links.issues) {
+      lines.push(`- ${issue.status}: ${issue.path}:${issue.line} -> ${issue.target} (${issue.reason})`, `  Fix: ${issue.remediation}`);
+    }
   }
   return `${lines.join("\n")}\n`;
 }
