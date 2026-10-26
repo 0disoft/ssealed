@@ -2,6 +2,7 @@ import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { mapWithConcurrency, filesystemReadConcurrency } from "./concurrency.js";
 import { assertNoSymlinkInPath, resolveInsideTarget } from "./path-safety.js";
+import { inlineDestinations } from "./markdown-inline-links.js";
 
 interface DocumentLink {
   readonly path: string;
@@ -128,63 +129,6 @@ function visibleLine(line: string, comment: { active: boolean }): string {
     }
   }
   return visible;
-}
-
-function inlineDestinations(line: string): string[] {
-  const targets: string[] = [];
-  let brackets = 0;
-  for (let index = 0; index < line.length; index++) {
-    if (line[index] === "\\") { index++; continue; }
-    if (line[index] === "[") { brackets++; continue; }
-    if (line[index] !== "]" || brackets === 0) continue;
-    brackets--;
-    if (line[index + 1] !== "(") continue;
-    const destination = inlineDestination(line, index + 2);
-    if (destination === undefined) continue;
-    targets.push(destination.target);
-    index = destination.end;
-  }
-  return targets;
-}
-
-function inlineDestination(line: string, start: number): { readonly target: string; readonly end: number } | undefined {
-  let cursor = start;
-  while (cursor < line.length && /\s/u.test(line[cursor]!)) cursor++;
-  let target: string;
-  if (line[cursor] === "<") {
-    const end = line.indexOf(">", cursor + 1);
-    if (end === -1) return undefined;
-    target = line.slice(cursor + 1, end);
-    cursor = end + 1;
-  } else {
-    const begin = cursor;
-    let depth = 0;
-    while (cursor < line.length) {
-      const character = line[cursor]!;
-      if (character === "\\") { cursor += 2; continue; }
-      if (character === "(") depth++;
-      else if (character === ")") { if (depth === 0) break; depth--; }
-      else if (/\s/u.test(character) && depth === 0) break;
-      cursor++;
-    }
-    if (depth !== 0) return undefined;
-    target = line.slice(begin, cursor);
-  }
-  const destinationEnd = cursor;
-  while (cursor < line.length && /\s/u.test(line[cursor]!)) cursor++;
-  if (line[cursor] === ")") return { target, end: cursor };
-  if (cursor === destinationEnd) return undefined;
-  const opener = line[cursor];
-  if (opener !== '"' && opener !== "'" && opener !== "(") return undefined;
-  const closer = opener === "(" ? ")" : opener;
-  cursor++;
-  while (cursor < line.length && line[cursor] !== closer) {
-    cursor += line[cursor] === "\\" ? 2 : 1;
-  }
-  if (cursor >= line.length) return undefined;
-  cursor++;
-  while (cursor < line.length && /\s/u.test(line[cursor]!)) cursor++;
-  return line[cursor] === ")" ? { target, end: cursor } : undefined;
 }
 
 function isMissing(error: unknown): boolean {
