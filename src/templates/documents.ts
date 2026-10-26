@@ -48,12 +48,16 @@ export function rootAgents(scope: Scope, profile: Profile, addons: readonly Addo
   const backendFacingContracts =
     density === "minimal"
       ? "`api/openapi.yaml`, `docs/backend/README.md`, and `docs/backend/00-api-server-boundary.md`"
-      : "`api/openapi.yaml`, `api/examples/*.json`, `docs/backend/04-http-api-policy.md`, and `docs/backend/05-error-response.md`";
+      : "`api/openapi.yaml`, `docs/backend/04-http-api-policy.md`, and `docs/backend/05-error-response.md`";
+  const backendContractDraftNote =
+    density === "minimal"
+      ? "The OpenAPI skeleton is an unadopted draft until the project records its API contract."
+      : "The OpenAPI skeleton and `api/examples/*.json` payloads are illustrative, unadopted examples, not accepted API policy, until the project adopts them.";
   const architectureSource = density === "minimal" ? "Architecture boundary: docs/architecture/00-system-boundary.md" : "Architecture decisions: docs/adr/*.md";
   const fullstackDbSource =
     density === "minimal"
       ? "DB structure is not generated at minimal density; record project-owned persistence decisions before treating DB files as source."
-      : "DB structure is sourced from `db/schema.dbml`.";
+      : "DB structure is drafted in `db/schema.dbml` and remains unadopted until the project records its persistence decisions.";
   const scopeText = {
     backend: `Scope: backend
 
@@ -63,7 +67,7 @@ authorization, persistence, migrations, observability, and backend security.
 This repository does not own frontend routing, visual design, component hierarchy,
 design tokens, or browser interaction policy.
 
-Frontend-facing behavior is contracted through ${backendFacingContracts}.`,
+Frontend-facing behavior is documented through ${backendFacingContracts} ${backendContractDraftNote}`,
     frontend: `Scope: frontend
 
 This repository owns routing, page model, state ownership, component boundaries,
@@ -72,21 +76,25 @@ design token usage, accessibility, frontend performance, and frontend observabil
 This repository does not own backend internals, database schema, migration strategy,
 or server-side authorization implementation.
 
-Backend-facing behavior is consumed through \`contracts/backend-api/openapi.yaml\`
-and \`docs/integrations/backend-api.md\`.`,
+Backend-facing behavior is documented through \`contracts/backend-api/openapi.yaml\`
+and \`docs/integrations/backend-api.md\`. The copied contract is a draft until the
+backend owner adopts it.`,
     fullstack: `Scope: fullstack
 
 This repository owns backend, frontend, API contracts, DB contracts, product specs,
 engineering standards, and operational standards.
 
-API request and response shapes are sourced from \`api/openapi.yaml\`.
+API request and response contracts are drafted in \`api/openapi.yaml\` and remain
+unadopted until the project records them.
 
 ${fullstackDbSource}`,
     general: `Scope: general
 
-This repository owns product, architecture, ADR, engineering, and operational design scaffolds.
+This repository owns product, architecture, ADR, engineering, and operational design
+documentation.
 
-This scaffold does not generate implementation source code; any existing source remains project-owned.`,
+Project implementation may live in this repository; follow approved requirements and
+record technology decisions as they are settled rather than inventing them.`,
     mobile: `Scope: mobile
 
 This repository owns mobile product surface behavior, platform support decisions, app lifecycle,
@@ -98,16 +106,18 @@ database schema, or runtime infrastructure.`,
 
 This repository owns infrastructure design contracts, environment boundaries, change plans,
 drift handling, rollback decisions, and operational validation surfaces.
+Project-approved infrastructure implementation belongs here when this repository owns it.
 
-This repository does not generate runtime infrastructure code, credentials, cloud resources,
-or deployment secrets.`,
+The scaffold does not emit runtime infrastructure code, credentials, or deployment
+secrets; those follow the project's own approved process.`,
     data: `Scope: data
 
 This repository owns data pipeline contracts, lineage, quality gates, retention decisions,
 privacy boundaries, and data validation surfaces.
+Project-approved pipeline and dataset implementation belongs here when this repository owns it.
 
-This repository does not generate production datasets, credentials, warehouse objects,
-or application runtime code.`,
+The scaffold does not emit production datasets, credentials, warehouse objects, or
+application runtime code.`,
   } satisfies Record<Scope, string>;
 
   return `# AGENTS.md
@@ -128,9 +138,12 @@ ${repositoryShapeBlock(profile, addons)}
 
 ## Hard Rules
 
-- Do not generate or infer application source code from this scaffold.
-- Do not invent technology choices. Use UNDECIDED when a decision is not known.
-- Do not create fake credentials, tokens, secrets, or private values.
+- Follow approved requirements and recorded decisions. Scaffold drafts are proposals;
+  an unresolved draft grants no implementation, migration, or deployment authority.
+- Stay within this repository's ownership boundary. Handoffs to other repositories or
+  services follow the sources named in this file.
+- Do not invent requirements, technology choices, credentials, tokens, secrets, or
+  private values. Use UNDECIDED where the project has not decided.
 - Do not rely on generated, cache, or build output as source truth.
 
 ## Repository Hygiene
@@ -149,9 +162,14 @@ ${repositoryShapeBlock(profile, addons)}
 
 ## Out of Scope
 
-- Application source scaffolding.
-- Runtime infrastructure such as Docker, Kubernetes, Terraform, or framework apps.
-- Project-specific credentials or deployment secrets.
+These items are outside what this generator emits. Authorized project work may still
+add application, infrastructure, or data files inside this repository's ownership.
+
+- Automatically generated application source from scaffold documents.
+- Automatically generated runtime infrastructure such as Docker, Kubernetes, Terraform,
+  or framework app templates.
+- Production credentials, cloud resources, or deployment secrets created by the scaffold.
+- Implementation, migration, or deployment justified only by an unresolved draft.
 
 ## Final Response Requirements
 
@@ -171,7 +189,10 @@ ${documentMetadata([
   ["Addons", formatAddons(addons)],
 ])}
 
-This repository contains an LLM-friendly design scaffold. It is not application source code.
+This repository contains an LLM-friendly design scaffold for the project. The scaffold
+records requirements, ownership boundaries, contracts, and validation guidance.
+Application and infrastructure implementation are owned by the project and may
+already exist here.
 
 ## Source Files
 
@@ -191,6 +212,7 @@ binary diffs, local files, build outputs, caches, and secret files under control
 ## Scope Notes
 
 Project-specific implementation choices remain UNDECIDED until the repository owner records them.
+Scaffold drafts grant no implementation, migration, or deployment authority by themselves.
 `;
 }
 
